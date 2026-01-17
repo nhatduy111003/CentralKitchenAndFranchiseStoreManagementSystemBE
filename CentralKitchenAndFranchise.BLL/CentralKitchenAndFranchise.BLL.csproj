@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+		<PackageReference Include="CloudinaryDotNet" Version="1.27.8" />
+		<PackageReference Include="payOS" Version="2.0.1" />
+	</ItemGroup>
+  <ItemGroup>
+    <Folder Include="Intergrations\Implementations\" />
+    <Folder Include="Intergrations\Interfaces\" />
+    <Folder Include="Services\Implementations\" />
+    <Folder Include="Services\Interfaces\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CentralKitchenAndFranchise.DAL\CentralKitchenAndFranchise.DAL.csproj" />
+  </ItemGroup>
+
+</Project>
