@@ -4,13 +4,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Prevent any Windows/VS fallback package folders from breaking Linux builds
+# Force-disable any fallback folders (Windows/VS paths) in Linux container
 ENV NUGET_FALLBACK_PACKAGES=""
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
-
-# Copy NuGet.Config FIRST (must exist at repo root)
-COPY NuGet.Config ./
 
 # Copy csproj files first (for better caching)
 COPY CentralKitchenAndFranchise.API/CentralKitchenAndFranchise.API.csproj CentralKitchenAndFranchise.API/
@@ -18,7 +15,7 @@ COPY CentralKitchenAndFranchise.BLL/CentralKitchenAndFranchise.BLL.csproj Centra
 COPY CentralKitchenAndFranchise.DAL/CentralKitchenAndFranchise.DAL.csproj CentralKitchenAndFranchise.DAL/
 COPY CentralKitchenAndFranchise.DTO/CentralKitchenAndFranchise.DTO.csproj CentralKitchenAndFranchise.DTO/
 
-# Restore (use the repo NuGet.Config)
+# Restore
 RUN dotnet restore CentralKitchenAndFranchise.API/CentralKitchenAndFranchise.API.csproj
 
 # Copy everything else
