@@ -9,8 +9,6 @@ COPY CentralKitchenAndFranchise.API/CentralKitchenAndFranchise.API.csproj Centra
 COPY CentralKitchenAndFranchise.BLL/CentralKitchenAndFranchise.BLL.csproj CentralKitchenAndFranchise.BLL/
 COPY CentralKitchenAndFranchise.DAL/CentralKitchenAndFranchise.DAL.csproj CentralKitchenAndFranchise.DAL/
 COPY CentralKitchenAndFranchise.DTO/CentralKitchenAndFranchise.DTO.csproj CentralKitchenAndFranchise.DTO/
-COPY NuGet.Config ./
-RUN dotnet restore CentralKitchenAndFranchise.API/CentralKitchenAndFranchise.API.csproj
 
 # Restore
 RUN dotnet restore CentralKitchenAndFranchise.API/CentralKitchenAndFranchise.API.csproj
