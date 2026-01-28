@@ -31,10 +31,7 @@
 		<PackageReference Include="QuestPDF" Version="2025.7.4" />
 	</ItemGroup>
   <ItemGroup>
-    <Folder Include="Entities\" />
     <Folder Include="Migrations\" />
-    <Folder Include="Repositories\Implementations\" />
-    <Folder Include="Repositories\Interfaces\" />
     <Folder Include="UnitOfWork\" />
   </ItemGroup>
   <ItemGroup>
