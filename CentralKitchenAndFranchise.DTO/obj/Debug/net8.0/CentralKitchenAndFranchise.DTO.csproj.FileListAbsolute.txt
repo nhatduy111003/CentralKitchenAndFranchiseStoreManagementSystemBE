@@ -1,0 +1,13 @@
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\bin\Debug\net8.0\CentralKitchenAndFranchise.DTO.deps.json
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\bin\Debug\net8.0\CentralKitchenAndFranchise.DTO.dll
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\bin\Debug\net8.0\CentralKitchenAndFranchise.DTO.pdb
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\obj\Debug\net8.0\CentralKitchenAndFranchise.DTO.csproj.AssemblyReference.cache
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\obj\Debug\net8.0\CentralKitchenAndFranchise.DTO.GeneratedMSBuildEditorConfig.editorconfig
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\obj\Debug\net8.0\CentralKitchenAndFranchise.DTO.AssemblyInfoInputs.cache
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\obj\Debug\net8.0\CentralKitchenAndFranchise.DTO.AssemblyInfo.cs
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\obj\Debug\net8.0\CentralKitchenAndFranchise.DTO.csproj.CoreCompileInputs.cache
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\obj\Debug\net8.0\CentralKitchenAndFranchise.DTO.sourcelink.json
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\obj\Debug\net8.0\CentralKitchenAndFranchise.DTO.dll
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\obj\Debug\net8.0\refint\CentralKitchenAndFranchise.DTO.dll
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\obj\Debug\net8.0\CentralKitchenAndFranchise.DTO.pdb
+K:\SWP\BE\CentralKitchenAndFranchiseStoreManagementSystemBE\CentralKitchenAndFranchise.DTO\obj\Debug\net8.0\ref\CentralKitchenAndFranchise.DTO.dll

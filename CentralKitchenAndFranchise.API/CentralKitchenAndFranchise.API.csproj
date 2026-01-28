@@ -7,6 +7,7 @@
   </PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.6">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -15,16 +16,18 @@
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
+		<PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.15.0" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
-		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
+		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
 	</ItemGroup>
 
   <ItemGroup>
     <Folder Include="Controllers\" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\CentralKitchenAndFranchise.BLL\CentralKitchenAndFranchise.BLL.csproj" />
-  </ItemGroup>
-
+	<ItemGroup>
+		<ProjectReference Include="..\CentralKitchenAndFranchise.BLL\CentralKitchenAndFranchise.BLL.csproj" />
+		<ProjectReference Include="..\CentralKitchenAndFranchise.DAL\CentralKitchenAndFranchise.DAL.csproj" />
+		<ProjectReference Include="..\CentralKitchenAndFranchise.DTO\CentralKitchenAndFranchise.DTO.csproj" />
+	</ItemGroup>
 </Project>

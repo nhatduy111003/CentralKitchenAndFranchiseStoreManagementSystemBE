@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CentralKitchenAndFranchise.DAL")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+eedc32a0f0e60fa9a438400014fd555100ac2928")]
 [assembly: System.Reflection.AssemblyProductAttribute("CentralKitchenAndFranchise.DAL")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CentralKitchenAndFranchise.DAL")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

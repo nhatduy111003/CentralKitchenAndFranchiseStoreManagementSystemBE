@@ -4164,23 +4164,23 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\phamn\\.nuget\\packages\\": {},
+    "C:\\Users\\ngkho\\.nuget\\packages\\": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj",
+      "projectUniqueName": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj",
       "projectName": "CentralKitchenAndFranchise.DTO",
-      "projectPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj",
-      "packagesPath": "C:\\Users\\phamn\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DTO\\obj\\",
+      "projectPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj",
+      "packagesPath": "C:\\Users\\ngkho\\.nuget\\packages\\",
+      "outputPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
       ],
       "configFilePaths": [
-        "C:\\Users\\phamn\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\ngkho\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
@@ -4207,7 +4207,7 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "9.0.300"
+      "SdkAnalysisLevel": "9.0.200"
     },
     "frameworks": {
       "net8.0": {
@@ -4238,7 +4238,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.302/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.203/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

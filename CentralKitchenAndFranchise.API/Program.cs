@@ -1,15 +1,44 @@
+using CentralKitchenAndFranchise.API.Middlewares;
+using CentralKitchenAndFranchise.BLL.Services.Implementations;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+using CentralKitchenAndFranchise.DAL.Persistence;
+using CentralKitchenAndFranchise.DAL.Repositories.Implementations;
+using CentralKitchenAndFranchise.DAL.Repositories.Interfaces;
+using CentralKitchenAndFranchise.DAL.UnitOfWork;
+using CentralKitchenAndFranchise.DTO.Config;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-var app = builder.Build();
+// config
+builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
-// Configure the HTTP request pipeline.
+// EF Core
+builder.Services.AddDbContext<AppDbContext>(opt =>
+    opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// DAL DI
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IIngredientRepository, IngredientRepository>();
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+// BLL DI
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IIngredientService, IngredientService>();
+
+var app = builder.Build();
+if (app.Environment.IsDevelopment())
+{
+    CentralKitchenAndFranchise.API.Dev.HashTool.Print();
+}
+// middleware
+app.UseMiddleware<ExceptionMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -17,9 +46,6 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();

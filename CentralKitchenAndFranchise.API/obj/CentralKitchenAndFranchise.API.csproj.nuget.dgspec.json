@@ -1,23 +1,23 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.API\\CentralKitchenAndFranchise.API.csproj": {}
+    "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.API\\CentralKitchenAndFranchise.API.csproj": {}
   },
   "projects": {
-    "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.API\\CentralKitchenAndFranchise.API.csproj": {
+    "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.API\\CentralKitchenAndFranchise.API.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.API\\CentralKitchenAndFranchise.API.csproj",
+        "projectUniqueName": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.API\\CentralKitchenAndFranchise.API.csproj",
         "projectName": "CentralKitchenAndFranchise.API",
-        "projectPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.API\\CentralKitchenAndFranchise.API.csproj",
-        "packagesPath": "C:\\Users\\phamn\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.API\\obj\\",
+        "projectPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.API\\CentralKitchenAndFranchise.API.csproj",
+        "packagesPath": "C:\\Users\\ngkho\\.nuget\\packages\\",
+        "outputPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.API\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\phamn\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\ngkho\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -32,8 +32,14 @@
           "net8.0": {
             "targetAlias": "net8.0",
             "projectReferences": {
-              "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.BLL\\CentralKitchenAndFranchise.BLL.csproj": {
-                "projectPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.BLL\\CentralKitchenAndFranchise.BLL.csproj"
+              "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.BLL\\CentralKitchenAndFranchise.BLL.csproj": {
+                "projectPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.BLL\\CentralKitchenAndFranchise.BLL.csproj"
+              },
+              "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj": {
+                "projectPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj"
+              },
+              "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj": {
+                "projectPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj"
               }
             }
           }
@@ -48,12 +54,16 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "9.0.300"
+        "SdkAnalysisLevel": "9.0.200"
       },
       "frameworks": {
         "net8.0": {
           "targetAlias": "net8.0",
           "dependencies": {
+            "BCrypt.Net-Next": {
+              "target": "Package",
+              "version": "[4.0.3, )"
+            },
             "Microsoft.EntityFrameworkCore.Design": {
               "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
               "suppressParent": "All",
@@ -66,13 +76,17 @@
               "target": "Package",
               "version": "[8.0.6, )"
             },
+            "Microsoft.IdentityModel.Tokens": {
+              "target": "Package",
+              "version": "[8.15.0, )"
+            },
             "Swashbuckle.AspNetCore": {
               "target": "Package",
               "version": "[6.6.2, )"
             },
             "System.IdentityModel.Tokens.Jwt": {
               "target": "Package",
-              "version": "[8.14.0, )"
+              "version": "[8.15.0, )"
             }
           },
           "imports": [
@@ -94,24 +108,24 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.302/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.203/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.BLL\\CentralKitchenAndFranchise.BLL.csproj": {
+    "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.BLL\\CentralKitchenAndFranchise.BLL.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.BLL\\CentralKitchenAndFranchise.BLL.csproj",
+        "projectUniqueName": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.BLL\\CentralKitchenAndFranchise.BLL.csproj",
         "projectName": "CentralKitchenAndFranchise.BLL",
-        "projectPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.BLL\\CentralKitchenAndFranchise.BLL.csproj",
-        "packagesPath": "C:\\Users\\phamn\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.BLL\\obj\\",
+        "projectPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.BLL\\CentralKitchenAndFranchise.BLL.csproj",
+        "packagesPath": "C:\\Users\\ngkho\\.nuget\\packages\\",
+        "outputPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.BLL\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\phamn\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\ngkho\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -126,8 +140,8 @@
           "net8.0": {
             "targetAlias": "net8.0",
             "projectReferences": {
-              "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj": {
-                "projectPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj"
+              "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj": {
+                "projectPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj"
               }
             }
           }
@@ -142,7 +156,7 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "9.0.300"
+        "SdkAnalysisLevel": "9.0.200"
       },
       "frameworks": {
         "net8.0": {
@@ -155,6 +169,14 @@
             "CloudinaryDotNet": {
               "target": "Package",
               "version": "[1.27.8, )"
+            },
+            "Microsoft.IdentityModel.Tokens": {
+              "target": "Package",
+              "version": "[8.15.0, )"
+            },
+            "System.IdentityModel.Tokens.Jwt": {
+              "target": "Package",
+              "version": "[8.15.0, )"
             },
             "payOS": {
               "target": "Package",
@@ -177,24 +199,24 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.302/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.203/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj": {
+    "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj",
+        "projectUniqueName": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj",
         "projectName": "CentralKitchenAndFranchise.DAL",
-        "projectPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj",
-        "packagesPath": "C:\\Users\\phamn\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DAL\\obj\\",
+        "projectPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj",
+        "packagesPath": "C:\\Users\\ngkho\\.nuget\\packages\\",
+        "outputPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DAL\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\phamn\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\ngkho\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -209,8 +231,8 @@
           "net8.0": {
             "targetAlias": "net8.0",
             "projectReferences": {
-              "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj": {
-                "projectPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj"
+              "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj": {
+                "projectPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj"
               }
             }
           }
@@ -225,7 +247,7 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "9.0.300"
+        "SdkAnalysisLevel": "9.0.200"
       },
       "frameworks": {
         "net8.0": {
@@ -320,24 +342,24 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.302/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.203/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj": {
+    "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj",
+        "projectUniqueName": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj",
         "projectName": "CentralKitchenAndFranchise.DTO",
-        "projectPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj",
-        "packagesPath": "C:\\Users\\phamn\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DTO\\obj\\",
+        "projectPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\CentralKitchenAndFranchise.DTO.csproj",
+        "packagesPath": "C:\\Users\\ngkho\\.nuget\\packages\\",
+        "outputPath": "K:\\SWP\\BE\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DTO\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\phamn\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\ngkho\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -364,7 +386,7 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "9.0.300"
+        "SdkAnalysisLevel": "9.0.200"
       },
       "frameworks": {
         "net8.0": {
@@ -395,7 +417,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.302/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.203/PortableRuntimeIdentifierGraph.json"
         }
       }
     }
