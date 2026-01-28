@@ -4,6 +4,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
+COPY NuGet.Config ./
+
 # Copy csproj files first (for better caching)
 COPY CentralKitchenAndFranchise.API/CentralKitchenAndFranchise.API.csproj CentralKitchenAndFranchise.API/
 COPY CentralKitchenAndFranchise.BLL/CentralKitchenAndFranchise.BLL.csproj CentralKitchenAndFranchise.BLL/
