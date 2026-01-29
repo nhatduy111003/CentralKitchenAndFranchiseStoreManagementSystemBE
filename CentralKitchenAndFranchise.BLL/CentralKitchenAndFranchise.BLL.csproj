@@ -13,8 +13,6 @@
   <ItemGroup>
     <Folder Include="Intergrations\Implementations\" />
     <Folder Include="Intergrations\Interfaces\" />
-    <Folder Include="Services\Implementations\" />
-    <Folder Include="Services\Interfaces\" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\CentralKitchenAndFranchise.DAL\CentralKitchenAndFranchise.DAL.csproj" />

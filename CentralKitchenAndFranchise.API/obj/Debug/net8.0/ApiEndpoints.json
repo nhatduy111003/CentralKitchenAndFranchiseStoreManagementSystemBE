@@ -1,12 +1,160 @@
 [
   {
-    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.AdminRolesController",
-    "Method": "GetRoles",
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.RolesController",
+    "Method": "GetAll",
     "RelativePath": "admin/roles",
     "HttpMethod": "GET",
     "IsController": true,
     "Order": 0,
     "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.RolesController",
+    "Method": "Create",
+    "RelativePath": "admin/roles",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "dto",
+        "Type": "CentralKitchenAndFranchise.DTO.Requests.RoleRequestDto",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.RolesController",
+    "Method": "GetById",
+    "RelativePath": "admin/roles/{id}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.RolesController",
+    "Method": "Update",
+    "RelativePath": "admin/roles/{id}",
+    "HttpMethod": "PUT",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "dto",
+        "Type": "CentralKitchenAndFranchise.DTO.Requests.RoleRequestDto",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.RolesController",
+    "Method": "Delete",
+    "RelativePath": "admin/roles/{id}",
+    "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.UsersController",
+    "Method": "GetAll",
+    "RelativePath": "admin/users",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.UsersController",
+    "Method": "Create",
+    "RelativePath": "admin/users",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "dto",
+        "Type": "CentralKitchenAndFranchise.DTO.Requests.CreateUserRequestDto",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.UsersController",
+    "Method": "GetById",
+    "RelativePath": "admin/users/{id}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.UsersController",
+    "Method": "Update",
+    "RelativePath": "admin/users/{id}",
+    "HttpMethod": "PUT",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "dto",
+        "Type": "CentralKitchenAndFranchise.DTO.Requests.UpdateUserRequestDto",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.UsersController",
+    "Method": "Delete",
+    "RelativePath": "admin/users/{id}",
+    "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
     "ReturnTypes": []
   }
 ]
