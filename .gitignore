@@ -1,9 +1,15 @@
-**/bin/
-**/obj/
+# build artifacts
+bin/
+obj/
+
+# IDE
 .vs/
-/CentralKitchenAndFranchise.API/obj
-/CentralKitchenAndFranchise.API/obj
-/CentralKitchenAndFranchise.API/obj
-/CentralKitchenAndFranchise.API/obj
-/CentralKitchenAndFranchise.API/obj
-/CentralKitchenAndFranchise.DAL/obj
+.idea/
+
+# logs
+logs/
+*.log
+
+# env
+.env
+.env.local
