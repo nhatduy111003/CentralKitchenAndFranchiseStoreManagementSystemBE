@@ -35,7 +35,7 @@ public class IngredientService : Interfaces.IIngredientService
             Name = request.Name.Trim(),
             Unit = request.Unit.Trim(),
             Status = "ACTIVE",
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTime.UtcNow
         };
 
         await _uow.Ingredients.AddAsync(entity, ct);
@@ -45,7 +45,6 @@ public class IngredientService : Interfaces.IIngredientService
         }
         catch (DbUpdateException)
         {
-            // likely unique violation on ingredients.name
             throw new InvalidOperationException("Ingredient name already exists.");
         }
 
@@ -86,10 +85,12 @@ public class IngredientService : Interfaces.IIngredientService
 
     private static IngredientResponse ToDto(Ingredient x) => new()
     {
-        Id = x.Id,
+        Id = x.IngredientId,
         Name = x.Name,
         Unit = x.Unit,
         Status = x.Status,
-        CreatedAt = x.CreatedAt
+
+        // entity DateTime -> DTO DateTimeOffset
+        CreatedAt = new DateTimeOffset(x.CreatedAt, TimeSpan.Zero)
     };
 }

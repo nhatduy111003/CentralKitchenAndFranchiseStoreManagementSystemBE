@@ -2,9 +2,10 @@ namespace CentralKitchenAndFranchise.DAL.Entities;
 
 public class IngredientBatch
 {
-    public int Id { get; set; }
+    public int BatchId { get; set; }
     public int IngredientId { get; set; }
     public int FranchiseId { get; set; }
+
     public string BatchCode { get; set; } = default!;
     public decimal Quantity { get; set; }
     public DateOnly? ExpiredAt { get; set; }

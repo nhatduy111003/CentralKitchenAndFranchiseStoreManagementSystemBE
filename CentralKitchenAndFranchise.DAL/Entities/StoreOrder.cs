@@ -2,11 +2,14 @@ namespace CentralKitchenAndFranchise.DAL.Entities;
 
 public class StoreOrder
 {
-    public int Id { get; set; }
-    public int StoreFranchiseId { get; set; }
-    public string Status { get; set; } = default!;
-    public DateTimeOffset CreatedAt { get; set; }
+    public int StoreOrderId { get; set; }
+    public int FranchiseId { get; set; }
 
-    public Franchise StoreFranchise { get; set; } = default!;
+    public string Status { get; set; } = default!;
+
+    // migration full dùng DateTime (timestamptz)
+    public DateTime CreatedAt { get; set; }
+
+    public Franchise Franchise { get; set; } = default!;
     public ICollection<StoreOrderItem> Items { get; set; } = new List<StoreOrderItem>();
 }

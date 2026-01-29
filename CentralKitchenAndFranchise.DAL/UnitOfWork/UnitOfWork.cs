@@ -1,4 +1,4 @@
-using CentralKitchenAndFranchise.DAL.Persistence;
+using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.Repositories.Interfaces;
 
 namespace CentralKitchenAndFranchise.DAL.UnitOfWork;

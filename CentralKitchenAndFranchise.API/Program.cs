@@ -1,33 +1,25 @@
-using CentralKitchenAndFranchise.API.Middlewares;
+﻿using CentralKitchenAndFranchise.API.Middlewares;
 using CentralKitchenAndFranchise.BLL.Services.Implementations;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
-using CentralKitchenAndFranchise.DAL.Persistence;
+using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.Repositories.Implementations;
 using CentralKitchenAndFranchise.DAL.Repositories.Interfaces;
+using CentralKitchenAndFranchise.DAL.Seeding;
 using CentralKitchenAndFranchise.DAL.UnitOfWork;
 using CentralKitchenAndFranchise.DTO.Config;
-using CentralKitchenAndFranchise.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
+using System;
 
 var builder = WebApplication.CreateBuilder(args);
-
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(
-    builder.Configuration.GetConnectionString("DefaultConnection"))
-);
-builder.Services.AddScoped<IRoleService, RoleService>();
-builder.Services.AddScoped<IUserService, UserService>();
-builder.Services.AddScoped<IFranchiseService, FranchiseService>();
 
-
-// config
+// Config
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
-// EF Core
+// EF Core - CHỈ 1 LẦN
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -39,20 +31,30 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 // BLL DI
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IIngredientService, IngredientService>();
+builder.Services.AddScoped<IRoleService, RoleService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IFranchiseService, FranchiseService>();
 
 var app = builder.Build();
+
+// Auto migrate + seed (DB đầy đủ)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+    DbSeeder.Seed(db);
+}
+
 if (app.Environment.IsDevelopment())
 {
     CentralKitchenAndFranchise.API.Dev.HashTool.Print();
-}
-// middleware
-app.UseMiddleware<ExceptionMiddleware>();
 
-if (app.Environment.IsDevelopment())
-{
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// middleware
+app.UseMiddleware<ExceptionMiddleware>();
 
 app.UseHttpsRedirection();
 app.MapControllers();

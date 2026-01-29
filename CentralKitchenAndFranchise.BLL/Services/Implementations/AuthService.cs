@@ -1,7 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using BCrypt.Net;
 using CentralKitchenAndFranchise.DAL.UnitOfWork;
 using CentralKitchenAndFranchise.DTO.Config;
 using CentralKitchenAndFranchise.DTO.Requests.Auth;
@@ -38,13 +37,13 @@ public class AuthService : Interfaces.IAuthService
             throw new UnauthorizedAccessException("User is inactive.");
 
         var expires = DateTime.UtcNow.AddMinutes(_jwt.ExpiresInMinutes);
-        var token = GenerateJwt(user.Id, user.Username, user.Role.Name, expires);
+        var token = GenerateJwt(user.UserId, user.Username, user.Role.Name, expires);
 
         return new LoginResponse
         {
             AccessToken = token,
             ExpiresInSeconds = (int)TimeSpan.FromMinutes(_jwt.ExpiresInMinutes).TotalSeconds,
-            UserId = user.Id,
+            UserId = user.UserId,
             Username = user.Username,
             Role = user.Role.Name
         };
