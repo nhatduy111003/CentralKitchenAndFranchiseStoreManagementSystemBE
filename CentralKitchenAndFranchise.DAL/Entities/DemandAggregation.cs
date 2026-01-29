@@ -8,10 +8,13 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class DemandAggregation
     {
-        public Guid DemandAggregationId { get; set; }
-        public DateTime RunAt { get; set; }
+        public int DemandAggregationId { get; set; }
+        public DateOnly PlanDate { get; set; }
+        public DateTime CreatedAt { get; set; }
 
-        public ICollection<DemandItem> Items { get; set; } = new List<DemandItem>();
+        public ICollection<DemandItem> DemandItems { get; set; } = new List<DemandItem>();
     }
+
+
 
 }

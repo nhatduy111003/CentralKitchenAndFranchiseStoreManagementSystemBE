@@ -6,9 +6,10 @@ using System.Threading.Tasks;
 
 namespace CentralKitchenAndFranchise.DTO.Requests
 {
-    public class CreateUserDto
+    public class UpdateUserRequestDto
     {
-        public string Status { get; set; }
+        public int RoleId { get; set; }
+        public string Status { get; set; } = null!;
     }
 
 }

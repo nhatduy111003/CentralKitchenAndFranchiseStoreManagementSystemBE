@@ -6,16 +6,13 @@ using System.Threading.Tasks;
 
 namespace CentralKitchenAndFranchise.DAL.Entities
 {
-    public class AuditLog
+    public class ProductionBatch
     {
-        public int AuditLogId { get; set; }
-        public int? UserId { get; set; }
-        public string Action { get; set; } = null!;
+        public int ProductionBatchId { get; set; }
+        public int ProductionPlanId { get; set; }
         public DateTime CreatedAt { get; set; }
 
-        public User? User { get; set; }
+        public ProductionPlan ProductionPlan { get; set; } = null!;
     }
-
-
 
 }

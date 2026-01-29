@@ -8,16 +8,15 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class SalesRecord
     {
-        public Guid SalesRecordId { get; set; }
-
-        public Guid FranchiseId { get; set; }
-        public Franchise Franchise { get; set; } = null!;
-
-        public Guid ProductId { get; set; }
-        public Product Product { get; set; } = null!;
-
+        public int SalesRecordId { get; set; }
+        public int FranchiseId { get; set; }
+        public int ProductId { get; set; }
+        public DateOnly SoldAt { get; set; }
         public decimal Quantity { get; set; }
-        public DateTime SoldAt { get; set; }
+
+        public Franchise Franchise { get; set; } = null!;
+        public Product Product { get; set; } = null!;
     }
+
 
 }

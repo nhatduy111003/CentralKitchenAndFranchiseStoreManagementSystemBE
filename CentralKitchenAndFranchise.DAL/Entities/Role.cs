@@ -6,13 +6,14 @@ using System.Threading.Tasks;
 
 namespace CentralKitchenAndFranchise.DAL.Entities
 {
-    public class Product
+    public class Role
     {
-        public int ProductId { get; set; }
+        public int RoleId { get; set; }
         public string Name { get; set; } = null!;
-        public string Sku { get; set; } = null!;
-        public string Unit { get; set; } = null!;
-        public string Status { get; set; } = "ACTIVE";
+
+        public ICollection<User> Users { get; set; } = new List<User>();
     }
+
+
 
 }

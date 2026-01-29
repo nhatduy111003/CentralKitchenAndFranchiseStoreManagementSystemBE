@@ -8,13 +8,13 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class StoreOrderItem
     {
-        public Guid StoreOrderId { get; set; }
-        public StoreOrder StoreOrder { get; set; } = null!;
-
-        public Guid ProductId { get; set; }
-        public Product Product { get; set; } = null!;
-
+        public int StoreOrderItemId { get; set; }
+        public int StoreOrderId { get; set; }
+        public int ProductId { get; set; }
         public decimal Quantity { get; set; }
+
+        public StoreOrder StoreOrder { get; set; } = null!;
+        public Product Product { get; set; } = null!;
     }
 
 }

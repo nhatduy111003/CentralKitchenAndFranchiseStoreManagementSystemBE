@@ -8,15 +8,13 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class InventoryMovement
     {
-        public Guid InventoryMovementId { get; set; }
-
-        public Guid IngredientBatchId { get; set; }
-        public IngredientBatch Batch { get; set; } = null!;
-
-        public string Type { get; set; } = null!; // IN, OUT, ADJUST, WASTE
+        public int MovementId { get; set; }
+        public int BatchId { get; set; }
+        public string Type { get; set; } = null!;
         public decimal Quantity { get; set; }
-        public string Reason { get; set; } = null!;
         public DateTime CreatedAt { get; set; }
+
+        public IngredientBatch Batch { get; set; } = null!;
     }
 
 }

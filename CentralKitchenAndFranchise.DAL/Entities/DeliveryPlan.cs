@@ -8,9 +8,13 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class DeliveryPlan
     {
-        public Guid DeliveryPlanId { get; set; }
+        public int DeliveryPlanId { get; set; }
+        public int FranchiseId { get; set; }
         public DateOnly PlannedDate { get; set; }
-        public string Status { get; set; } = "DRAFT";
+
+        public Franchise Franchise { get; set; } = null!;
+        public ICollection<Delivery> Deliveries { get; set; } = new List<Delivery>();
     }
+
 
 }

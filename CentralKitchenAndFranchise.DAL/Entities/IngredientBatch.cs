@@ -8,16 +8,14 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class IngredientBatch
     {
-        public Guid IngredientBatchId { get; set; }
-
-        public Guid IngredientId { get; set; }
-        public Ingredient Ingredient { get; set; } = null!;
-
+        public int BatchId { get; set; }
+        public int IngredientId { get; set; }
+        public int FranchiseId { get; set; }
         public string BatchCode { get; set; } = null!;
-        public DateOnly ExpiryDate { get; set; }
         public decimal Quantity { get; set; }
+        public DateOnly? ExpiredAt { get; set; }
 
-        public Guid FranchiseId { get; set; }
+        public Ingredient Ingredient { get; set; } = null!;
         public Franchise Franchise { get; set; } = null!;
     }
 

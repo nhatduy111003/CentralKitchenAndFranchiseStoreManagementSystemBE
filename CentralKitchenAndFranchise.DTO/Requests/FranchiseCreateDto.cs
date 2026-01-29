@@ -6,12 +6,12 @@ using System.Threading.Tasks;
 
 namespace CentralKitchenAndFranchise.DTO.Requests
 {
-    public class UpdateUserDto
+    public class FranchiseCreateDto
     {
-        public string Username { get; set; } = null!;
+        public string Name { get; set; } = null!;
+        public string Type { get; set; } = null!;
         public string Status { get; set; } = "ACTIVE";
-        public Guid RoleId { get; set; }
+        public string? Address { get; set; }
+        public string? Location { get; set; }
     }
-
-
 }

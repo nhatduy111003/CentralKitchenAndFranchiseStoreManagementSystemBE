@@ -8,12 +8,12 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class UserFranchise
     {
-        public Guid UserId { get; set; }
-        public Guid FranchiseId { get; set; }  
+        public int UserId { get; set; }
+        public int FranchiseId { get; set; }
+        public DateTime AssignedAt { get; set; }
 
-        public string Role { get; set; } = null!;
-        public string Status { get; set; } = null!;
+        public User User { get; set; } = null!;
+        public Franchise Franchise { get; set; } = null!;
     }
-
 
 }

@@ -8,17 +8,15 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class Allocation
     {
-        public Guid AllocationId { get; set; }
+        public int AllocationId { get; set; }
+        public int DemandAggregationId { get; set; }
+        public DateTime CreatedAt { get; set; }
 
-        public Guid DemandAggregationId { get; set; }
-        public DemandAggregation Aggregation { get; set; } = null!;
-
-        public Guid ApprovedBy { get; set; }
-        public User Approver { get; set; } = null!;
-
-        public DateTime ApprovedAt { get; set; }
-
-        public ICollection<AllocationItem> Items { get; set; } = new List<AllocationItem>();
+        public DemandAggregation DemandAggregation { get; set; } = null!;
+        public ICollection<AllocationItem> AllocationItems { get; set; } = new List<AllocationItem>();
     }
+
+
+
 
 }

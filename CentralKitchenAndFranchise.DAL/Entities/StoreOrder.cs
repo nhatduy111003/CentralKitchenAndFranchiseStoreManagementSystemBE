@@ -8,16 +8,12 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class StoreOrder
     {
-        public Guid StoreOrderId { get; set; }
-
-        public Guid FranchiseId { get; set; }
-        public Franchise Franchise { get; set; } = null!;
-
-        public DateOnly OrderDate { get; set; }
-        public string Status { get; set; } = "DRAFT";
+        public int StoreOrderId { get; set; }
+        public int FranchiseId { get; set; }
+        public string Status { get; set; } = null!;
         public DateTime CreatedAt { get; set; }
 
+        public Franchise Franchise { get; set; } = null!;
         public ICollection<StoreOrderItem> Items { get; set; } = new List<StoreOrderItem>();
     }
-
 }

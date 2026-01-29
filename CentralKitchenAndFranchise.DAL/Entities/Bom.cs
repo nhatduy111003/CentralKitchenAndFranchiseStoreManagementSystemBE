@@ -8,15 +8,13 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class Bom
     {
-        public Guid BomId { get; set; }
-
-        public Guid ProductId { get; set; }
-        public Product Product { get; set; } = null!;
-
+        public int BomId { get; set; }
+        public int ProductId { get; set; }
         public int Version { get; set; }
-        public string Status { get; set; } = "DRAFT";
+        public string Status { get; set; } = null!;
         public DateTime CreatedAt { get; set; }
 
+        public Product Product { get; set; } = null!;
         public ICollection<BomItem> Items { get; set; } = new List<BomItem>();
     }
 

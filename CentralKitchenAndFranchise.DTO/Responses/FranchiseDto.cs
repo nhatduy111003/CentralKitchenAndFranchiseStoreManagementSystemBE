@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CentralKitchenAndFranchise.DAL.Entities
+namespace CentralKitchenAndFranchise.DTO.Responses
 {
-    public class Franchise
+    public class FranchiseDto
     {
         public int FranchiseId { get; set; }
         public string Name { get; set; } = null!;
@@ -14,8 +14,6 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         public string Status { get; set; } = null!;
         public string? Address { get; set; }
         public string? Location { get; set; }
-
-        public ICollection<UserFranchise> UserFranchises { get; set; } = new List<UserFranchise>();
     }
 
 }

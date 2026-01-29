@@ -8,13 +8,14 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class DeliveryItem
     {
-        public Guid DeliveryId { get; set; }
-        public Delivery Delivery { get; set; } = null!;
-
-        public Guid ProductId { get; set; }
-        public Product Product { get; set; } = null!;
-
+        public int DeliveryItemId { get; set; }
+        public int DeliveryId { get; set; }
+        public int ProductId { get; set; }
         public decimal Quantity { get; set; }
+
+        public Delivery Delivery { get; set; } = null!;
+        public Product Product { get; set; } = null!;
     }
+
 
 }

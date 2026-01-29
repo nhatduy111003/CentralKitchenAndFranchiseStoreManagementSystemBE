@@ -4,9 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CentralKitchenAndFranchise.DAL.Repositories.Implementations
+namespace CentralKitchenAndFranchise.DTO.Requests
 {
-    internal class UserRepository
+    public class RoleRequestDto
     {
+        public string Name { get; set; } = null!;
     }
 }

@@ -8,16 +8,16 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class AllocationItem
     {
-        public Guid AllocationId { get; set; }
+        public int AllocationItemId { get; set; }
+        public int AllocationId { get; set; }
+        public int FranchiseId { get; set; }
+        public int ProductId { get; set; }
+        public decimal Quantity { get; set; }
+
         public Allocation Allocation { get; set; } = null!;
-
-        public Guid FranchiseId { get; set; }
         public Franchise Franchise { get; set; } = null!;
-
-        public Guid ProductId { get; set; }
         public Product Product { get; set; } = null!;
-
-        public decimal AllocatedQuantity { get; set; }
     }
+
 
 }

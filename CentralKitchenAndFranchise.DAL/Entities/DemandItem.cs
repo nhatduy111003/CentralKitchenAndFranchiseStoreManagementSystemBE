@@ -8,13 +8,15 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class DemandItem
     {
-        public Guid DemandAggregationId { get; set; }
-        public DemandAggregation Aggregation { get; set; } = null!;
+        public int DemandItemId { get; set; }
+        public int DemandAggregationId { get; set; }
+        public int ProductId { get; set; }
+        public decimal Quantity { get; set; }
 
-        public Guid ProductId { get; set; }
+        public DemandAggregation DemandAggregation { get; set; } = null!;
         public Product Product { get; set; } = null!;
-
-        public decimal TotalQuantity { get; set; }
     }
+
+
 
 }

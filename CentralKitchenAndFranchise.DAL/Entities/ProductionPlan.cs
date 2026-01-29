@@ -8,15 +8,14 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class ProductionPlan
     {
-        public Guid ProductionPlanId { get; set; }
-
-        public Guid KitchenFranchiseId { get; set; }
-        public Franchise Kitchen { get; set; } = null!;
-
-        public string Status { get; set; } = "DRAFT";
+        public int ProductionPlanId { get; set; }
+        public DateOnly PlanDate { get; set; }
+        public int FranchiseId { get; set; }
         public DateTime CreatedAt { get; set; }
 
-        public ICollection<ProductionPlanItem> Items { get; set; } = new List<ProductionPlanItem>();
+        public Franchise Franchise { get; set; } = null!;
+        public ICollection<ProductionPlanItem> ProductionPlanItems { get; set; } = new List<ProductionPlanItem>();
     }
+
 
 }

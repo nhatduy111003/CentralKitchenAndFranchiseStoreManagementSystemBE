@@ -1,3 +1,5 @@
+using CentralKitchenAndFranchise.BLL.Services.Implementations;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,8 +12,14 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
+    options.UseNpgsql(
+    builder.Configuration.GetConnectionString("DefaultConnection"))
 );
+builder.Services.AddScoped<IRoleService, RoleService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IFranchiseService, FranchiseService>();
+
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
