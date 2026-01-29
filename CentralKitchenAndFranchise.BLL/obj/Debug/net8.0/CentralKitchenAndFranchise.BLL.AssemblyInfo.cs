@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CentralKitchenAndFranchise.BLL")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c013e826936afc3cc48d06a8498a3a5241b1b205")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+cc9b7848e180c488421c4e1a8cc5ec623a49d5f0")]
 [assembly: System.Reflection.AssemblyProductAttribute("CentralKitchenAndFranchise.BLL")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CentralKitchenAndFranchise.BLL")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

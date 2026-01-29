@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "E+lnrXLF0AQ=",
+  "dgSpecHash": "V+O7ch88PtE=",
   "success": true,
-  "projectFilePath": "C:\\Users\\phamn\\source\\repos\\CentralKitchenAndFranchiseStoreManagementSystem\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj",
+  "projectFilePath": "E:\\Project SWP\\CentralKitchenAndFranchiseStoreManagementSystemBE\\CentralKitchenAndFranchise.DAL\\CentralKitchenAndFranchise.DAL.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\phamn\\.nuget\\packages\\azure.core\\1.25.0\\azure.core.1.25.0.nupkg.sha512",
     "C:\\Users\\phamn\\.nuget\\packages\\azure.identity\\1.7.0\\azure.identity.1.7.0.nupkg.sha512",
