@@ -1,0 +1,12 @@
+[
+  {
+    "ContainingType": "CentralKitchenAndFranchise.API.Controllers.AdminRolesController",
+    "Method": "GetRoles",
+    "RelativePath": "admin/roles",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  }
+]

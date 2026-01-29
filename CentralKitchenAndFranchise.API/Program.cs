@@ -6,6 +6,7 @@ using CentralKitchenAndFranchise.DAL.Repositories.Implementations;
 using CentralKitchenAndFranchise.DAL.Repositories.Interfaces;
 using CentralKitchenAndFranchise.DAL.UnitOfWork;
 using CentralKitchenAndFranchise.DTO.Config;
+using CentralKitchenAndFranchise.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(
+    builder.Configuration.GetConnectionString("DefaultConnection"))
+);
+builder.Services.AddScoped<IRoleService, RoleService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IFranchiseService, FranchiseService>();
+
 
 // config
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
