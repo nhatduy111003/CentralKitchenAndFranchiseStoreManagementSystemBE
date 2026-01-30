@@ -57,7 +57,8 @@ public class AuthService : Interfaces.IAuthService
             new(JwtRegisteredClaimNames.UniqueName, username),
             new(ClaimTypes.Role, role)
         };
-
+        var jti = Guid.NewGuid().ToString();
+        claims.Add(new Claim(JwtRegisteredClaimNames.Jti, jti));
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwt.Key));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 

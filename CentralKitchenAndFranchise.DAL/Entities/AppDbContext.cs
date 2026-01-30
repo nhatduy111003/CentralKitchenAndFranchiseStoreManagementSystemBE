@@ -9,6 +9,11 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             : base(options) { }
 
         // =======================
+        // AUTHENTICATE & AUTHORIZE
+        // =======================
+        public DbSet<RevokedToken> RevokedTokens { get; set; }
+
+        // =======================
         // MASTER
         // =======================
         public DbSet<Role> Roles => Set<Role>();
@@ -313,6 +318,19 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.HasKey(x => x.AuditLogId);
                 e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
             });
+
+            // =======================
+            // AUTHENTICATE & AUTHORIZE
+            // =======================
+
+            modelBuilder.Entity<RevokedToken>(e =>
+            {
+                e.ToTable("revoked_tokens");
+                e.HasKey(x => x.Id);
+                e.Property(x => x.Jti).IsRequired();
+                e.HasIndex(x => x.Jti).IsUnique();
+            });
+
         }
     }
 }
