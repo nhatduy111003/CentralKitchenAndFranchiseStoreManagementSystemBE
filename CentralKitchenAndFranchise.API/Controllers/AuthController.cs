@@ -15,8 +15,13 @@ public class AuthController : ControllerBase
     private readonly IAuthService _auth;
     private readonly IRevokedTokenRepository _revokedTokenRepository;
 
-    public AuthController(IAuthService auth) => _auth = auth;
+    public AuthController(IAuthService auth, IRevokedTokenRepository revokedTokenRepository)
+    {
+        _auth = auth;
+        _revokedTokenRepository = revokedTokenRepository;
+    }
 
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<ActionResult<ApiResponse<LoginResponse>>> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
@@ -26,20 +31,16 @@ public class AuthController : ControllerBase
 
     [Authorize]
     [HttpPost("logout")]
-    public async Task<IActionResult> Logout()
+    public async Task<ActionResult<ApiResponse<object>>> Logout()
     {
         var jti = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
-        if (string.IsNullOrWhiteSpace(jti)) return BadRequest("Missing jti");
+        if (string.IsNullOrWhiteSpace(jti))
+            return BadRequest(ApiResponse<object>.Fail("Missing jti"));
 
-        // optional: lấy exp để lưu ExpiresAt
+        // exp claim có thể không tồn tại như claim => để null vẫn OK
         DateTime? expiresAt = null;
-        var exp = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Exp)?.Value;
-        if (long.TryParse(exp, out var expUnix))
-            expiresAt = DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime;
 
         await _revokedTokenRepository.RevokeAsync(jti, expiresAt);
-        return Ok(new { message = "Logged out" });
+        return Ok(ApiResponse<object>.Ok(new { message = "Logged out" }));
     }
-
 }
-

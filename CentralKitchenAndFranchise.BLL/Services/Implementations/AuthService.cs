@@ -52,13 +52,14 @@ public class AuthService : Interfaces.IAuthService
     private string GenerateJwt(int userId, string username, string role, DateTime expiresUtc)
     {
         var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Sub, userId.ToString()),
-            new(JwtRegisteredClaimNames.UniqueName, username),
-            new(ClaimTypes.Role, role)
-        };
-        var jti = Guid.NewGuid().ToString();
-        claims.Add(new Claim(JwtRegisteredClaimNames.Jti, jti));
+    {
+        new(JwtRegisteredClaimNames.Sub, userId.ToString()),
+        new(ClaimTypes.NameIdentifier, userId.ToString()),
+        new(JwtRegisteredClaimNames.UniqueName, username),
+        new(ClaimTypes.Role, role),
+        new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+    };
+
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwt.Key));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
@@ -71,4 +72,5 @@ public class AuthService : Interfaces.IAuthService
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
 }

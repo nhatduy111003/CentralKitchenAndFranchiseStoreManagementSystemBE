@@ -12,6 +12,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -65,8 +67,10 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {
-        var jwtSection = builder.Configuration.GetSection("JwtOptions");
+        var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName); // ✅ sửa dòng này
         var key = jwtSection["Key"];
+        if (string.IsNullOrWhiteSpace(key))
+            throw new InvalidOperationException("JWT Key is missing. Please configure Jwt:Key.");
 
         opt.TokenValidationParameters = new TokenValidationParameters
         {
@@ -75,6 +79,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
 
+            NameClaimType = JwtRegisteredClaimNames.UniqueName,
+            RoleClaimType = ClaimTypes.Role,
             ValidIssuer = jwtSection["Issuer"],
             ValidAudience = jwtSection["Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key!)),
@@ -83,6 +89,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
         opt.Events = new JwtBearerEvents
         {
+            OnAuthenticationFailed = ctx =>
+            {
+                return Task.CompletedTask;
+            },
             OnTokenValidated = async ctx =>
             {
                 var jti = ctx.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
@@ -99,7 +109,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 }
             }
         };
-
     });
 
 builder.Services.AddAuthorization();

@@ -1,59 +1,81 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
-using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DTO.Constants; // RoleNames
 using CentralKitchenAndFranchise.DTO.Requests;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
-// For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+namespace CentralKitchenAndFranchise.API.Controllers;
 
-namespace CentralKitchenAndFranchise.API.Controllers
+[ApiController]
+[Route("admin/users")]
+[Authorize]
+public class UsersController : ControllerBase
 {
-    [ApiController]
-    [Route("admin/users")]
-    public class UsersController : ControllerBase
+    private readonly IUserService _userService;
+
+    public UsersController(IUserService userService)
     {
-        private readonly IUserService _userService;
+        _userService = userService;
+    }
 
-        public UsersController(IUserService userService)
-        {
-            _userService = userService;
-        }
+    // =========================
+    // Admin-only
+    // =========================
 
-        [HttpGet]
-        public async Task<IActionResult> GetAll()
-        {
-            return Ok(await _userService.GetAllAsync());
-        }
+    [Authorize(Roles = RoleNames.Admin)]
+    [HttpGet]
+    public async Task<IActionResult> GetAll()
+        => Ok(await _userService.GetAllAsync());
 
-        [HttpGet("{id:int}")]
-        public async Task<IActionResult> GetById(int id)
-        {
-            var user = await _userService.GetByIdAsync(id);
-            if (user == null) return NotFound();
-            return Ok(user);
-        }
+    [Authorize(Roles = RoleNames.Admin)]
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateUserRequestDto dto)
+        => Ok(await _userService.CreateAsync(dto));
 
-        [HttpPost]
-        public async Task<IActionResult> Create(CreateUserRequestDto dto)
-        {
-            var user = await _userService.CreateAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = user.UserId }, user);
-        }
+    [Authorize(Roles = RoleNames.Admin)]
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var ok = await _userService.DeleteAsync(id);
+        return ok ? NoContent() : NotFound();
+    }
 
-        [HttpPut("{id:int}")]
-        public async Task<IActionResult> Update(int id, UpdateUserRequestDto dto)
-        {
-            var success = await _userService.UpdateAsync(id, dto);
-            if (!success) return NotFound();
-            return NoContent();
-        }
+    // =========================
+    // Logged-in (any user) — nhưng chỉ được thao tác “chính mình”
+    // =========================
 
-        [HttpDelete("{id:int}")]
-        public async Task<IActionResult> Delete(int id)
-        {
-            var success = await _userService.DeleteAsync(id);
-            if (!success) return NotFound();
-            return NoContent();
-        }
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        if (!IsAdmin() && id != GetCurrentUserId())
+            return Forbid();
+
+        var user = await _userService.GetByIdAsync(id);
+        return user == null ? NotFound() : Ok(user);
+    }
+
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateUserRequestDto dto)
+    {
+        if (!IsAdmin() && id != GetCurrentUserId())
+            return Forbid();
+
+        var ok = await _userService.UpdateAsync(id, dto);
+        return ok ? NoContent() : NotFound();
+    }
+
+    // =========================
+    // helpers
+    // =========================
+
+    private bool IsAdmin() => User.IsInRole(RoleNames.Admin);
+
+    private int GetCurrentUserId()
+    {
+        var idStr = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                  ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
+
+        return int.TryParse(idStr, out var id) ? id : 0;
     }
 }
