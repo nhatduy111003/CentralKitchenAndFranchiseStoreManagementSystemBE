@@ -16,6 +16,19 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+
+// CORS: allow FE on http://localhost:8080
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowLocalhost8080", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:8080")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 // Config
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
@@ -57,6 +70,9 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<ExceptionMiddleware>();
 
 app.UseHttpsRedirection();
+
+// ✅ Enable CORS (must be before MapControllers)
+app.UseCors("AllowLocalhost8080");
 app.MapControllers();
 
 app.Run();
