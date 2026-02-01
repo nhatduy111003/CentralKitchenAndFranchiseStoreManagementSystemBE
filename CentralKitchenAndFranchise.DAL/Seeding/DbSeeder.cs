@@ -15,6 +15,7 @@ public static class DbSeeder
     {
         SeedRoles(db);
         SeedAdmin(db);
+        SeedSystemSettings(db);
     }
 
     private static void SeedRoles(AppDbContext db)
@@ -107,4 +108,23 @@ public static class DbSeeder
             db.SaveChanges();
         }
     }
+
+    private static void SeedSystemSettings(AppDbContext db)
+    {
+        // default X = 7 days (bạn đổi tuỳ nghiệp vụ)
+        var exists = db.SystemSettings.Any(x => x.Key == CentralKitchenAndFranchise.DTO.Constants.SettingKeys.NearExpiryDays);
+        if (exists) return;
+
+        var now = DateTime.UtcNow;
+        db.SystemSettings.Add(new SystemSetting
+        {
+            Key = CentralKitchenAndFranchise.DTO.Constants.SettingKeys.NearExpiryDays,
+            Value = "7",
+            Description = "Near-expiry definition window in days",
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        db.SaveChanges();
+    }
+
 }

@@ -4,6 +4,7 @@ using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.UnitOfWork;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
+using CentralKitchenAndFranchise.DTO.Responses.Common;
 using CentralKitchenAndFranchise.DTO.Responses.Ingredients;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,10 +23,83 @@ public class IngredientService : IIngredientService
         _current = current;
     }
 
-    public async Task<List<IngredientResponse>> GetAllAsync(CancellationToken ct = default)
+    public async Task<PagedResult<IngredientResponse>> SearchAsync(IngredientListQuery query, CancellationToken ct = default)
     {
-        var list = await _uow.Ingredients.GetAllAsync(ct);
-        return list.Select(ToDto).ToList();
+        // Defaults & guards
+        var page = query.Page <= 0 ? 1 : query.Page;
+        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+        if (pageSize > 200) pageSize = 200;
+
+        var status = (query.Status ?? IngredientStatus.Active).Trim().ToUpperInvariant();
+        if (status is not (IngredientStatus.Active or IngredientStatus.Inactive or "ALL"))
+            throw new ArgumentException("status must be ACTIVE, INACTIVE, or ALL.");
+
+        var sortBy = (query.SortBy ?? "name").Trim();
+        var sortDir = (query.SortDir ?? "asc").Trim().ToLowerInvariant();
+        if (sortDir is not ("asc" or "desc"))
+            throw new ArgumentException("sortDir must be asc or desc.");
+
+        IQueryable<Ingredient> q = _db.Ingredients.AsNoTracking();
+
+        // Filter: status (default ACTIVE)
+        if (status != "ALL")
+            q = q.Where(x => x.Status == status);
+
+        // Filter: unit
+        if (!string.IsNullOrWhiteSpace(query.Unit))
+        {
+            var unit = query.Unit.Trim();
+            q = q.Where(x => x.Unit == unit);
+        }
+
+        // Search: name (ILIKE)
+        if (!string.IsNullOrWhiteSpace(query.Q))
+        {
+            var term = query.Q.Trim();
+            q = q.Where(x => EF.Functions.ILike(x.Name, $"%{term}%"));
+        }
+
+        // Total
+        var total = await q.CountAsync(ct);
+
+        // Sort (always stable by IngredientId)
+        q = ApplySort(q, sortBy, sortDir);
+
+        // Paging
+        var items = await q
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return PagedResult<IngredientResponse>.Create(
+            items: items.Select(ToDto).ToList(),
+            page: page,
+            pageSize: pageSize,
+            totalItems: total
+        );
+    }
+
+    private static IQueryable<Ingredient> ApplySort(IQueryable<Ingredient> q, string sortBy, string sortDir)
+    {
+        var desc = sortDir == "desc";
+        return sortBy.ToLowerInvariant() switch
+        {
+            "id" => desc ? q.OrderByDescending(x => x.IngredientId) : q.OrderBy(x => x.IngredientId),
+            "name" => desc ? q.OrderByDescending(x => x.Name).ThenByDescending(x => x.IngredientId)
+                           : q.OrderBy(x => x.Name).ThenBy(x => x.IngredientId),
+            "unit" => desc ? q.OrderByDescending(x => x.Unit).ThenByDescending(x => x.IngredientId)
+                           : q.OrderBy(x => x.Unit).ThenBy(x => x.IngredientId),
+            "createdat" => desc ? q.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.IngredientId)
+                                : q.OrderBy(x => x.CreatedAt).ThenBy(x => x.IngredientId),
+            "updatedat" => desc ? q.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.IngredientId)
+                                : q.OrderBy(x => x.UpdatedAt).ThenBy(x => x.IngredientId),
+            "safetystock" => desc ? q.OrderByDescending(x => x.SafetyStock).ThenByDescending(x => x.IngredientId)
+                                  : q.OrderBy(x => x.SafetyStock).ThenBy(x => x.IngredientId),
+            "wastethreshold" => desc ? q.OrderByDescending(x => x.WasteThreshold).ThenByDescending(x => x.IngredientId)
+                                     : q.OrderBy(x => x.WasteThreshold).ThenBy(x => x.IngredientId),
+            _ => desc ? q.OrderByDescending(x => x.Name).ThenByDescending(x => x.IngredientId)
+                      : q.OrderBy(x => x.Name).ThenBy(x => x.IngredientId)
+        };
     }
 
     public async Task<IngredientResponse> GetByIdAsync(int id, CancellationToken ct = default)

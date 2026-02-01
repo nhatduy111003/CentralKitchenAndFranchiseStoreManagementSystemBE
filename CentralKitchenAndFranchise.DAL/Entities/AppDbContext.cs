@@ -74,6 +74,7 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         public DbSet<SalesRecord> SalesRecords => Set<SalesRecord>();
         public DbSet<SupportRequest> SupportRequests => Set<SupportRequest>();
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+        public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -425,6 +426,23 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.Property(x => x.Jti).IsRequired();
                 e.HasIndex(x => x.Jti).IsUnique();
             });
+
+            // =======================
+            // SYSTEM SETTINGS
+            // =======================
+            modelBuilder.Entity<SystemSetting>(e =>
+            {
+                e.ToTable("system_settings");
+                e.HasKey(x => x.SystemSettingId);
+                e.HasIndex(x => x.Key).IsUnique();
+                e.Property(x => x.Key).HasMaxLength(100).IsRequired();
+                e.Property(x => x.Value).HasMaxLength(200).IsRequired();
+                e.Property(x => x.Description).HasMaxLength(500);
+                e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+                e.Property(x => x.UpdatedAt).HasDefaultValueSql("now()");
+            });
+
         }
+
     }
 }

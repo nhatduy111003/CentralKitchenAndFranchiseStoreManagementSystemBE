@@ -1,6 +1,7 @@
 ﻿using CentralKitchenAndFranchise.API.Middlewares;
 using CentralKitchenAndFranchise.BLL.Services.Implementations;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+using CentralKitchenAndFranchise.BLL.Guards;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.Repositories.Implementations;
 using CentralKitchenAndFranchise.DAL.Repositories.Interfaces;
@@ -17,7 +18,29 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(opt =>
+    {
+        opt.InvalidModelStateResponseFactory = ctx =>
+        {
+            var fieldErrors = ctx.ModelState
+                .Where(x => x.Value?.Errors.Count > 0)
+                .ToDictionary(
+                    k => k.Key,
+                    v => v.Value!.Errors.Select(e =>
+                        string.IsNullOrWhiteSpace(e.ErrorMessage) ? "Invalid value." : e.ErrorMessage
+                    ).ToArray()
+                );
+
+            var resp = CentralKitchenAndFranchise.DTO.Responses.ApiResponse.Fail(
+                message: "Validation failed.",
+                errors: null,
+                errorCode: "VALIDATION_ERROR",
+                fieldErrors: fieldErrors
+            );
+            return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(resp);
+        };
+    });
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddEndpointsApiExplorer();
 
@@ -93,6 +116,39 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             {
                 return Task.CompletedTask;
             },
+            OnChallenge = ctx =>
+            {
+                // handle default 401 response
+                if (!ctx.Response.HasStarted)
+                {
+                    ctx.HandleResponse();
+                    ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    ctx.Response.ContentType = "application/json";
+                    var resp = CentralKitchenAndFranchise.DTO.Responses.ApiResponse.Fail(
+                        "Unauthorized access. Please login first.",
+                        null,
+                        "UNAUTHORIZED"
+                    );
+                    return ctx.Response.WriteAsJsonAsync(resp);
+                }
+                return Task.CompletedTask;
+            },
+            OnForbidden = ctx =>
+            {
+                if (!ctx.Response.HasStarted)
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    ctx.Response.ContentType = "application/json";
+                    var resp = CentralKitchenAndFranchise.DTO.Responses.ApiResponse.Fail(
+                        "Forbidden access. You do not have permission to access this resource.",
+                        null,
+                        "FORBIDDEN"
+                    );
+                    return ctx.Response.WriteAsJsonAsync(resp);
+                }
+                return Task.CompletedTask;
+            },
+
             OnTokenValidated = async ctx =>
             {
                 var jti = ctx.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
@@ -134,6 +190,7 @@ builder.Services.AddScoped<IIngredientService, IngredientService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IFranchiseService, FranchiseService>();
+builder.Services.AddScoped<IIngredientGuard, IngredientGuard>();
 
 var app = builder.Build();
 

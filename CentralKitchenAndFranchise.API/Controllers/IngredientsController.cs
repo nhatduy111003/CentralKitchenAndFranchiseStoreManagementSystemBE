@@ -2,6 +2,7 @@ using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
 using CentralKitchenAndFranchise.DTO.Responses;
+using CentralKitchenAndFranchise.DTO.Responses.Common;
 using CentralKitchenAndFranchise.DTO.Responses.Ingredients;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,8 +19,10 @@ public class IngredientsController : ControllerBase
 
     [Authorize]
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<List<IngredientResponse>>>> GetAll(CancellationToken ct)
-        => Ok(ApiResponse<List<IngredientResponse>>.Ok(await _service.GetAllAsync(ct)));
+    public async Task<ActionResult<ApiResponse<PagedResult<IngredientResponse>>>> GetList(
+    [FromQuery] IngredientListQuery query,
+    CancellationToken ct)
+    => Ok(ApiResponse<PagedResult<IngredientResponse>>.Ok(await _service.SearchAsync(query, ct)));
 
     [Authorize]
     [HttpGet("{id:int}")]
