@@ -1,17 +1,14 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
-using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
-using CentralKitchenAndFranchise.DTO.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-
-// For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
 namespace CentralKitchenAndFranchise.API.Controllers
 {
     [ApiController]
     [Route("admin/roles")]
+    [Authorize(Roles = RoleNames.Admin)]
     public class RolesController : ControllerBase
     {
         private readonly IRoleService _roleService;
@@ -23,9 +20,7 @@ namespace CentralKitchenAndFranchise.API.Controllers
 
         [HttpGet]
         public async Task<IActionResult> GetAll()
-        {
-            return Ok(await _roleService.GetAllAsync());
-        }
+            => Ok(await _roleService.GetAllAsync());
 
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id)
@@ -58,5 +53,4 @@ namespace CentralKitchenAndFranchise.API.Controllers
             return NoContent();
         }
     }
-
 }

@@ -1,35 +1,28 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
-using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
-using Microsoft.EntityFrameworkCore;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
 
 public class FranchiseAccessService : IFranchiseAccessService
 {
-    private readonly AppDbContext _db;
     private readonly ICurrentUserService _current;
 
-    public FranchiseAccessService(AppDbContext db, ICurrentUserService current)
+    public FranchiseAccessService(ICurrentUserService current)
     {
-        _db = db;
         _current = current;
     }
 
-    public async Task EnsureCanAccessAsync(int franchiseId, CancellationToken ct = default)
+    public Task EnsureCanAccessAsync(int franchiseId, CancellationToken ct = default)
     {
+        // Admin: system-wide (support/debug ok)
         if (_current.IsInRole(RoleNames.Admin))
-            return;
+            return Task.CompletedTask;
 
+        //  Manager is global for business
         if (_current.IsInRole(RoleNames.Manager))
-        {
-            var ok = await _db.UserFranchises.AnyAsync(x =>
-                x.UserId == _current.UserId && x.FranchiseId == franchiseId, ct);
+            return Task.CompletedTask;
 
-            if (ok) return;
-            throw new UnauthorizedAccessException("Manager does not have access to this franchise.");
-        }
-
+        // Other roles: default deny here (we can extend later when implementing StoreStaff/Coordinator/CK scope)
         throw new UnauthorizedAccessException("You do not have permission to access this franchise.");
     }
 }

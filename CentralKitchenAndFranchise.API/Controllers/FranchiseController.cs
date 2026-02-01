@@ -1,16 +1,14 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
-using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
-using CentralKitchenAndFranchise.DTO.Responses;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-
-// For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
 namespace CentralKitchenAndFranchise.API.Controllers
 {
     [ApiController]
     [Route("api/admin/franchises")]
+    [Authorize(Roles = RoleNames.Admin)]
     public class FranchiseController : ControllerBase
     {
         private readonly IFranchiseService _service;
@@ -52,6 +50,4 @@ namespace CentralKitchenAndFranchise.API.Controllers
             return success ? NoContent() : NotFound();
         }
     }
-
-
 }
