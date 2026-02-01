@@ -180,6 +180,7 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IIngredientRepository, IngredientRepository>();
 builder.Services.AddScoped<IRevokedTokenRepository, RevokedTokenRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddScoped<ISupplierRepository, SupplierRepository>();
 
 // BLL DI
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -191,6 +192,7 @@ builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IFranchiseService, FranchiseService>();
 builder.Services.AddScoped<IIngredientGuard, IngredientGuard>();
+builder.Services.AddScoped<ISupplierService, SupplierService>();
 
 var app = builder.Build();
 
