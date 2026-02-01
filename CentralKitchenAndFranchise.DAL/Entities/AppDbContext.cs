@@ -34,6 +34,8 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         // =======================
         public DbSet<IngredientBatch> IngredientBatches => Set<IngredientBatch>();
         public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
+        public DbSet<ProductBatch> ProductBatches => Set<ProductBatch>();
+        public DbSet<ProductMovement> ProductMovements => Set<ProductMovement>();
 
         // =======================
         // STORE
@@ -62,6 +64,8 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         // =======================
         public DbSet<DeliveryPlan> DeliveryPlans => Set<DeliveryPlan>();
         public DbSet<Delivery> Deliveries => Set<Delivery>();
+        public DbSet<DeliveryProductItem> DeliveryProductItems => Set<DeliveryProductItem>();
+        public DbSet<DeliveryIngredientItem> DeliveryIngredientItems => Set<DeliveryIngredientItem>();
         public DbSet<ReceivingReport> ReceivingReports => Set<ReceivingReport>();
 
         // =======================
@@ -130,7 +134,12 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.ToTable("ingredients");
                 e.HasKey(x => x.IngredientId);
                 e.HasIndex(x => x.Name).IsUnique();
+
+                e.Property(x => x.SafetyStock).HasDefaultValue(0);
+                e.Property(x => x.WasteThreshold).HasDefaultValue(0);
+
                 e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+                e.Property(x => x.UpdatedAt).HasDefaultValueSql("now()");
             });
 
             // =======================
@@ -151,6 +160,8 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.ToTable("products");
                 e.HasKey(x => x.ProductId);
                 e.HasIndex(x => x.Sku).IsUnique();
+
+                e.Property(x => x.ProductType).HasDefaultValue("FINISHED");
             });
 
             // =======================
@@ -196,7 +207,34 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             {
                 e.ToTable("inventory_movements");
                 e.HasKey(x => x.MovementId);
+
                 e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+                e.HasIndex(x => x.DeliveryId);
+
+                e.HasOne(x => x.Batch)
+                    .WithMany(b => b.InventoryMovements)
+                    .HasForeignKey(x => x.BatchId);
+            });
+
+            modelBuilder.Entity<ProductBatch>(e =>
+            {
+                e.ToTable("product_batches");
+                e.HasKey(x => x.BatchId);
+                e.HasIndex(x => new { x.ProductId, x.BatchCode, x.FranchiseId }).IsUnique();
+                e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+            });
+
+            modelBuilder.Entity<ProductMovement>(e =>
+            {
+                e.ToTable("product_movements");
+                e.HasKey(x => x.MovementId);
+
+                e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+                e.HasIndex(x => x.DeliveryId);
+
+                e.HasOne(x => x.Batch)
+                    .WithMany(b => b.ProductMovements)
+                    .HasForeignKey(x => x.BatchId);
             });
 
             // =======================
@@ -280,13 +318,58 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             {
                 e.ToTable("delivery_plans");
                 e.HasKey(x => x.DeliveryPlanId);
+
+                e.HasOne(x => x.Franchise)
+                    .WithMany(f => f.DeliveryPlans)
+                    .HasForeignKey(x => x.FranchiseId);
             });
 
             modelBuilder.Entity<Delivery>(e =>
             {
                 e.ToTable("deliveries");
                 e.HasKey(x => x.DeliveryId);
+
+                e.Property(x => x.Status).HasDefaultValue("CREATED");
+                e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
                 e.Property(x => x.DeliveredAt).HasDefaultValueSql("now()");
+
+                e.HasOne(x => x.DeliveryPlan)
+                    .WithMany(p => p.Deliveries)
+                    .HasForeignKey(x => x.DeliveryPlanId);
+
+                e.HasOne(x => x.FromFranchise)
+                    .WithMany()
+                    .HasForeignKey(x => x.FromFranchiseId);
+            });
+
+            modelBuilder.Entity<DeliveryProductItem>(e =>
+            {
+                e.ToTable("delivery_product_items");
+                e.HasKey(x => x.DeliveryProductItemId);
+                e.HasIndex(x => new { x.DeliveryId, x.ProductId }).IsUnique();
+
+                e.HasOne(x => x.Delivery)
+                    .WithMany(d => d.ProductItems)
+                    .HasForeignKey(x => x.DeliveryId);
+
+                e.HasOne(x => x.Product)
+                    .WithMany(p => p.DeliveryProductItems)
+                    .HasForeignKey(x => x.ProductId);
+            });
+
+            modelBuilder.Entity<DeliveryIngredientItem>(e =>
+            {
+                e.ToTable("delivery_ingredient_items");
+                e.HasKey(x => x.DeliveryIngredientItemId);
+                e.HasIndex(x => new { x.DeliveryId, x.IngredientId }).IsUnique();
+
+                e.HasOne(x => x.Delivery)
+                    .WithMany(d => d.IngredientItems)
+                    .HasForeignKey(x => x.DeliveryId);
+
+                e.HasOne(x => x.Ingredient)
+                    .WithMany()
+                    .HasForeignKey(x => x.IngredientId);
             });
 
             modelBuilder.Entity<ReceivingReport>(e =>
@@ -294,6 +377,10 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.ToTable("receiving_reports");
                 e.HasKey(x => x.ReceivingReportId);
                 e.Property(x => x.ReceivedAt).HasDefaultValueSql("now()");
+
+                e.HasOne(x => x.Delivery)
+                    .WithMany(d => d.ReceivingReports)
+                    .HasForeignKey(x => x.DeliveryId);
             });
 
             // =======================
@@ -317,12 +404,20 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.ToTable("audit_logs");
                 e.HasKey(x => x.AuditLogId);
                 e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+                e.HasIndex(x => x.Action);
+
+                e.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId);
+
+                e.HasOne(x => x.Franchise)
+                    .WithMany()
+                    .HasForeignKey(x => x.FranchiseId);
             });
 
             // =======================
             // AUTHENTICATE & AUTHORIZE
             // =======================
-
             modelBuilder.Entity<RevokedToken>(e =>
             {
                 e.ToTable("revoked_tokens");
@@ -330,7 +425,6 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.Property(x => x.Jti).IsRequired();
                 e.HasIndex(x => x.Jti).IsUnique();
             });
-
         }
     }
 }

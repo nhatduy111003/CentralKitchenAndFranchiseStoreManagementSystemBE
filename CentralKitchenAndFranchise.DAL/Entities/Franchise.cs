@@ -14,6 +14,8 @@ public class Franchise
     public ICollection<StoreCatalog> StoreCatalogs { get; set; } = new List<StoreCatalog>();
     public ICollection<StoreOrder> StoreOrders { get; set; } = new List<StoreOrder>();
     public ICollection<IngredientBatch> IngredientBatches { get; set; } = new List<IngredientBatch>();
+    public ICollection<ProductBatch> ProductBatches { get; set; } = new List<ProductBatch>();
+
     public ICollection<ProductionPlan> ProductionPlans { get; set; } = new List<ProductionPlan>();
 
     public ICollection<DeliveryPlan> DeliveryPlans { get; set; } = new List<DeliveryPlan>();
@@ -21,5 +23,5 @@ public class Franchise
 
     public ICollection<AllocationItem> AllocationItems { get; set; } = new List<AllocationItem>();
 
-    // IMPORTANT: Không có Deliveries trực tiếp vì bảng deliveries full DB KHÔNG có FranchiseId.
+    // NOTE: không cần navigation Deliveries trực tiếp (Delivery có FromFranchiseId + DeliveryPlanId)
 }
