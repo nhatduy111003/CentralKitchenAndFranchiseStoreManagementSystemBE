@@ -9,5 +9,9 @@ public interface IIngredientService
     Task<IngredientResponse> GetByIdAsync(int id, CancellationToken ct = default);
     Task<IngredientResponse> CreateAsync(CreateIngredientRequest request, CancellationToken ct = default);
     Task<IngredientResponse> UpdateAsync(int id, UpdateIngredientRequest request, CancellationToken ct = default);
+
+    Task<IngredientResponse> ChangeStatusAsync(int id, ChangeIngredientStatusRequest request, CancellationToken ct = default);
+
+    // Delete endpoint = deactivate
     Task DeleteAsync(int id, CancellationToken ct = default);
 }

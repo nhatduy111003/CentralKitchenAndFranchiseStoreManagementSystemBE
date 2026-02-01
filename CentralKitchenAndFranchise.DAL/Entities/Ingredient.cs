@@ -7,8 +7,11 @@ public class Ingredient
     public string Unit { get; set; } = default!;
     public string Status { get; set; } = "ACTIVE";
 
-    // migration full dùng DateTime (timestamptz)
+    public decimal SafetyStock { get; set; } = 0;
+    public decimal WasteThreshold { get; set; } = 0;
+
     public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 
     public ICollection<BomItem> BomItems { get; set; } = new List<BomItem>();
     public ICollection<IngredientBatch> IngredientBatches { get; set; } = new List<IngredientBatch>();

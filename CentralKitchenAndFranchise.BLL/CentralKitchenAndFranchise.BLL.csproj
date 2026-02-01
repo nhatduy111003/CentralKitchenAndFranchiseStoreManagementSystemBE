@@ -21,5 +21,8 @@
   <ItemGroup>
     <ProjectReference Include="..\CentralKitchenAndFranchise.DAL\CentralKitchenAndFranchise.DAL.csproj" />
   </ItemGroup>
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
 
 </Project>

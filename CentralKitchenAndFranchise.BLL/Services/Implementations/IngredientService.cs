@@ -1,16 +1,26 @@
+﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.UnitOfWork;
+using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
 using CentralKitchenAndFranchise.DTO.Responses.Ingredients;
 using Microsoft.EntityFrameworkCore;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
 
-public class IngredientService : Interfaces.IIngredientService
+public class IngredientService : IIngredientService
 {
     private readonly IUnitOfWork _uow;
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _current;
 
-    public IngredientService(IUnitOfWork uow) => _uow = uow;
+    public IngredientService(IUnitOfWork uow, AppDbContext db, ICurrentUserService current)
+    {
+        _uow = uow;
+        _db = db;
+        _current = current;
+    }
 
     public async Task<List<IngredientResponse>> GetAllAsync(CancellationToken ct = default)
     {
@@ -27,18 +37,26 @@ public class IngredientService : Interfaces.IIngredientService
 
     public async Task<IngredientResponse> CreateAsync(CreateIngredientRequest request, CancellationToken ct = default)
     {
+        RequireAdminOrManager();
+
         if (string.IsNullOrWhiteSpace(request.Name)) throw new ArgumentException("Name is required.");
         if (string.IsNullOrWhiteSpace(request.Unit)) throw new ArgumentException("Unit is required.");
+
+        var now = DateTime.UtcNow;
 
         var entity = new Ingredient
         {
             Name = request.Name.Trim(),
             Unit = request.Unit.Trim(),
-            Status = "ACTIVE",
-            CreatedAt = DateTime.UtcNow
+            Status = IngredientStatus.Active,
+            SafetyStock = request.SafetyStock,
+            WasteThreshold = request.WasteThreshold,
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
         await _uow.Ingredients.AddAsync(entity, ct);
+
         try
         {
             await _uow.SaveChangesAsync(ct);
@@ -48,17 +66,32 @@ public class IngredientService : Interfaces.IIngredientService
             throw new InvalidOperationException("Ingredient name already exists.");
         }
 
+        await AddAuditAsync(
+            action: "INGREDIENT_CREATE",
+            entityName: "Ingredient",
+            entityId: entity.IngredientId,
+            oldObj: null,
+            newObj: entity,
+            reason: null,
+            ct: ct);
+
         return ToDto(entity);
     }
 
     public async Task<IngredientResponse> UpdateAsync(int id, UpdateIngredientRequest request, CancellationToken ct = default)
     {
+        RequireAdminOrManager();
+
         var entity = await _uow.Ingredients.GetByIdAsync(id, ct);
         if (entity is null) throw new KeyNotFoundException($"Ingredient {id} not found.");
 
+        var old = new { entity.Name, entity.Unit, entity.Status, entity.SafetyStock, entity.WasteThreshold };
+
         entity.Name = request.Name.Trim();
         entity.Unit = request.Unit.Trim();
-        entity.Status = string.IsNullOrWhiteSpace(request.Status) ? entity.Status : request.Status.Trim();
+        entity.SafetyStock = request.SafetyStock;
+        entity.WasteThreshold = request.WasteThreshold;
+        entity.UpdatedAt = DateTime.UtcNow;
 
         _uow.Ingredients.Update(entity);
 
@@ -71,16 +104,82 @@ public class IngredientService : Interfaces.IIngredientService
             throw new InvalidOperationException("Ingredient name already exists.");
         }
 
+        await AddAuditAsync(
+            action: "INGREDIENT_UPDATE",
+            entityName: "Ingredient",
+            entityId: entity.IngredientId,
+            oldObj: old,
+            newObj: entity,
+            reason: null,
+            ct: ct);
+
         return ToDto(entity);
     }
 
+    public async Task<IngredientResponse> ChangeStatusAsync(int id, ChangeIngredientStatusRequest request, CancellationToken ct = default)
+    {
+        RequireAdminOrManager();
+
+        var entity = await _uow.Ingredients.GetByIdAsync(id, ct);
+        if (entity is null) throw new KeyNotFoundException($"Ingredient {id} not found.");
+
+        var newStatus = request.Status?.Trim().ToUpperInvariant();
+        if (newStatus is not (IngredientStatus.Active or IngredientStatus.Inactive))
+            throw new ArgumentException("Status must be ACTIVE or INACTIVE.");
+
+        var old = new { entity.Status };
+
+        entity.Status = newStatus;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        _uow.Ingredients.Update(entity);
+        await _uow.SaveChangesAsync(ct);
+
+        await AddAuditAsync(
+            action: "INGREDIENT_STATUS_CHANGE",
+            entityName: "Ingredient",
+            entityId: entity.IngredientId,
+            oldObj: old,
+            newObj: new { entity.Status },
+            reason: request.Reason,
+            ct: ct);
+
+        return ToDto(entity);
+    }
+
+    // DELETE = deactivate (giữ log)
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {
-        var entity = await _uow.Ingredients.GetByIdAsync(id, ct);
-        if (entity is null) return;
+        await ChangeStatusAsync(id, new ChangeIngredientStatusRequest
+        {
+            Status = IngredientStatus.Inactive,
+            Reason = "Deactivated via DELETE endpoint"
+        }, ct);
+    }
 
-        _uow.Ingredients.Remove(entity);
-        await _uow.SaveChangesAsync(ct);
+    private void RequireAdminOrManager()
+    {
+        var role = _current.Role;
+        if (role != RoleNames.Admin && role != RoleNames.Manager)
+            throw new UnauthorizedAccessException("Only Admin/Manager can perform this action.");
+    }
+
+    private async Task AddAuditAsync(string action, string entityName, int entityId, object? oldObj, object? newObj, string? reason, CancellationToken ct)
+    {
+        var log = new AuditLog
+        {
+            UserId = _current.UserId,
+            Action = action,
+            EntityName = entityName,
+            EntityId = entityId,
+            OldDataJson = oldObj is null ? null : JsonSerializer.Serialize(oldObj),
+            NewDataJson = newObj is null ? null : JsonSerializer.Serialize(newObj),
+            Reason = reason,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _db.AuditLogs.Add(log);
+        await _db.SaveChangesAsync(ct);
     }
 
     private static IngredientResponse ToDto(Ingredient x) => new()
@@ -89,8 +188,9 @@ public class IngredientService : Interfaces.IIngredientService
         Name = x.Name,
         Unit = x.Unit,
         Status = x.Status,
-
-        // entity DateTime -> DTO DateTimeOffset
-        CreatedAt = new DateTimeOffset(x.CreatedAt, TimeSpan.Zero)
+        SafetyStock = x.SafetyStock,
+        WasteThreshold = x.WasteThreshold,
+        CreatedAt = new DateTimeOffset(DateTime.SpecifyKind(x.CreatedAt, DateTimeKind.Utc)),
+        UpdatedAt = new DateTimeOffset(DateTime.SpecifyKind(x.UpdatedAt, DateTimeKind.Utc))
     };
 }

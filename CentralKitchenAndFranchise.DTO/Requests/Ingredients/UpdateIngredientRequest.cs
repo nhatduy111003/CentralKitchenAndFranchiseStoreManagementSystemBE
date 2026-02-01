@@ -4,5 +4,7 @@ public class UpdateIngredientRequest
 {
     public string Name { get; set; } = default!;
     public string Unit { get; set; } = default!;
-    public string Status { get; set; } = "ACTIVE";
+
+    public decimal SafetyStock { get; set; } = 0;
+    public decimal WasteThreshold { get; set; } = 0;
 }
