@@ -245,6 +245,19 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             {
                 e.ToTable("store_catalog");
                 e.HasKey(x => new { x.FranchiseId, x.ProductId });
+
+                e.Property(x => x.Price).HasDefaultValue(0);
+                e.Property(x => x.Status).HasDefaultValue("ACTIVE");
+                e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+                e.Property(x => x.UpdatedAt).HasDefaultValueSql("now()");
+
+                e.HasOne(x => x.Franchise)
+                    .WithMany(f => f.StoreCatalogs)
+                    .HasForeignKey(x => x.FranchiseId);
+
+                e.HasOne(x => x.Product)
+                    .WithMany(p => p.StoreCatalogs)
+                    .HasForeignKey(x => x.ProductId);
             });
 
             modelBuilder.Entity<StoreOrder>(e =>
