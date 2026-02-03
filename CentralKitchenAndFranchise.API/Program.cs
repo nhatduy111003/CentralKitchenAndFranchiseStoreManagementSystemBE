@@ -193,8 +193,12 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IFranchiseService, FranchiseService>();
 builder.Services.AddScoped<IIngredientGuard, IngredientGuard>();
 builder.Services.AddScoped<ISupplierService, SupplierService>();
-builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<IProductService,
+    ProductService>();
 builder.Services.AddScoped<IStoreCatalogService, StoreCatalogService>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<IRolePermissionService, RolePermissionService>();
+builder.Services.AddScoped<IUserFranchiseService, UserFranchiseService>();
 
 var app = builder.Build();
 
