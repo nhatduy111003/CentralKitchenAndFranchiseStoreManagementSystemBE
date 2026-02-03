@@ -55,6 +55,13 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
+    options.AddPolicy("AllowFeOrigin", policy =>
+    {
+        policy
+            .WithOrigins("https://franchise-swp391.vercel.app")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    })
 });
 
 builder.Services.AddSwaggerGen(c =>
