@@ -12,11 +12,11 @@ namespace CentralKitchenAndFranchise.DAL
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
             optionsBuilder.UseNpgsql(
-                "Host=dpg-d5sbm9c9c44c73ertha0-a.singapore-postgres.render.com;" +
+                "Host=dpg-d5u9cssr85hc73a1ictg-a.singapore-postgres.render.com;" +
                 "Port=5432;" +
-                "Database=centralkitchenandfranchise;" +
+                "Database=centralkitchenandfranchise_4tn4;" +
                 "Username=centralkitchenandfranchise_user;" +
-                "Password=PNg4bALugnoxJiJWm7WA0jqc5RYqgA2C;" +
+                "Password=dk7WbsEhymEjLFfGs39yzLViRiZwhy2r;" +
                 "SSL Mode=Require;" +
                 "Trust Server Certificate=true"
             );
