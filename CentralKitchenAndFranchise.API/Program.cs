@@ -199,6 +199,8 @@ builder.Services.AddScoped<IStoreCatalogService, StoreCatalogService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IRolePermissionService, RolePermissionService>();
 builder.Services.AddScoped<IUserFranchiseService, UserFranchiseService>();
+builder.Services.AddScoped<IDemandService, DemandService>();
+builder.Services.AddScoped<IAllocationService, AllocationService>();
 
 var app = builder.Build();
 
