@@ -1,5 +1,6 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DTO.Requests;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -59,6 +60,22 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             return await _context.UserFranchises
                 .Where(x => x.UserId == userId)
                 .Select(x => x.FranchiseId)
+                .ToListAsync();
+        }
+        public async Task<List<UserInFranchiseDto>> GetUsersByFranchiseAsync(int franchiseId)
+        {
+            return await _context.UserFranchises
+                .Where(x => x.FranchiseId == franchiseId)
+                .Include(x => x.User)
+                    .ThenInclude(u => u.Role)
+                .Select(x => new UserInFranchiseDto
+                {
+                    UserId = x.UserId,
+                    Username = x.User.Username,
+                    Email = x.User.Email,
+                    RoleName = x.User.Role.Name,
+                    AssignedAt = x.AssignedAt
+                })
                 .ToListAsync();
         }
     }
