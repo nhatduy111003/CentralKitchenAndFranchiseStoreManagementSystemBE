@@ -24,6 +24,13 @@ namespace CentralKitchenAndFranchise.API.Controllers
             return Ok("Assigned");
         }
 
+        [HttpGet("{franchiseId}/users")]
+        public async Task<IActionResult> GetUsers(int franchiseId)
+        {
+            var users = await _service.GetUsersByFranchiseAsync(franchiseId);
+            return Ok(users);
+        }
+
         [HttpDelete]
         public async Task<IActionResult> Remove(int userId, int franchiseId)
         {

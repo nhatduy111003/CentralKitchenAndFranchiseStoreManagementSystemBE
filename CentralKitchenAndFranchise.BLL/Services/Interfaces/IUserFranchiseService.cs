@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CentralKitchenAndFranchise.DTO.Requests;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,6 +12,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
         Task AssignAsync(int userId, int franchiseId);
         Task RemoveAsync(int userId, int franchiseId);
         Task<List<int>> GetByUserAsync(int userId);
+        Task<List<UserInFranchiseDto>> GetUsersByFranchiseAsync(int franchiseId);
     }
 
 }
