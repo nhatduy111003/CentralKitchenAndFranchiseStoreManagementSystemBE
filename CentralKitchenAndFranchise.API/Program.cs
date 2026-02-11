@@ -55,6 +55,13 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
+    options.AddPolicy("AllowFeOrigin", policy =>
+    {
+        policy
+            .WithOrigins("https://franchise-swp391.vercel.app")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
 });
 
 builder.Services.AddSwaggerGen(c =>
@@ -193,8 +200,14 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IFranchiseService, FranchiseService>();
 builder.Services.AddScoped<IIngredientGuard, IngredientGuard>();
 builder.Services.AddScoped<ISupplierService, SupplierService>();
-builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<IProductService,
+    ProductService>();
 builder.Services.AddScoped<IStoreCatalogService, StoreCatalogService>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<IRolePermissionService, RolePermissionService>();
+builder.Services.AddScoped<IUserFranchiseService, UserFranchiseService>();
+builder.Services.AddScoped<IDemandService, DemandService>();
+builder.Services.AddScoped<IAllocationService, AllocationService>();
 
 var app = builder.Build();
 

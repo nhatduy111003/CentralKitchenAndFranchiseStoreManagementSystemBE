@@ -17,6 +17,9 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         // MASTER
         // =======================
         public DbSet<Role> Roles => Set<Role>();
+        public DbSet<Permission> Permissions => Set<Permission>();
+        public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+
         public DbSet<User> Users => Set<User>();
         public DbSet<Franchise> Franchises => Set<Franchise>();
         public DbSet<UserFranchise> UserFranchises => Set<UserFranchise>();
@@ -458,6 +461,37 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
                 e.Property(x => x.UpdatedAt).HasDefaultValueSql("now()");
             });
+            modelBuilder.Entity<Permission>(e =>
+            {
+                e.ToTable("permissions");
+
+                e.HasKey(x => x.PermissionId);
+
+                e.Property(x => x.Code)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                e.HasIndex(x => x.Code).IsUnique();
+
+                e.Property(x => x.Name).IsRequired();
+                e.Property(x => x.GroupName).IsRequired();
+                e.Property(x => x.Description).IsRequired();
+            });
+            modelBuilder.Entity<RolePermission>(e =>
+            {
+                e.ToTable("role_permissions");
+
+                e.HasKey(x => new { x.RoleId, x.PermissionId });
+
+                e.HasOne(x => x.Role)
+                    .WithMany(r => r.RolePermissions)
+                    .HasForeignKey(x => x.RoleId);
+
+                e.HasOne(x => x.Permission)
+                    .WithMany(p => p.RolePermissions)
+                    .HasForeignKey(x => x.PermissionId);
+            });
+
 
         }
 
