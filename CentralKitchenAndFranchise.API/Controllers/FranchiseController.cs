@@ -1,6 +1,7 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
+using CentralKitchenAndFranchise.DTO.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,7 +9,6 @@ namespace CentralKitchenAndFranchise.API.Controllers
 {
     [ApiController]
     [Route("api/admin/franchises")]
-    [Authorize(Roles = RoleNames.Admin)]
     public class FranchiseController : ControllerBase
     {
         private readonly IFranchiseService _service;
@@ -18,17 +18,25 @@ namespace CentralKitchenAndFranchise.API.Controllers
             _service = service;
         }
 
+        // Manager được phép xem list
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
         [HttpGet]
-        public async Task<IActionResult> GetAll()
-            => Ok(await _service.GetAllAsync());
+        public async Task<ActionResult<ApiResponse<List<FranchiseDto>>>> GetAll()
+            => Ok(ApiResponse<List<FranchiseDto>>.Ok(await _service.GetAllAsync()));
 
+        // Manager được phép xem detail (service sẽ auto filter theo scope)
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
         [HttpGet("{id:int}")]
-        public async Task<IActionResult> GetById(int id)
+        public async Task<ActionResult<ApiResponse<FranchiseDto>>> GetById(int id)
         {
             var result = await _service.GetByIdAsync(id);
-            return result == null ? NotFound() : Ok(result);
+            return result is null
+                ? NotFound(ApiResponse.Fail($"Franchise {id} not found.", errorCode: "NOT_FOUND"))
+                : Ok(ApiResponse<FranchiseDto>.Ok(result));
         }
 
+        // ❗ Admin-only
+        [Authorize(Roles = RoleNames.Admin)]
         [HttpPost]
         public async Task<IActionResult> Create(FranchiseCreateDto dto)
         {
@@ -36,18 +44,22 @@ namespace CentralKitchenAndFranchise.API.Controllers
             return CreatedAtAction(nameof(GetById), new { id }, null);
         }
 
+        // ❗ Admin-only
+        [Authorize(Roles = RoleNames.Admin)]
         [HttpPut("{id:int}")]
         public async Task<IActionResult> Update(int id, FranchiseCreateDto dto)
         {
             var success = await _service.UpdateAsync(id, dto);
-            return success ? NoContent() : NotFound();
+            return success ? NoContent() : NotFound(ApiResponse.Fail($"Franchise {id} not found.", errorCode: "NOT_FOUND"));
         }
 
+        // ❗ Admin-only (hiện đang hard delete — sẽ chỉnh soft delete ở Task 18 nếu bạn muốn)
+        [Authorize(Roles = RoleNames.Admin)]
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> Delete(int id)
         {
             var success = await _service.DeleteAsync(id);
-            return success ? NoContent() : NotFound();
+            return success ? NoContent() : NotFound(ApiResponse.Fail($"Franchise {id} not found.", errorCode: "NOT_FOUND"));
         }
     }
 }

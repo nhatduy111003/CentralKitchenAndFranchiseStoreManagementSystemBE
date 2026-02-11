@@ -9,6 +9,6 @@ public class IngredientListQuery
     public int Page { get; set; } = 1;          // 1-based
     public int PageSize { get; set; } = 20;     // max 200
 
-    public string? SortBy { get; set; } = "name";   // name, unit, createdAt, updatedAt, safetyStock, wasteThreshold, id
+    public string? SortBy { get; set; } = "name";   // name, unit, price, createdAt, updatedAt, safetyStock, wasteThreshold, id
     public string? SortDir { get; set; } = "asc";   // asc/desc
 }

@@ -1,28 +1,30 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Responses;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 {
     public class FranchiseService : IFranchiseService
     {
         private readonly AppDbContext _context;
+        private readonly ICurrentUserService _current;
 
-        public FranchiseService(AppDbContext context)
+        public FranchiseService(AppDbContext context, ICurrentUserService current)
         {
             _context = context;
+            _current = current;
         }
 
         public async Task<List<FranchiseDto>> GetAllAsync()
         {
+            // Manager thấy tất cả franchises
+            RequireAdminOrManager();
+
             return await _context.Franchises
+                .AsNoTracking()
                 .Select(f => new FranchiseDto
                 {
                     FranchiseId = f.FranchiseId,
@@ -37,8 +39,14 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
         public async Task<FranchiseDto?> GetByIdAsync(int id)
         {
-            var f = await _context.Franchises.FindAsync(id);
-            if (f == null) return null;
+            //  Manager thấy tất cả franchises
+            RequireAdminOrManager();
+
+            var f = await _context.Franchises
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.FranchiseId == id);
+
+            if (f is null) return null;
 
             return new FranchiseDto
             {
@@ -53,6 +61,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
         public async Task<int> CreateAsync(FranchiseCreateDto dto)
         {
+            RequireAdminOnly();
+
             var franchise = new Franchise
             {
                 Name = dto.Name,
@@ -70,8 +80,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
         public async Task<bool> UpdateAsync(int id, FranchiseCreateDto dto)
         {
+            RequireAdminOnly();
+
             var franchise = await _context.Franchises.FindAsync(id);
-            if (franchise == null) return false;
+            if (franchise is null) return false;
 
             franchise.Name = dto.Name;
             franchise.Type = dto.Type;
@@ -85,12 +97,28 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
         public async Task<bool> DeleteAsync(int id)
         {
+            RequireAdminOnly();
+
             var franchise = await _context.Franchises.FindAsync(id);
-            if (franchise == null) return false;
+            if (franchise is null) return false;
 
             _context.Franchises.Remove(franchise);
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        private void RequireAdminOrManager()
+        {
+            var role = _current.Role;
+            if (role != RoleNames.Admin && role != RoleNames.Manager)
+                throw new UnauthorizedAccessException("Only Admin/Manager can access franchises.");
+        }
+
+        private void RequireAdminOnly()
+        {
+            var role = _current.Role;
+            if (role != RoleNames.Admin)
+                throw new UnauthorizedAccessException("Only Admin can perform this action.");
         }
     }
 }

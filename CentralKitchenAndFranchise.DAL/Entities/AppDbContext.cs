@@ -136,6 +136,10 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.HasKey(x => x.IngredientId);
                 e.HasIndex(x => x.Name).IsUnique();
 
+                e.Property(x => x.Price)
+                    .HasPrecision(18, 2)
+                    .HasDefaultValue(0);
+
                 e.Property(x => x.SafetyStock).HasDefaultValue(0);
                 e.Property(x => x.WasteThreshold).HasDefaultValue(0);
 
