@@ -1,28 +1,55 @@
-﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+﻿// CentralKitchenAndFranchise.BLL/Services/Implementations/FranchiseAccessService.cs
+using CentralKitchenAndFranchise.BLL.Exceptions;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
+using Microsoft.EntityFrameworkCore;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
 
+/// <summary>
+/// Franchise scope enforcement.
+///
+/// Rules:
+/// - Admin: system-wide access.
+/// - Manager: access only to franchises assigned via user_franchises.
+/// - Others: deny for now (extend later when implementing StoreStaff/Coordinator/CK scope).
+///
+/// NOTE: List franchises endpoint is an explicit exception (Manager can see all) and MUST NOT call this service.
+/// </summary>
 public class FranchiseAccessService : IFranchiseAccessService
 {
+    private readonly AppDbContext _db;
     private readonly ICurrentUserService _current;
 
-    public FranchiseAccessService(ICurrentUserService current)
+    public FranchiseAccessService(AppDbContext db, ICurrentUserService current)
     {
+        _db = db;
         _current = current;
     }
 
-    public Task EnsureCanAccessAsync(int franchiseId, CancellationToken ct = default)
+    public async Task EnsureCanAccessAsync(int franchiseId, CancellationToken ct = default)
     {
-        // Admin: system-wide (support/debug ok)
+        if (franchiseId <= 0)
+            throw new ArgumentException("franchiseId must be a positive integer.");
+
+        // Admin: system-wide
         if (_current.IsInRole(RoleNames.Admin))
-            return Task.CompletedTask;
+            return;
 
-        //  Manager is global for business
+        // Manager: scoped by user_franchises
         if (_current.IsInRole(RoleNames.Manager))
-            return Task.CompletedTask;
+        {
+            var ok = await _db.UserFranchises
+                .AsNoTracking()
+                .AnyAsync(x => x.UserId == _current.UserId && x.FranchiseId == franchiseId, ct);
 
-        // Other roles: default deny here (we can extend later when implementing StoreStaff/Coordinator/CK scope)
-        throw new UnauthorizedAccessException("You do not have permission to access this franchise.");
+            if (!ok)
+                throw new ForbiddenAccessException("You do not have access to this franchise.");
+
+            return;
+        }
+
+        throw new ForbiddenAccessException("You do not have permission to access this franchise.");
     }
 }

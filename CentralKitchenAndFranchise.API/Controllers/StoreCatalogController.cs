@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CentralKitchenAndFranchise.API.Controllers;
 
 [ApiController]
-[Route("api/store-catalog")]
+[Route("api/franchises/{franchiseId:int}/catalog")]
 public class StoreCatalogController : ControllerBase
 {
     private readonly IStoreCatalogService _service;
@@ -21,79 +21,86 @@ public class StoreCatalogController : ControllerBase
         _service = service;
     }
 
-    /// <summary>
-    /// List/search store catalog mappings for a specific franchise
-    /// </summary>
     [HttpGet]
     [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
-    public async Task<ActionResult<ApiResponse<PagedResult<StoreCatalogResponse>>>> Search(
-        [FromQuery] StoreCatalogListQuery query,
+    public async Task<ActionResult<ApiResponse<PagedResult<StoreCatalogResponse>>>> GetCatalog(
+        int franchiseId,
+        [FromQuery] FranchiseCatalogListQuery query,
         CancellationToken ct)
     {
-        var data = await _service.SearchAsync(query, ct);
+        var svcQuery = new StoreCatalogListQuery
+        {
+            FranchiseId = franchiseId,
+            Status = query.Status,
+            Q = query.Q,
+            ProductType = query.ProductType,
+            MinPrice = query.MinPrice,
+            MaxPrice = query.MaxPrice,
+            Page = query.Page,
+            PageSize = query.PageSize,
+            SortBy = query.SortBy,
+            SortDir = query.SortDir
+        };
+
+        var data = await _service.SearchAsync(svcQuery, ct);
         return Ok(ApiResponse<PagedResult<StoreCatalogResponse>>.Ok(data));
     }
 
-    /// <summary>
-    /// Get a mapping by composite key (franchiseId, productId)
-    /// </summary>
-    [HttpGet("{franchiseId:int}/{productId:int}")]
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
-    public async Task<ActionResult<ApiResponse<StoreCatalogResponse>>> GetByKey(int franchiseId, int productId, CancellationToken ct)
-    {
-        var data = await _service.GetByKeyAsync(franchiseId, productId, ct);
-        return Ok(ApiResponse<StoreCatalogResponse>.Ok(data));
-    }
-
-    /// <summary>
-    /// Assign (or reactivate) a product into a franchise store catalog
-    /// </summary>
     [HttpPost]
     [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     public async Task<ActionResult<ApiResponse<StoreCatalogResponse>>> Assign(
-        [FromBody] UpsertStoreCatalogRequest request,
+        int franchiseId,
+        [FromBody] AssignCatalogProductRequest request,
         CancellationToken ct)
     {
-        var data = await _service.AssignAsync(request, ct);
+        var svcReq = new UpsertStoreCatalogRequest
+        {
+            FranchiseId = franchiseId,
+            ProductId = request.ProductId,
+            Price = request.Price
+        };
+
+        var data = await _service.AssignAsync(svcReq, ct);
         return Ok(ApiResponse<StoreCatalogResponse>.Ok(data));
     }
 
-    /// <summary>
-    /// Update mapping (price)
-    /// </summary>
-    [HttpPut("{franchiseId:int}/{productId:int}")]
+    [HttpPut("{productId:int}/price")]
     [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
-    public async Task<ActionResult<ApiResponse<StoreCatalogResponse>>> Update(
+    public async Task<ActionResult<ApiResponse<StoreCatalogResponse>>> UpdatePrice(
         int franchiseId,
         int productId,
-        [FromBody] UpdateStoreCatalogRequest request,
+        [FromBody] UpdateCatalogPriceRequest request,
         CancellationToken ct)
     {
-        var data = await _service.UpdateAsync(franchiseId, productId, request, ct);
+        var svcReq = new UpdateStoreCatalogRequest { Price = request.Price };
+        var data = await _service.UpdateAsync(franchiseId, productId, svcReq, ct);
         return Ok(ApiResponse<StoreCatalogResponse>.Ok(data));
     }
 
-    /// <summary>
-    /// Change mapping status (ACTIVE/INACTIVE)
-    /// </summary>
-    [HttpPatch("{franchiseId:int}/{productId:int}/status")]
+    [HttpPatch("{productId:int}/status")]
     [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     public async Task<ActionResult<ApiResponse<StoreCatalogResponse>>> ChangeStatus(
         int franchiseId,
         int productId,
-        [FromBody] ChangeStoreCatalogStatusRequest request,
+        [FromBody] UpdateCatalogStatusRequest request,
         CancellationToken ct)
     {
-        var data = await _service.ChangeStatusAsync(franchiseId, productId, request, ct);
+        var svcReq = new ChangeStoreCatalogStatusRequest
+        {
+            Status = request.Status,
+            Reason = request.Reason
+        };
+
+        var data = await _service.ChangeStatusAsync(franchiseId, productId, svcReq, ct);
         return Ok(ApiResponse<StoreCatalogResponse>.Ok(data));
     }
 
-    /// <summary>
-    /// Soft delete = set status to INACTIVE
-    /// </summary>
-    [HttpDelete("{franchiseId:int}/{productId:int}")]
+    [HttpDelete("{productId:int}")]
     [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
-    public async Task<ActionResult<ApiResponse>> Delete(int franchiseId, int productId, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse>> Delete(
+        int franchiseId,
+        int productId,
+        CancellationToken ct)
     {
         await _service.DeleteAsync(franchiseId, productId, ct);
         return Ok(ApiResponse.Ok("Store catalog mapping deactivated."));

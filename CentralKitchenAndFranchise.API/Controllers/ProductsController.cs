@@ -20,9 +20,6 @@ public class ProductsController : ControllerBase
         _service = service;
     }
 
-    /// <summary>
-    /// List/search global products (for Store Catalog mapping UI)
-    /// </summary>
     [HttpGet]
     [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     public async Task<ActionResult<ApiResponse<PagedResult<ProductResponse>>>> Search(
@@ -33,9 +30,6 @@ public class ProductsController : ControllerBase
         return Ok(ApiResponse<PagedResult<ProductResponse>>.Ok(data));
     }
 
-    /// <summary>
-    /// Get product by id
-    /// </summary>
     [HttpGet("{id:int}")]
     [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     public async Task<ActionResult<ApiResponse<ProductResponse>>> GetById(int id, CancellationToken ct)

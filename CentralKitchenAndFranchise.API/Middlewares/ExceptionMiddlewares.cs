@@ -1,8 +1,17 @@
+// CentralKitchenAndFranchise.API/Middlewares/ExceptionMiddlewares.cs
 using System.Net;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.DTO.Responses;
 
 namespace CentralKitchenAndFranchise.API.Middlewares;
 
+/// <summary>
+/// Centralized exception -> ApiResponse mapping.
+/// NOTE:
+/// - 401 is reserved for unauthenticated / invalid token (UNAUTHORIZED)
+/// - 403 is reserved for authenticated but not allowed (FORBIDDEN)
+/// - 400 validation errors should use (VALIDATION_ERROR)
+/// </summary>
 public class ExceptionMiddleware
 {
     private readonly RequestDelegate _next;
@@ -15,6 +24,10 @@ public class ExceptionMiddleware
         {
             await _next(context);
         }
+        catch (ForbiddenAccessException ex)
+        {
+            await Write(context, HttpStatusCode.Forbidden, ex.Message, "FORBIDDEN");
+        }
         catch (UnauthorizedAccessException ex)
         {
             await Write(context, HttpStatusCode.Unauthorized, ex.Message, "UNAUTHORIZED");
@@ -25,7 +38,7 @@ public class ExceptionMiddleware
         }
         catch (ArgumentException ex)
         {
-            await Write(context, HttpStatusCode.BadRequest, ex.Message, "BAD_REQUEST");
+            await Write(context, HttpStatusCode.BadRequest, ex.Message, "VALIDATION_ERROR");
         }
         catch (InvalidOperationException ex)
         {
@@ -33,7 +46,11 @@ public class ExceptionMiddleware
         }
         catch (Exception ex)
         {
-            await Write(context, HttpStatusCode.InternalServerError, "Internal server error.", "INTERNAL_ERROR",
+            await Write(
+                context,
+                HttpStatusCode.InternalServerError,
+                "Internal server error.",
+                "INTERNAL_ERROR",
                 errors: new List<string> { ex.Message });
         }
     }
