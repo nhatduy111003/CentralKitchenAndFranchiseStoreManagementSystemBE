@@ -17,14 +17,14 @@ public class SuppliersController : ControllerBase
 
     public SuppliersController(ISupplierService service) => _service = service;
 
-    [Authorize]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PagedResult<SupplierResponse>>>> GetList(
         [FromQuery] SupplierListQuery query,
         CancellationToken ct)
         => Ok(ApiResponse<PagedResult<SupplierResponse>>.Ok(await _service.SearchAsync(query, ct)));
 
-    [Authorize]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ApiResponse<SupplierResponse>>> GetById([FromRoute] int id, CancellationToken ct)
         => Ok(ApiResponse<SupplierResponse>.Ok(await _service.GetByIdAsync(id, ct)));

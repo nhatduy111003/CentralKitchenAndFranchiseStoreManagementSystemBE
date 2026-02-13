@@ -1,17 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using CentralKitchenAndFranchise.DTO.Responses.Rbac;
 
-namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
+namespace CentralKitchenAndFranchise.BLL.Services.Interfaces;
+
+public interface IRolePermissionService
 {
-    public interface IRolePermissionService
-    {
-        Task AddPermissionToRoleAsync(int roleId, int permissionId);
-        Task RemovePermissionAsync(int roleId, int permissionId);
-        Task<List<string>> GetPermissionsByRoleAsync(int roleId);
-        Task AssignToRoleAsync(int roleId, int permissionId);
-    }
-
+    Task<List<RolePermissionResponse>> GetPermissionsByRoleAsync(int roleId, CancellationToken ct = default);
+    Task AssignToRoleAsync(int roleId, int permissionId, CancellationToken ct = default);
+    Task RemovePermissionAsync(int roleId, int permissionId, CancellationToken ct = default);
 }

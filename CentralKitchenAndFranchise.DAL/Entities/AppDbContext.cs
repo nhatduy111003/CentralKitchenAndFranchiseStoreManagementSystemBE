@@ -89,6 +89,12 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.ToTable("roles");
                 e.HasKey(x => x.RoleId);
                 e.HasIndex(x => x.Name).IsUnique();
+
+                e.Property(x => x.Name).HasMaxLength(100).IsRequired();
+
+                e.Property(x => x.Status).HasMaxLength(20).HasDefaultValue("ACTIVE").IsRequired();
+                e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+                e.Property(x => x.UpdatedAt).HasDefaultValueSql("now()");
             });
 
             // =======================
@@ -473,9 +479,14 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 
                 e.HasIndex(x => x.Code).IsUnique();
 
-                e.Property(x => x.Name).IsRequired();
-                e.Property(x => x.GroupName).IsRequired();
-                e.Property(x => x.Description).IsRequired();
+                e.Property(x => x.Name).HasMaxLength(150).IsRequired();
+
+                e.Property(x => x.GroupName).HasMaxLength(100).IsRequired();
+                e.Property(x => x.Description).HasMaxLength(500).IsRequired();
+
+                e.Property(x => x.Status).HasMaxLength(20).HasDefaultValue("ACTIVE").IsRequired();
+                e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+                e.Property(x => x.UpdatedAt).HasDefaultValueSql("now()");
             });
             modelBuilder.Entity<RolePermission>(e =>
             {

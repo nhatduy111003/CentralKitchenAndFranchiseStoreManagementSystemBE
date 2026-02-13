@@ -1,24 +1,16 @@
-﻿using CentralKitchenAndFranchise.DAL.Entities;
-using CentralKitchenAndFranchise.DTO.Requests;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using CentralKitchenAndFranchise.DTO.Requests;
+using CentralKitchenAndFranchise.DTO.Requests.Rbac;
+using CentralKitchenAndFranchise.DTO.Responses.Common;
+using CentralKitchenAndFranchise.DTO.Responses.Rbac;
 
-namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
+namespace CentralKitchenAndFranchise.BLL.Services.Interfaces;
+
+public interface IPermissionService
 {
-    public interface IPermissionService
-    {
-        Task<List<PermissionDto>> GetAllAsync();
-
-        Task<PermissionDto?> GetByIdAsync(int id);
-
-        Task<PermissionDto> CreateAsync(CreatePermissionDto dto);
-
-        Task<bool> UpdateAsync(int id, CreatePermissionDto dto);
-
-        Task<bool> DeleteAsync(int id);
-    }
-
+    Task<PagedResult<PermissionResponse>> SearchAsync(PermissionListQuery query, CancellationToken ct = default);
+    Task<PermissionResponse> GetByIdAsync(int id, CancellationToken ct = default);
+    Task<PermissionResponse> CreateAsync(CreatePermissionDto dto, CancellationToken ct = default);
+    Task<PermissionResponse> UpdateAsync(int id, CreatePermissionDto dto, CancellationToken ct = default);
+    Task<PermissionResponse> ChangeStatusAsync(int id, ChangeEntityStatusRequest request, CancellationToken ct = default);
+    Task DeleteAsync(int id, string? reason, CancellationToken ct = default);
 }

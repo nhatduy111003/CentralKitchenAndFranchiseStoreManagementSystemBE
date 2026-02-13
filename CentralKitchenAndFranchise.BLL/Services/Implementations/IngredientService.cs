@@ -25,6 +25,7 @@ public class IngredientService : IIngredientService
 
     public async Task<PagedResult<IngredientResponse>> SearchAsync(IngredientListQuery query, CancellationToken ct = default)
     {
+        RequireAdminOrManager();
         var page = query.Page <= 0 ? 1 : query.Page;
         var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
         if (pageSize > 200) pageSize = 200;
@@ -74,6 +75,7 @@ public class IngredientService : IIngredientService
 
     public async Task<IngredientResponse> GetByIdAsync(int id, CancellationToken ct = default)
     {
+        RequireAdminOrManager();
         var entity = await _uow.Ingredients.GetByIdAsync(id, ct);
         if (entity is null) throw new KeyNotFoundException($"Ingredient {id} not found.");
         return ToDto(entity);

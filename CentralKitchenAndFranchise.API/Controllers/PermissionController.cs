@@ -1,52 +1,48 @@
-﻿using CentralKitchenAndFranchise.BLL.Services.Implementations;
-using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
+using CentralKitchenAndFranchise.DTO.Requests.Rbac;
+using CentralKitchenAndFranchise.DTO.Responses;
+using CentralKitchenAndFranchise.DTO.Responses.Common;
+using CentralKitchenAndFranchise.DTO.Responses.Rbac;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
-// For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+namespace CentralKitchenAndFranchise.API.Controllers;
 
-namespace CentralKitchenAndFranchise.API.Controllers
+[ApiController]
+[Route("api/admin/permissions")]
+[Authorize(Roles = RoleNames.Admin)]
+public class PermissionController : ControllerBase
 {
-    [ApiController]
-    [Route("admin/permissions")]
-    public class PermissionController : ControllerBase
+    private readonly IPermissionService _service;
+
+    public PermissionController(IPermissionService service) => _service = service;
+
+    [HttpGet]
+    public async Task<ActionResult<ApiResponse<PagedResult<PermissionResponse>>>> GetList([FromQuery] PermissionListQuery query, CancellationToken ct)
+        => Ok(ApiResponse<PagedResult<PermissionResponse>>.Ok(await _service.SearchAsync(query, ct)));
+
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<ApiResponse<PermissionResponse>>> GetById([FromRoute] int id, CancellationToken ct)
+        => Ok(ApiResponse<PermissionResponse>.Ok(await _service.GetByIdAsync(id, ct)));
+
+    [HttpPost]
+    public async Task<ActionResult<ApiResponse<PermissionResponse>>> Create([FromBody] CreatePermissionDto dto, CancellationToken ct)
+        => Ok(ApiResponse<PermissionResponse>.Ok(await _service.CreateAsync(dto, ct)));
+
+    [HttpPut("{id:int}")]
+    public async Task<ActionResult<ApiResponse<PermissionResponse>>> Update([FromRoute] int id, [FromBody] CreatePermissionDto dto, CancellationToken ct)
+        => Ok(ApiResponse<PermissionResponse>.Ok(await _service.UpdateAsync(id, dto, ct)));
+
+    [HttpPatch("{id:int}/status")]
+    public async Task<ActionResult<ApiResponse<PermissionResponse>>> ChangeStatus([FromRoute] int id, [FromBody] ChangeEntityStatusRequest request, CancellationToken ct)
+        => Ok(ApiResponse<PermissionResponse>.Ok(await _service.ChangeStatusAsync(id, request, ct)));
+
+    [HttpDelete("{id:int}")]
+    public async Task<ActionResult<ApiResponse>> Delete([FromRoute] int id, [FromQuery] string? reason, CancellationToken ct)
     {
-        private readonly IPermissionService _service;
-
-        public PermissionController(IPermissionService service)
-        {
-            _service = service;
-        }
-
-        [HttpGet]
-        public async Task<IActionResult> GetAll()
-            => Ok(await _service.GetAllAsync());
-
-        [HttpGet("{id}")]
-        public async Task<IActionResult> Get(int id)
-        {
-            var p = await _service.GetByIdAsync(id);
-            return p == null ? NotFound() : Ok(p);
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> Create(CreatePermissionDto dto)
-            => Ok(await _service.CreateAsync(dto));
-
-        [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, CreatePermissionDto dto)
-        {
-            var ok = await _service.UpdateAsync(id, dto);
-            return ok ? Ok() : NotFound();
-        }
-
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(int id)
-        {
-            var ok = await _service.DeleteAsync(id);
-            return ok ? Ok() : NotFound();
-        }
+        await _service.DeleteAsync(id, reason, ct);
+        return Ok(ApiResponse.Ok("Deactivated"));
     }
-
 }

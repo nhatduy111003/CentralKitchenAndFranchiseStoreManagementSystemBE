@@ -25,6 +25,7 @@ public class SupplierService : ISupplierService
 
     public async Task<PagedResult<SupplierResponse>> SearchAsync(SupplierListQuery query, CancellationToken ct = default)
     {
+        RequireAdminOrManager();
         query ??= new SupplierListQuery();
 
         var page = query.Page <= 0 ? 1 : query.Page;
@@ -75,6 +76,7 @@ public class SupplierService : ISupplierService
 
     public async Task<SupplierResponse> GetByIdAsync(int id, CancellationToken ct = default)
     {
+        RequireAdminOrManager();
         var entity = await _uow.Suppliers.GetByIdAsync(id, ct);
         if (entity is null) throw new KeyNotFoundException($"Supplier {id} not found.");
         return ToDto(entity);

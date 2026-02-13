@@ -17,14 +17,14 @@ public class IngredientsController : ControllerBase
 
     public IngredientsController(IIngredientService service) => _service = service;
 
-    [Authorize]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PagedResult<IngredientResponse>>>> GetList(
-    [FromQuery] IngredientListQuery query,
-    CancellationToken ct)
-    => Ok(ApiResponse<PagedResult<IngredientResponse>>.Ok(await _service.SearchAsync(query, ct)));
+        [FromQuery] IngredientListQuery query,
+        CancellationToken ct)
+        => Ok(ApiResponse<PagedResult<IngredientResponse>>.Ok(await _service.SearchAsync(query, ct)));
 
-    [Authorize]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ApiResponse<IngredientResponse>>> GetById([FromRoute] int id, CancellationToken ct)
         => Ok(ApiResponse<IngredientResponse>.Ok(await _service.GetByIdAsync(id, ct)));
