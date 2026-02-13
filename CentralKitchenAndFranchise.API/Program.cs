@@ -1,4 +1,5 @@
-﻿using CentralKitchenAndFranchise.API.Middlewares;
+﻿// CentralKitchenAndFranchise.API/Program.cs  (FULL FILE - copy toàn bộ)
+using CentralKitchenAndFranchise.API.Middlewares;
 using CentralKitchenAndFranchise.BLL.Services.Implementations;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.BLL.Guards;
@@ -53,54 +54,24 @@ builder.Services.AddCors(options =>
         policy
             .WithOrigins("http://localhost:8080")
             .AllowAnyHeader()
-            .AllowAnyMethod();
-    });
-    options.AddPolicy("AllowFeOrigin", policy =>
-    {
-        policy
-            .WithOrigins("https://franchise-swp391.vercel.app")
-            .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "API", Version = "v1" });
+// Config
+builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
-    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = ParameterLocation.Header,
-        Description = "Enter: Bearer {your JWT token}"
-    });
+// EF Core - CHỈ 1 LẦN
+builder.Services.AddDbContext<AppDbContext>(opt =>
+    opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
-});
 // Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {
-        var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName); // ✅ sửa dòng này
+        var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
         var key = jwtSection["Key"];
-        if (string.IsNullOrWhiteSpace(key))
-            throw new InvalidOperationException("JWT Key is missing. Please configure Jwt:Key.");
 
         opt.TokenValidationParameters = new TokenValidationParameters
         {
@@ -119,68 +90,75 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
         opt.Events = new JwtBearerEvents
         {
-            OnAuthenticationFailed = ctx =>
-            {
-                return Task.CompletedTask;
-            },
-            OnChallenge = ctx =>
-            {
-                // handle default 401 response
-                if (!ctx.Response.HasStarted)
-                {
-                    ctx.HandleResponse();
-                    ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    ctx.Response.ContentType = "application/json";
-                    var resp = CentralKitchenAndFranchise.DTO.Responses.ApiResponse.Fail(
-                        "Unauthorized access. Please login first.",
-                        null,
-                        "UNAUTHORIZED"
-                    );
-                    return ctx.Response.WriteAsJsonAsync(resp);
-                }
-                return Task.CompletedTask;
-            },
-            OnForbidden = ctx =>
-            {
-                if (!ctx.Response.HasStarted)
-                {
-                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    ctx.Response.ContentType = "application/json";
-                    var resp = CentralKitchenAndFranchise.DTO.Responses.ApiResponse.Fail(
-                        "Forbidden access. You do not have permission to access this resource.",
-                        null,
-                        "FORBIDDEN"
-                    );
-                    return ctx.Response.WriteAsJsonAsync(resp);
-                }
-                return Task.CompletedTask;
-            },
-
             OnTokenValidated = async ctx =>
             {
-                var jti = ctx.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
+                var jti = ctx.Principal?.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
                 if (string.IsNullOrWhiteSpace(jti))
                 {
                     ctx.Fail("Missing jti");
                     return;
                 }
 
-                var repo = ctx.HttpContext.RequestServices.GetRequiredService<IRevokedTokenRepository>();
-                if (await repo.IsRevokedAsync(jti))
+                var db = ctx.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var revoked = await db.RevokedTokens.AnyAsync(x => x.Jti == jti);
+                if (revoked)
                 {
-                    ctx.Fail("Token revoked");
+                    ctx.Fail("Token revoked.");
+                    return;
+                }
+
+                // session control: deny when user is inactive
+                var userIdStr = ctx.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(userIdStr, out var userId))
+                {
+                    var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
+                    if (user is null || !string.Equals(user.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ctx.Fail("User is inactive.");
+                        return;
+                    }
                 }
             }
         };
     });
 
 builder.Services.AddAuthorization();
-// Config
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
-// EF Core - CHỈ 1 LẦN
-builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+// Swagger
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "CentralKitchenAndFranchise API",
+        Version = "v1"
+    });
+
+    // JWT
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter 'Bearer {token}'"
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            new string[] {}
+        }
+    });
+});
 
 // DAL DI
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -208,10 +186,11 @@ builder.Services.AddScoped<IRolePermissionService, RolePermissionService>();
 builder.Services.AddScoped<IUserFranchiseService, UserFranchiseService>();
 builder.Services.AddScoped<IDemandService, DemandService>();
 builder.Services.AddScoped<IAllocationService, AllocationService>();
+builder.Services.AddScoped<IManagerDashboardService, ManagerDashboardService>();
 
 var app = builder.Build();
 
-// Auto migrate + seed (DB đầy đủ)
+// Auto migrate + seed
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -233,7 +212,7 @@ app.UseMiddleware<ExceptionMiddleware>();
 //routing
 app.UseHttpsRedirection();
 
-// Enable CORS (must be before MapControllers)
+// Enable CORS
 app.UseCors("AllowLocalhost8080");
 //authentication & authorization
 app.UseAuthentication();
