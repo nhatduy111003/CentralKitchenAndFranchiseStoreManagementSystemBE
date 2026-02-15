@@ -8,34 +8,73 @@ namespace CentralKitchenAndFranchise.DAL.Entities
     {
         public AppDbContext(DbContextOptions<AppDbContext> options)
             : base(options) { }
+
+
+        // =======================
+        // TIMESTAMPS (CreatedAt / UpdatedAt)
+        // =======================
+        // Convention:
+        // - If an entity has CreatedAt/UpdatedAt properties (DateTime or DateTime?),
+        //   automatically set them on Add/Modify.
+        // - This avoids relying on each Service remembering to set UpdatedAt manually.
         public override int SaveChanges()
         {
-            TouchFranchises();
+            ApplyTimestamps();
             return base.SaveChanges();
         }
 
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
-            TouchFranchises();
+            ApplyTimestamps();
             return base.SaveChangesAsync(cancellationToken);
         }
 
-        private void TouchFranchises()
+        private void ApplyTimestamps()
         {
             var now = DateTime.UtcNow;
 
-            foreach (var entry in ChangeTracker.Entries<Franchise>())
+            foreach (var entry in ChangeTracker.Entries())
             {
+                if (entry.State != EntityState.Added && entry.State != EntityState.Modified)
+                    continue;
+
+                var createdAtProp = entry.Metadata.FindProperty("CreatedAt");
+                var updatedAtProp = entry.Metadata.FindProperty("UpdatedAt");
+
+                // Skip entities that don't use timestamp convention.
+                if (createdAtProp is null && updatedAtProp is null)
+                    continue;
+
                 if (entry.State == EntityState.Added)
                 {
-                    entry.Entity.CreatedAt = now;
-                    entry.Entity.UpdatedAt = now;
+                    if (createdAtProp is not null)
+                        TrySetDateTime(entry, "CreatedAt", now);
+
+                    if (updatedAtProp is not null)
+                        TrySetDateTime(entry, "UpdatedAt", now);
                 }
-                else if (entry.State == EntityState.Modified)
+                else // Modified
                 {
-                    entry.Entity.UpdatedAt = now;
+                    // Prevent accidental updates to CreatedAt.
+                    if (createdAtProp is not null)
+                        entry.Property("CreatedAt").IsModified = false;
+
+                    if (updatedAtProp is not null)
+                        TrySetDateTime(entry, "UpdatedAt", now);
                 }
             }
+        }
+
+        private static void TrySetDateTime(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, string propertyName, DateTime value)
+        {
+            var prop = entry.Metadata.FindProperty(propertyName);
+            if (prop is null) return;
+
+            // Only touch DateTime / Nullable<DateTime>
+            if (prop.ClrType != typeof(DateTime) && prop.ClrType != typeof(DateTime?))
+                return;
+
+            entry.Property(propertyName).CurrentValue = value;
         }
         // =======================
         // AUTHENTICATE & AUTHORIZE
