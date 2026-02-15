@@ -187,6 +187,7 @@ builder.Services.AddScoped<IUserFranchiseService, UserFranchiseService>();
 builder.Services.AddScoped<IDemandService, DemandService>();
 builder.Services.AddScoped<IAllocationService, AllocationService>();
 builder.Services.AddScoped<IManagerDashboardService, ManagerDashboardService>();
+builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();
 
 var app = builder.Build();
 

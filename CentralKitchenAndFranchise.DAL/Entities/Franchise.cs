@@ -9,6 +9,9 @@ public class Franchise
     public string? Address { get; set; }
     public string? Location { get; set; }
 
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
     public ICollection<UserFranchise> UserFranchises { get; set; } = new List<UserFranchise>();
 
     public ICollection<StoreCatalog> StoreCatalogs { get; set; } = new List<StoreCatalog>();
@@ -22,6 +25,4 @@ public class Franchise
     public ICollection<SalesRecord> SalesRecords { get; set; } = new List<SalesRecord>();
 
     public ICollection<AllocationItem> AllocationItems { get; set; } = new List<AllocationItem>();
-
-    // NOTE: không cần navigation Deliveries trực tiếp (Delivery có FromFranchiseId + DeliveryPlanId)
 }

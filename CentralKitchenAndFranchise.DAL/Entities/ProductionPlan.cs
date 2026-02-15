@@ -1,3 +1,5 @@
+using CentralKitchenAndFranchise.DAL.Enums;
+
 namespace CentralKitchenAndFranchise.DAL.Entities;
 
 public class ProductionPlan
@@ -6,7 +8,8 @@ public class ProductionPlan
     public DateOnly PlanDate { get; set; }
     public int FranchiseId { get; set; }
 
-    // migration full dùng DateTime (timestamptz)
+    public ProductionPlanStatus Status { get; set; } = ProductionPlanStatus.DRAFT;
+
     public DateTime CreatedAt { get; set; }
 
     public Franchise Franchise { get; set; } = default!;

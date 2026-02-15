@@ -1,4 +1,5 @@
 ﻿using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DAL.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace CentralKitchenAndFranchise.DAL.Entities
@@ -7,7 +8,35 @@ namespace CentralKitchenAndFranchise.DAL.Entities
     {
         public AppDbContext(DbContextOptions<AppDbContext> options)
             : base(options) { }
+        public override int SaveChanges()
+        {
+            TouchFranchises();
+            return base.SaveChanges();
+        }
 
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            TouchFranchises();
+            return base.SaveChangesAsync(cancellationToken);
+        }
+
+        private void TouchFranchises()
+        {
+            var now = DateTime.UtcNow;
+
+            foreach (var entry in ChangeTracker.Entries<Franchise>())
+            {
+                if (entry.State == EntityState.Added)
+                {
+                    entry.Entity.CreatedAt = now;
+                    entry.Entity.UpdatedAt = now;
+                }
+                else if (entry.State == EntityState.Modified)
+                {
+                    entry.Entity.UpdatedAt = now;
+                }
+            }
+        }
         // =======================
         // AUTHENTICATE & AUTHORIZE
         // =======================
@@ -123,6 +152,16 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             {
                 e.ToTable("franchises");
                 e.HasKey(x => x.FranchiseId);
+
+                e.Property(x => x.CreatedAt)
+                    .HasColumnType("timestamptz")
+                    .HasDefaultValueSql("now()")
+                    .IsRequired();
+
+                e.Property(x => x.UpdatedAt)
+                    .HasColumnType("timestamptz")
+                    .HasDefaultValueSql("now()")
+                    .IsRequired();
             });
 
             // =======================
@@ -322,6 +361,13 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             {
                 e.ToTable("production_plans");
                 e.HasKey(x => x.ProductionPlanId);
+
+                e.Property(x => x.Status)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .HasDefaultValue(ProductionPlanStatus.DRAFT)
+                .IsRequired();
+
                 e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
             });
 
