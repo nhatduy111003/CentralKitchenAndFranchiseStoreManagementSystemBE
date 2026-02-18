@@ -111,19 +111,30 @@ public static class DbSeeder
 
     private static void SeedSystemSettings(AppDbContext db)
     {
-        // default X = 7 days (bạn đổi tuỳ nghiệp vụ)
-        var exists = db.SystemSettings.Any(x => x.Key == CentralKitchenAndFranchise.DTO.Constants.SettingKeys.NearExpiryDays);
-        if (exists) return;
-
         var now = DateTime.UtcNow;
-        db.SystemSettings.Add(new SystemSetting
+
+        void Ensure(string key, string value, string desc)
         {
-            Key = CentralKitchenAndFranchise.DTO.Constants.SettingKeys.NearExpiryDays,
-            Value = "7",
-            Description = "Near-expiry definition window in days",
-            CreatedAt = now,
-            UpdatedAt = now
-        });
+            var exists = db.SystemSettings.Any(x => x.Key == key);
+            if (exists) return;
+
+            db.SystemSettings.Add(new SystemSetting
+            {
+                Key = key,
+                Value = value,
+                Description = desc,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+
+        // existing
+        Ensure(SettingKeys.NearExpiryDays, "7", "Near-expiry definition window in days");
+
+        //ordering
+        Ensure(SettingKeys.FutureOrderLimitDays, "7", "Max future order creation window in days (FR-018)");
+        Ensure(SettingKeys.OrderEditWindowMinutes, "30", "Allowed edit window after submit in minutes (FR-038)");
+
         db.SaveChanges();
     }
 

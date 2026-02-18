@@ -1,22 +1,12 @@
 ﻿// CentralKitchenAndFranchise.BLL/Services/Implementations/FranchiseAccessService.cs
 using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
-using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using Microsoft.EntityFrameworkCore;
+using CentralKitchenAndFranchise.DAL.Entities;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
 
-/// <summary>
-/// Franchise scope enforcement.
-///
-/// Rules:
-/// - Admin: system-wide access.
-/// - Manager: access only to franchises assigned via user_franchises.
-/// - Others: deny for now (extend later when implementing StoreStaff/Coordinator/CK scope).
-///
-/// NOTE: List franchises endpoint is an explicit exception (Manager can see all) and MUST NOT call this service.
-/// </summary>
 public class FranchiseAccessService : IFranchiseAccessService
 {
     private readonly AppDbContext _db;
@@ -33,12 +23,11 @@ public class FranchiseAccessService : IFranchiseAccessService
         if (franchiseId <= 0)
             throw new ArgumentException("franchiseId must be a positive integer.");
 
-        // Admin: system-wide
-        if (_current.IsInRole(RoleNames.Admin))
+        if (_current.IsInRole(RoleNames.Admin) || _current.IsInRole(RoleNames.Manager))
             return;
 
-        // Manager: scoped by user_franchises
-        if (_current.IsInRole(RoleNames.Manager))
+        // Manager/StoreStaff scoped by user_franchises
+        if ( _current.IsInRole(RoleNames.StoreStaff))
         {
             var ok = await _db.UserFranchises
                 .AsNoTracking()

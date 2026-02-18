@@ -62,7 +62,7 @@ builder.Services.AddCors(options =>
 // Config
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
-// EF Core - CHỈ 1 LẦN
+// EF Core
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -166,7 +166,7 @@ builder.Services.AddScoped<IIngredientRepository, IngredientRepository>();
 builder.Services.AddScoped<IRevokedTokenRepository, RevokedTokenRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ISupplierRepository, SupplierRepository>();
-
+builder.Services.AddScoped<IStoreOrderService, StoreOrderService>();
 // BLL DI
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IFranchiseAccessService, FranchiseAccessService>();
