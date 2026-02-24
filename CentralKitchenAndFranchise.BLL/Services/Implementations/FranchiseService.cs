@@ -55,8 +55,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 Type = f.Type,
                 Status = f.Status,
                 Address = f.Address,
-                Location = f.Location
-            };
+                Location = f.Location,
+                Latitude = f.Latitude,
+                Longitude = f.Longitude,
+             };
         }
 
         public async Task<int> CreateAsync(FranchiseCreateDto dto)
@@ -69,7 +71,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 Type = dto.Type,
                 Status = dto.Status,
                 Address = dto.Address,
-                Location = dto.Location
+                Location = dto.Location,
+                Latitude = dto.Latitude,
+                Longitude = dto.Longitude,
             };
 
             _context.Franchises.Add(franchise);
@@ -90,7 +94,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             franchise.Status = dto.Status;
             franchise.Address = dto.Address;
             franchise.Location = dto.Location;
-
+            franchise.Latitude = dto.Latitude;
+            franchise.Longitude = dto.Longitude;
             await _context.SaveChangesAsync();
             return true;
         }
