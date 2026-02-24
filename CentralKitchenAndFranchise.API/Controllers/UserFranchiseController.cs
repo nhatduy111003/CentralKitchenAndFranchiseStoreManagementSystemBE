@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CentralKitchenAndFranchise.API.Controllers
 {
     [ApiController]
-    [Route("admin/user-franchises")]
+    [Route("/api/admin/user-franchises")]
     public class UserFranchiseController : ControllerBase
     {
         private readonly IUserFranchiseService _service;
