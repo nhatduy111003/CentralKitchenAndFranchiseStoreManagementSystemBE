@@ -8,7 +8,7 @@ using System.Security.Claims;
 namespace CentralKitchenAndFranchise.API.Controllers;
 
 [ApiController]
-[Route("admin/users")]
+[Route("/api/admin/users")]
 [Authorize]
 public class UsersController : ControllerBase
 {
