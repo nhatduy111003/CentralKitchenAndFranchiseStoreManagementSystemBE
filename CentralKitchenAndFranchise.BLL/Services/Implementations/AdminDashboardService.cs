@@ -249,12 +249,16 @@ public class AdminDashboardService : IAdminDashboardService
         // Status enum is stored as string via HasConversion<string>()
         // => GroupBy + ToString() is safe and translatable for Npgsql
         target.TopStatuses = await filtered
-            .GroupBy(x => x.Status.ToString())
-            .Select(g => new NamedCount { Name = g.Key ?? "UNKNOWN", Count = g.Count() })
-            .OrderByDescending(x => x.Count)
-            .ThenBy(x => x.Name)
-            .Take(top)
-            .ToListAsync(ct);
+    .GroupBy(x => x.Status)
+    .Select(g => new NamedCount
+    {
+        Name = g.Key.ToString(),
+        Count = g.Count()
+    })
+    .OrderByDescending(x => x.Count)
+    .ThenBy(x => x.Name)
+    .Take(top)
+    .ToListAsync(ct);
     }
 
     private static System.Linq.Expressions.Expression<Func<T, bool>> BuildDatePredicate<T>(
