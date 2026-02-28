@@ -209,9 +209,14 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             modelBuilder.Entity<UserFranchise>(e =>
             {
                 e.ToTable("user_franchises");
+
                 e.HasKey(x => new { x.UserId, x.FranchiseId });
 
-                e.Property(x => x.AssignedAt).HasDefaultValueSql("now()");
+                e.HasIndex(x => x.UserId)
+                    .IsUnique();
+
+                e.Property(x => x.AssignedAt)
+                    .HasDefaultValueSql("now()");
             });
 
             // =======================
