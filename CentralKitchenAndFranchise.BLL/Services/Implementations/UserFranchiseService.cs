@@ -21,24 +21,37 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
         public async Task AssignAsync(int userId, int franchiseId)
         {
-            var userExists = await _context.Users.AnyAsync(x => x.UserId == userId);
-            var franchiseExists = await _context.Franchises.AnyAsync(x => x.FranchiseId == franchiseId);
+            var userExists = await _context.Users
+                .AnyAsync(x => x.UserId == userId);
+
+            var franchiseExists = await _context.Franchises
+                .AnyAsync(x => x.FranchiseId == franchiseId);
 
             if (!userExists || !franchiseExists)
                 throw new Exception("User or Franchise not found");
 
-            var exists = await _context.UserFranchises
-                .AnyAsync(x => x.UserId == userId && x.FranchiseId == franchiseId);
+            var existingAssignment = await _context.UserFranchises
+                .FirstOrDefaultAsync(x => x.UserId == userId);
 
-            if (exists)
-                throw new Exception("Already assigned");
-
-            _context.UserFranchises.Add(new UserFranchise
+            if (existingAssignment != null)
             {
-                UserId = userId,
-                FranchiseId = franchiseId,
-                AssignedAt = DateTime.UtcNow
-            });
+                // Nếu đã thuộc franchise này → báo lỗi
+                if (existingAssignment.FranchiseId == franchiseId)
+                    throw new Exception("User already assigned to this franchise");
+
+                // Move sang franchise mới
+                existingAssignment.FranchiseId = franchiseId;
+                existingAssignment.AssignedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                _context.UserFranchises.Add(new UserFranchise
+                {
+                    UserId = userId,
+                    FranchiseId = franchiseId,
+                    AssignedAt = DateTime.UtcNow
+                });
+            }
 
             await _context.SaveChangesAsync();
         }
