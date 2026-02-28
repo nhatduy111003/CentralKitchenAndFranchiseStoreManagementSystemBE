@@ -246,19 +246,26 @@ public class AdminDashboardService : IAdminDashboardService
 
         target.TotalInRange = await filtered.CountAsync(ct);
 
-        // Status enum is stored as string via HasConversion<string>()
-        // => GroupBy + ToString() is safe and translatable for Npgsql
-        target.TopStatuses = await filtered
-    .GroupBy(x => x.Status)
-    .Select(g => new NamedCount
-    {
-        Name = g.Key.ToString(),
-        Count = g.Count()
-    })
-    .OrderByDescending(x => x.Count)
-    .ThenBy(x => x.Name)
-    .Take(top)
-    .ToListAsync(ct);
+        // Aggregate ở DB (enum key), ToString() sau khi materialize
+        var rows = await filtered
+            .GroupBy(x => x.Status)
+            .Select(g => new
+            {
+                Status = g.Key,
+                Count = g.Count()
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Status) // enum sortable
+            .Take(top)
+            .ToListAsync(ct);
+
+        target.TopStatuses = rows
+            .Select(x => new NamedCount
+            {
+                Name = x.Status.ToString(),
+                Count = x.Count
+            })
+            .ToList();
     }
 
     private static System.Linq.Expressions.Expression<Func<T, bool>> BuildDatePredicate<T>(
