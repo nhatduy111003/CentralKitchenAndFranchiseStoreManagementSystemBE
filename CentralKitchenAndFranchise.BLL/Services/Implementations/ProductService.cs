@@ -1,4 +1,5 @@
-﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.Products;
@@ -19,6 +20,9 @@ public class ProductService : IProductService
         _current = current;
     }
 
+    // =========================
+    // READ
+    // =========================
     public async Task<PagedResult<ProductResponse>> SearchAsync(ProductListQuery query, CancellationToken ct = default)
     {
         RequireAdminOrManager();
@@ -98,11 +102,162 @@ public class ProductService : IProductService
         };
     }
 
+    // =========================
+    // WRITE (CRUD)
+    // =========================
+    public async Task<int> CreateAsync(ProductCreateRequest req, CancellationToken ct = default)
+    {
+        RequireAdminOrManager();
+        req = req ?? throw new ArgumentNullException(nameof(req));
+
+        var name = req.Name.Trim();
+        var sku = req.Sku.Trim();
+        var unit = req.Unit.Trim();
+        var type = NormalizeProductType(req.ProductType);
+
+        // soft conflict guard (no DB unique index currently)
+        var existsSku = await _db.Products.AsNoTracking().AnyAsync(x => x.Sku == sku, ct);
+        if (existsSku) throw new InvalidOperationException($"SKU '{sku}' already exists.");
+
+        var entity = new Product
+        {
+            Name = name,
+            Sku = sku,
+            Unit = unit,
+            ProductType = type,
+            Status = ProductStatus.Active
+        };
+
+        await _db.Products.AddAsync(entity, ct);
+
+        await _db.AuditLogs.AddAsync(new AuditLog
+        {
+            UserId = _current.UserId,
+            Action = "CREATE",
+            EntityName = nameof(Product),
+            EntityId = null,
+            NewDataJson = JsonSerializer.Serialize(new
+            {
+                entity.ProductId,
+                entity.Name,
+                entity.Sku,
+                entity.Unit,
+                entity.ProductType,
+                entity.Status
+            }),
+            Reason = "Create product master data",
+            CreatedAt = DateTime.UtcNow
+        }, ct);
+
+        await _db.SaveChangesAsync(ct);
+        return entity.ProductId;
+    }
+
+    public async Task UpdateAsync(int id, ProductUpdateRequest req, CancellationToken ct = default)
+    {
+        RequireAdminOrManager();
+        if (id <= 0) throw new ArgumentException("id must be a positive integer.");
+        req = req ?? throw new ArgumentNullException(nameof(req));
+
+        var entity = await _db.Products.FirstOrDefaultAsync(x => x.ProductId == id, ct);
+        if (entity is null) throw new KeyNotFoundException($"Product {id} not found.");
+
+        var name = req.Name.Trim();
+        var sku = req.Sku.Trim();
+        var unit = req.Unit.Trim();
+        var type = NormalizeProductType(req.ProductType);
+
+        var existsSku = await _db.Products.AsNoTracking()
+            .AnyAsync(x => x.Sku == sku && x.ProductId != id, ct);
+        if (existsSku) throw new InvalidOperationException($"SKU '{sku}' already exists.");
+
+        var old = new
+        {
+            entity.Name,
+            entity.Sku,
+            entity.Unit,
+            entity.ProductType,
+            entity.Status
+        };
+
+        entity.Name = name;
+        entity.Sku = sku;
+        entity.Unit = unit;
+        entity.ProductType = type;
+
+        await _db.AuditLogs.AddAsync(new AuditLog
+        {
+            UserId = _current.UserId,
+            Action = "UPDATE",
+            EntityName = nameof(Product),
+            EntityId = entity.ProductId,
+            OldDataJson = JsonSerializer.Serialize(old),
+            NewDataJson = JsonSerializer.Serialize(new
+            {
+                entity.Name,
+                entity.Sku,
+                entity.Unit,
+                entity.ProductType,
+                entity.Status
+            }),
+            Reason = "Update product master data",
+            CreatedAt = DateTime.UtcNow
+        }, ct);
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task ChangeStatusAsync(int id, ProductStatusUpdateRequest req, CancellationToken ct = default)
+    {
+        RequireAdminOrManager();
+        if (id <= 0) throw new ArgumentException("id must be a positive integer.");
+        req = req ?? throw new ArgumentNullException(nameof(req));
+
+        var status = (req.Status ?? "").Trim().ToUpperInvariant();
+        if (status is not (ProductStatus.Active or ProductStatus.Inactive))
+            throw new ArgumentException("status must be ACTIVE or INACTIVE.");
+
+        var entity = await _db.Products.FirstOrDefaultAsync(x => x.ProductId == id, ct);
+        if (entity is null) throw new KeyNotFoundException($"Product {id} not found.");
+
+        var old = new { entity.Status };
+
+        entity.Status = status;
+
+        await _db.AuditLogs.AddAsync(new AuditLog
+        {
+            UserId = _current.UserId,
+            Action = "CHANGE_STATUS",
+            EntityName = nameof(Product),
+            EntityId = entity.ProductId,
+            OldDataJson = JsonSerializer.Serialize(old),
+            NewDataJson = JsonSerializer.Serialize(new { entity.Status }),
+            Reason = "Change product status",
+            CreatedAt = DateTime.UtcNow
+        }, ct);
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public Task DeactivateAsync(int id, CancellationToken ct = default)
+        => ChangeStatusAsync(id, new ProductStatusUpdateRequest { Status = ProductStatus.Inactive }, ct);
+
+    // =========================
+    // Helpers
+    // =========================
     private void RequireAdminOrManager()
     {
         var role = _current.Role;
         if (role != RoleNames.Admin && role != RoleNames.Manager)
             throw new UnauthorizedAccessException("Only Admin/Manager can perform this action.");
+    }
+
+    private static string NormalizeProductType(string productType)
+    {
+        var t = (productType ?? "").Trim().ToUpperInvariant();
+        if (t is not (ProductTypes.Finished or ProductTypes.SemiFinished))
+            throw new ArgumentException("productType must be FINISHED or SEMI_FINISHED.");
+        return t;
     }
 
     private static IQueryable<Product> ApplySort(IQueryable<Product> q, string sortBy, string sortDir)
