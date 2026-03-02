@@ -6,6 +6,7 @@ using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.StoreOrders;
 using CentralKitchenAndFranchise.DTO.Responses.Common;
 using CentralKitchenAndFranchise.DTO.Responses.StoreOrders;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
@@ -336,6 +337,56 @@ public class StoreOrderService : IStoreOrderService
         return ToDto(order);
     }
 
+    public async Task<StoreOrderResponse> LockAsync(int franchiseId, int orderId, CancellationToken ct = default)
+    {
+        // Role để ở controller, service không check role
+        await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+        var order = await _db.StoreOrders
+            .Include(x => x.Items)
+            .FirstOrDefaultAsync(x => x.StoreOrderId == orderId && x.FranchiseId == franchiseId, ct);
+
+        if (order is null)
+            throw new KeyNotFoundException($"StoreOrder {orderId} not found.");
+
+        if (order.Status == StoreOrderStatus.Cancelled)
+            throw new InvalidOperationException("Cannot lock a CANCELLED order.");
+
+        // chỉ cho lock khi SUBMITTED (chuẩn nhất)
+        if (order.Status != StoreOrderStatus.Submitted)
+            throw new InvalidOperationException("Only SUBMITTED orders can be locked.");
+
+        if (order.Status == StoreOrderStatus.Locked)
+            throw new InvalidOperationException("Order is already LOCKED.");
+
+        if (order.Items.Count == 0)
+            throw new InvalidOperationException("Cannot lock an order with no items.");
+
+        var now = DateTime.UtcNow;
+
+        var old = new { order.Status, order.LockedAt, order.UpdatedAt };
+
+        order.Status = StoreOrderStatus.Locked;
+        // business: lock ngay tại thời điểm CK chốt
+        order.LockedAt = now;
+        order.UpdatedAt = now;
+
+        await _db.SaveChangesAsync(ct);
+
+        await AddAuditAsync(
+            action: "STORE_ORDER_LOCK",
+            franchiseId: franchiseId,
+            entityName: "StoreOrder",
+            entityId: order.StoreOrderId,
+            oldObj: old,
+            newObj: new { order.Status, order.LockedAt, order.UpdatedAt },
+            reason: null,
+            ct: ct
+        );
+
+        return await GetByIdAsync(franchiseId, orderId, ct);
+    }
+
     // ----------------- helpers -----------------
 
     private void RequireOrderingRoles()
@@ -431,4 +482,5 @@ public class StoreOrderService : IStoreOrderService
         _db.AuditLogs.Add(log);
         await _db.SaveChangesAsync(ct);
     }
+
 }

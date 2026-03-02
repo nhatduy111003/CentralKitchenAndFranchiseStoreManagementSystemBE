@@ -190,6 +190,7 @@ builder.Services.AddScoped<IDemandService, DemandService>();
 builder.Services.AddScoped<IAllocationService, AllocationService>();
 builder.Services.AddScoped<IManagerDashboardService, ManagerDashboardService>();
 builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();
+builder.Services.AddScoped<IProductionPlanService, ProductionPlanService>();
 
 var app = builder.Build();
 

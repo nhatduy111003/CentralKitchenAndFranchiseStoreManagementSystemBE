@@ -21,7 +21,7 @@ public class StoreOrdersController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff},{RoleNames.KitchenStaff}")]
     public async Task<ActionResult<ApiResponse<PagedResult<StoreOrderResponse>>>> Search(
         int franchiseId,
         [FromQuery] StoreOrderListQuery query,
@@ -73,6 +73,17 @@ public class StoreOrdersController : ControllerBase
         CancellationToken ct)
     {
         var data = await _service.SubmitAsync(franchiseId, orderId, ct);
+        return Ok(ApiResponse<StoreOrderResponse>.Ok(data));
+    }
+
+    [HttpPost("{orderId:int}/lock")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.KitchenStaff}")]
+    public async Task<ActionResult<ApiResponse<StoreOrderResponse>>> Lock(
+        int franchiseId,
+        int orderId,
+        CancellationToken ct)
+    {
+        var data = await _service.LockAsync(franchiseId, orderId, ct);
         return Ok(ApiResponse<StoreOrderResponse>.Ok(data));
     }
 

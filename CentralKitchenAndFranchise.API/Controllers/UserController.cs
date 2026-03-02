@@ -29,6 +29,7 @@ public class UsersController : ControllerBase
         => Ok(await _userService.GetAllAsync());
 
     [Authorize(Roles = RoleNames.Admin)]
+    [AllowAnonymous]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateUserRequestDto dto)
         => Ok(await _userService.CreateAsync(dto));
