@@ -395,6 +395,7 @@ public class StoreOrderService : IStoreOrderService
         if (_current.IsInRole(RoleNames.Admin)) return;
         if (_current.IsInRole(RoleNames.Manager)) return;
         if (_current.IsInRole(RoleNames.StoreStaff)) return;
+        if (_current.IsInRole(RoleNames.KitchenStaff)) return;
 
         throw new ForbiddenAccessException("You do not have permission to access store ordering.");
     }

@@ -27,7 +27,7 @@ public class FranchiseAccessService : IFranchiseAccessService
             return;
 
         // Manager/StoreStaff scoped by user_franchises
-        if ( _current.IsInRole(RoleNames.StoreStaff))
+        if ( _current.IsInRole(RoleNames.StoreStaff) || _current.IsInRole(RoleNames.KitchenStaff))
         {
             var ok = await _db.UserFranchises
                 .AsNoTracking()
