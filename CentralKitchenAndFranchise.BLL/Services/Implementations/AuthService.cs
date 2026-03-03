@@ -44,6 +44,7 @@ public class AuthService : Interfaces.IAuthService
             AccessToken = token,
             ExpiresInSeconds = (int)TimeSpan.FromMinutes(_jwt.ExpiresInMinutes).TotalSeconds,
             UserId = user.UserId,
+            FranchiseId = user.UserFranchises.FirstOrDefault()?.FranchiseId ?? 0,
             Username = user.Username,
             Role = user.Role.Name
         };
