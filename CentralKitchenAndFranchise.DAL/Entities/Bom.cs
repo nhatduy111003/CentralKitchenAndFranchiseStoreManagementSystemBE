@@ -1,15 +1,18 @@
-namespace CentralKitchenAndFranchise.DAL.Entities;
+ï»¿using System.ComponentModel.DataAnnotations.Schema;
 
-public class Bom
+namespace CentralKitchenAndFranchise.DAL.Entities
 {
-    public int BomId { get; set; }
-    public int ProductId { get; set; }
-    public int Version { get; set; }
-    public string Status { get; set; } = default!;
+    public class Bom
+    {
+        public int BomId { get; set; }
+        public int ProductId { get; set; }
+        public int Version { get; set; }
+        public string Status { get; set; } = "DRAFT";
+        public DateTime CreatedAt { get; set; }
 
-    // migration full dùng DateTime (timestamptz)
-    public DateTime CreatedAt { get; set; }
+        [NotMapped]
+        public DateTime UpdatedAt { get; set; }
 
-    public Product Product { get; set; } = default!;
-    public ICollection<BomItem> Items { get; set; } = new List<BomItem>();
+        public ICollection<BomItem> Items { get; set; } = new List<BomItem>();
+    }
 }

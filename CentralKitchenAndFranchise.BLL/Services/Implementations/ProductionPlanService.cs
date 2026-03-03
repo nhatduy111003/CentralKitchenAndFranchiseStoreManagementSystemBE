@@ -138,10 +138,14 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (!Enum.TryParse<ProductionPlanStatus>(request.Status.Trim(), ignoreCase: true, out var newStatus))
                 throw new ArgumentException("Invalid status value, must be DRAFT/CONFIRMED/IN_PROGRESS/COMPLETED/CANCELLED.");
 
-            var old = new { Status = plan.Status.ToString() };
+            var old = new { Status = plan.Status?.ToString() };
 
-            // (optional) validate transition
-            EnsureValidTransition(plan.Status, newStatus);
+            // ---- FIX HERE: plan.Status is nullable (ProductionPlanStatus?)
+            if (plan.Status is null)
+                throw new InvalidOperationException("ProductionPlan status is null (invalid data).");
+
+            EnsureValidTransition(plan.Status.Value, newStatus);
+            // -----------------------------------------------
 
             plan.Status = newStatus;
 
@@ -153,7 +157,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 entityName: "ProductionPlan",
                 entityId: plan.ProductionPlanId,
                 oldObj: old,
-                newObj: new { Status = plan.Status.ToString() },
+                newObj: new { Status = plan.Status?.ToString() },
                 reason: string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim(),
                 ct: ct);
 
@@ -177,7 +181,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 ProductionPlanId = plan.ProductionPlanId,
                 FranchiseId = plan.FranchiseId,
                 PlanDate = plan.PlanDate,
-                Status = plan.Status.ToString(),
+                Status = plan.Status?.ToString() ?? "UNKNOWN",
                 CreatedAt = plan.CreatedAt,
                 Items = plan.Items
                     .OrderBy(i => i.ProductId)
@@ -194,7 +198,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
         private static void EnsureValidTransition(ProductionPlanStatus oldStatus, ProductionPlanStatus newStatus)
         {
-            
             if (oldStatus == newStatus) return;
 
             var allowed = oldStatus switch
@@ -211,7 +214,15 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 throw new InvalidOperationException($"Invalid status transition: {oldStatus} -> {newStatus}");
         }
 
-        private async Task AddAuditAsync(string action, int franchiseId, string entityName, int entityId, object? oldObj, object? newObj, string? reason, CancellationToken ct)
+        private async Task AddAuditAsync(
+            string action,
+            int franchiseId,
+            string entityName,
+            int entityId,
+            object? oldObj,
+            object? newObj,
+            string? reason,
+            CancellationToken ct)
         {
             var log = new AuditLog
             {

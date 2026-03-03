@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DAL.Seeding;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Responses;
 using CentralKitchenAndFranchise.DTO.Responses.Seed;
@@ -24,6 +25,72 @@ public class AdminSeedController : ControllerBase
         _db = db;
         _current = current;
         _env = env;
+    }
+
+    /// <summary>
+    /// DEV-ONLY: Drop ALL data by truncating every table in schema public
+    /// (except __EFMigrationsHistory), then re-run DbSeeder.Seed(db) to restore
+    /// base defaults (roles, default accounts, system settings, milk-tea BOM/Recipe).
+    /// Admin-only, Development-only.
+    /// </summary>
+    [HttpPost("reset-all")]
+    public async Task<ActionResult<ApiResponse<SeedResetResponse>>> ResetAll(CancellationToken ct)
+    {
+        if (!_env.IsDevelopment())
+            throw new UnauthorizedAccessException("Seed API is only available in Development environment.");
+
+        // Defensive: ensure caller still exists (avoid weird states during reset)
+        var caller = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == _current.UserId, ct);
+        if (caller is null)
+            throw new UnauthorizedAccessException("Current user not found.");
+
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+        // List tables to be truncated (for reporting)
+        var tables = await _db.Database
+            .SqlQueryRaw<string>(
+                "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> '__EFMigrationsHistory' ORDER BY tablename")
+            .ToListAsync(ct);
+
+        const string truncateAllSql = @"
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN (
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname='public'
+      AND tablename <> '__EFMigrationsHistory'
+  ) LOOP
+    EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' RESTART IDENTITY CASCADE';
+  END LOOP;
+END $$;";
+
+        await _db.Database.ExecuteSqlRawAsync(truncateAllSql, ct);
+
+        // Re-seed baseline so you don't lock yourself out after truncating users/roles
+        DbSeeder.Seed(_db);
+
+        await tx.CommitAsync(ct);
+
+        var resp = new SeedResetResponse
+        {
+            ResetDone = true,
+            ReseededBaseData = true,
+            TablesTruncated = tables.Count,
+            TruncatedTables = tables,
+            DefaultAccounts = new List<SeedAccountInfo>
+            {
+                new() { Username = "admin",    Email = "admin@gmail.com",    Role = RoleNames.Admin },
+                new() { Username = "manager",  Email = "manager@gmail.com",  Role = RoleNames.Manager },
+                new() { Username = "supply",   Email = "supply@gmail.com",   Role = RoleNames.SupplyCoordinator },
+                new() { Username = "kitchen",  Email = "kitchen@gmail.com",  Role = RoleNames.KitchenStaff },
+                new() { Username = "store.q1", Email = "store.q1@gmail.com", Role = RoleNames.StoreStaff },
+                new() { Username = "store.q7", Email = "store.q7@gmail.com", Role = RoleNames.StoreStaff },
+            }
+        };
+
+        return Ok(ApiResponse<SeedResetResponse>.Ok(resp, "Reset all data + reseed base defaults completed."));
     }
 
     /// <summary>
@@ -118,7 +185,7 @@ public class AdminSeedController : ControllerBase
         if (createdStoreB) resp.UsersCreated++;
         resp.UserIds.Add(storeB.UserId);
 
-        // Assign store staff to OU
+        // Assign store staff to OU (IMPORTANT: unique index on UserId => upsert by UserId)
         await EnsureUserFranchiseAsync(storeA.UserId, franchiseAId, ct);
         await EnsureUserFranchiseAsync(storeB.UserId, franchiseBId, ct);
 
@@ -230,12 +297,20 @@ public class AdminSeedController : ControllerBase
         if (existing is not null)
         {
             // normalize active for testing convenience
+            var changed = false;
+
             if (!string.Equals(existing.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
             {
                 existing.Status = "ACTIVE";
+                changed = true;
+            }
+
+            if (changed)
+            {
                 existing.UpdatedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync(ct);
             }
+
             return (existing.FranchiseId, false);
         }
 
@@ -314,17 +389,27 @@ public class AdminSeedController : ControllerBase
 
     private async Task EnsureUserFranchiseAsync(int userId, int franchiseId, CancellationToken ct)
     {
-        var exists = await _db.UserFranchises.AnyAsync(x => x.UserId == userId && x.FranchiseId == franchiseId, ct);
-        if (exists) return;
-
-        await _db.UserFranchises.AddAsync(new UserFranchise
+        // IMPORTANT: your DB has UNIQUE index on UserId (1 franchise per user)
+        var existing = await _db.UserFranchises.FirstOrDefaultAsync(x => x.UserId == userId, ct);
+        if (existing is null)
         {
-            UserId = userId,
-            FranchiseId = franchiseId,
-            AssignedAt = DateTime.UtcNow
-        }, ct);
+            await _db.UserFranchises.AddAsync(new UserFranchise
+            {
+                UserId = userId,
+                FranchiseId = franchiseId,
+                AssignedAt = DateTime.UtcNow
+            }, ct);
 
-        await _db.SaveChangesAsync(ct);
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
+        if (existing.FranchiseId != franchiseId)
+        {
+            existing.FranchiseId = franchiseId;
+            existing.AssignedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
     }
 
     private async Task<(int supplierId, bool created)> EnsureSupplierAsync(string name, string contactInfo, CancellationToken ct)
@@ -332,11 +417,16 @@ public class AdminSeedController : ControllerBase
         var existing = await _db.Suppliers.FirstOrDefaultAsync(x => x.Name == name, ct);
         if (existing is not null)
         {
+            var changed = false;
             if (!string.Equals(existing.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
             {
                 existing.Status = "ACTIVE";
-                await _db.SaveChangesAsync(ct);
+                changed = true;
             }
+
+            if (changed)
+                await _db.SaveChangesAsync(ct);
+
             return (existing.SupplierId, false);
         }
 
@@ -359,6 +449,7 @@ public class AdminSeedController : ControllerBase
         if (existing is not null)
         {
             var changed = false;
+
             if (!string.Equals(existing.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
             {
                 existing.Status = "ACTIVE";
@@ -418,7 +509,7 @@ public class AdminSeedController : ControllerBase
 
             if (changed)
             {
-                // if Product has UpdatedAt in your schema, set it; if not, remove this line.
+                // If Product has UpdatedAt in your schema, set it; if not, keep as-is.
                 // existing.UpdatedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync(ct);
             }
