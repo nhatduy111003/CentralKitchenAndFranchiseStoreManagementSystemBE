@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.Json.Serialization;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -13,6 +14,14 @@ public class BomService : IBomService
 {
     private readonly AppDbContext _db;
     private readonly ICurrentUserService _current;
+
+    // Extra safety: even if a service accidentally passes an EF graph to audit,
+    // we won't throw "object cycle" exceptions.
+    private static readonly JsonSerializerOptions AuditJsonOptions = new()
+    {
+        ReferenceHandler = ReferenceHandler.IgnoreCycles,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     public BomService(AppDbContext db, ICurrentUserService current)
     {
@@ -88,7 +97,6 @@ public class BomService : IBomService
         if (request.Items is null || request.Items.Count == 0)
             throw new ArgumentException("Items is required (at least 1 ingredient).");
 
-        // validate ingredient ids + quantities
         var ingredientIds = request.Items.Select(x => x.IngredientId).Distinct().ToList();
         if (ingredientIds.Any(id => id <= 0))
             throw new ArgumentException("IngredientId must be > 0.");
@@ -133,7 +141,7 @@ public class BomService : IBomService
             entityName: "Bom",
             entityId: entity.BomId,
             oldObj: null,
-            newObj: entity,
+            newObj: BuildBomSnapshot(entity),
             reason: null,
             ct: ct);
 
@@ -178,7 +186,6 @@ public class BomService : IBomService
             Items = entity.Items.Select(i => new { i.IngredientId, i.Quantity }).ToList()
         };
 
-        // replace items (simple)
         _db.BomItems.RemoveRange(entity.Items);
         entity.Items = request.Items
             .GroupBy(x => x.IngredientId)
@@ -196,7 +203,7 @@ public class BomService : IBomService
             entityName: "Bom",
             entityId: entity.BomId,
             oldObj: old,
-            newObj: entity,
+            newObj: BuildBomSnapshot(entity),
             reason: null,
             ct: ct);
 
@@ -215,7 +222,6 @@ public class BomService : IBomService
         var entity = await _db.Boms.FirstOrDefaultAsync(x => x.BomId == id, ct);
         if (entity is null) throw new KeyNotFoundException($"BOM {id} not found.");
 
-        // enforce single ACTIVE per product
         if (newStatus == StandardizationStatuses.Active)
         {
             var hasOtherActive = await _db.Boms.AnyAsync(x =>
@@ -314,13 +320,32 @@ public class BomService : IBomService
             Action = action,
             EntityName = entityName,
             EntityId = entityId,
-            OldDataJson = oldObj is null ? null : JsonSerializer.Serialize(oldObj),
-            NewDataJson = newObj is null ? null : JsonSerializer.Serialize(newObj),
+            OldDataJson = oldObj is null ? null : JsonSerializer.Serialize(oldObj, AuditJsonOptions),
+            NewDataJson = newObj is null ? null : JsonSerializer.Serialize(newObj, AuditJsonOptions),
             Reason = reason,
             CreatedAt = DateTime.UtcNow
         };
 
         _db.AuditLogs.Add(log);
         await _db.SaveChangesAsync(ct);
+    }
+
+    private static object BuildBomSnapshot(Bom entity)
+    {
+        // IMPORTANT: Do NOT serialize EF entities directly. They can contain navigation cycles
+        // (e.g., Bom -> Items -> BomItem -> Bom), causing runtime 500.
+        return new
+        {
+            entity.BomId,
+            entity.ProductId,
+            entity.Version,
+            entity.Status,
+            entity.CreatedAt,
+            entity.UpdatedAt,
+            Items = entity.Items
+                .OrderBy(i => i.IngredientId)
+                .Select(i => new { i.IngredientId, i.Quantity })
+                .ToList()
+        };
     }
 }

@@ -1,6 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
-
-namespace CentralKitchenAndFranchise.DAL.Entities
+﻿namespace CentralKitchenAndFranchise.DAL.Entities
 {
     public class Bom
     {
@@ -8,9 +6,8 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         public int ProductId { get; set; }
         public int Version { get; set; }
         public string Status { get; set; } = "DRAFT";
-        public DateTime CreatedAt { get; set; }
 
-        [NotMapped]
+        public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
 
         public ICollection<BomItem> Items { get; set; } = new List<BomItem>();

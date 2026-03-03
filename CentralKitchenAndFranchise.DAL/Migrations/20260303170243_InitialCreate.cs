@@ -7,7 +7,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CentralKitchenAndFranchise.DAL.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate_Postgres : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -19,7 +19,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     DemandAggregationId = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     PlanDate = table.Column<DateOnly>(type: "date", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -36,7 +36,11 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     Type = table.Column<string>(type: "text", nullable: false),
                     Status = table.Column<string>(type: "text", nullable: false),
                     Address = table.Column<string>(type: "text", nullable: true),
-                    Location = table.Column<string>(type: "text", nullable: true)
+                    Location = table.Column<string>(type: "text", nullable: true),
+                    Latitude = table.Column<double>(type: "double precision", nullable: true),
+                    Longitude = table.Column<double>(type: "double precision", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -52,11 +56,34 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     Name = table.Column<string>(type: "text", nullable: false),
                     Unit = table.Column<string>(type: "text", nullable: false),
                     Status = table.Column<string>(type: "text", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    Price = table.Column<decimal>(type: "numeric", nullable: false),
+                    SafetyStock = table.Column<decimal>(type: "numeric", nullable: false),
+                    WasteThreshold = table.Column<decimal>(type: "numeric", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ingredients", x => x.IngredientId);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "permissions",
+                columns: table => new
+                {
+                    PermissionId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Code = table.Column<string>(type: "text", nullable: false),
+                    Name = table.Column<string>(type: "text", nullable: false),
+                    GroupName = table.Column<string>(type: "text", nullable: false),
+                    Description = table.Column<string>(type: "text", nullable: false),
+                    Status = table.Column<string>(type: "text", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_permissions", x => x.PermissionId);
                 });
 
             migrationBuilder.CreateTable(
@@ -68,11 +95,27 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     Name = table.Column<string>(type: "text", nullable: false),
                     Sku = table.Column<string>(type: "text", nullable: false),
                     Unit = table.Column<string>(type: "text", nullable: false),
-                    Status = table.Column<string>(type: "text", nullable: false)
+                    Status = table.Column<string>(type: "text", nullable: false),
+                    ProductType = table.Column<string>(type: "text", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_products", x => x.ProductId);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "revoked_tokens",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Jti = table.Column<string>(type: "text", nullable: false),
+                    RevokedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    ExpiresAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_revoked_tokens", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -81,7 +124,10 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 {
                     RoleId = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    Name = table.Column<string>(type: "text", nullable: false)
+                    Name = table.Column<string>(type: "text", nullable: false),
+                    Status = table.Column<string>(type: "text", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -104,13 +150,30 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "system_settings",
+                columns: table => new
+                {
+                    SystemSettingId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Key = table.Column<string>(type: "text", nullable: false),
+                    Value = table.Column<string>(type: "text", nullable: false),
+                    Description = table.Column<string>(type: "text", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_system_settings", x => x.SystemSettingId);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "allocations",
                 columns: table => new
                 {
                     AllocationId = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     DemandAggregationId = table.Column<int>(type: "integer", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -151,7 +214,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     PlanDate = table.Column<DateOnly>(type: "date", nullable: false),
                     FranchiseId = table.Column<int>(type: "integer", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    Status = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdateAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -172,7 +237,13 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     FranchiseId = table.Column<int>(type: "integer", nullable: false),
                     Status = table.Column<string>(type: "text", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    OrderDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    SubmittedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    LockedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    CancelledAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    CancelReason = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -223,7 +294,8 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     ProductId = table.Column<int>(type: "integer", nullable: false),
                     Version = table.Column<int>(type: "integer", nullable: false),
                     Status = table.Column<string>(type: "text", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -264,6 +336,36 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "product_batches",
+                columns: table => new
+                {
+                    BatchId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    ProductId = table.Column<int>(type: "integer", nullable: false),
+                    FranchiseId = table.Column<int>(type: "integer", nullable: false),
+                    BatchCode = table.Column<string>(type: "text", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
+                    ExpiredAt = table.Column<DateOnly>(type: "date", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_product_batches", x => x.BatchId);
+                    table.ForeignKey(
+                        name: "FK_product_batches_franchises_FranchiseId",
+                        column: x => x.FranchiseId,
+                        principalTable: "franchises",
+                        principalColumn: "FranchiseId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_product_batches_products_ProductId",
+                        column: x => x.ProductId,
+                        principalTable: "products",
+                        principalColumn: "ProductId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "recipes",
                 columns: table => new
                 {
@@ -272,7 +374,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     ProductId = table.Column<int>(type: "integer", nullable: false),
                     Version = table.Column<int>(type: "integer", nullable: false),
                     Status = table.Column<string>(type: "text", nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    Instructions = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -319,7 +423,10 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 {
                     FranchiseId = table.Column<int>(type: "integer", nullable: false),
                     ProductId = table.Column<int>(type: "integer", nullable: false),
-                    Price = table.Column<decimal>(type: "numeric", nullable: false)
+                    Price = table.Column<decimal>(type: "numeric", nullable: false),
+                    Status = table.Column<string>(type: "text", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -339,6 +446,30 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "role_permissions",
+                columns: table => new
+                {
+                    RoleId = table.Column<int>(type: "integer", nullable: false),
+                    PermissionId = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_role_permissions", x => new { x.RoleId, x.PermissionId });
+                    table.ForeignKey(
+                        name: "FK_role_permissions_permissions_PermissionId",
+                        column: x => x.PermissionId,
+                        principalTable: "permissions",
+                        principalColumn: "PermissionId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_role_permissions_roles_RoleId",
+                        column: x => x.RoleId,
+                        principalTable: "roles",
+                        principalColumn: "RoleId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "users",
                 columns: table => new
                 {
@@ -349,8 +480,8 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     Email = table.Column<string>(type: "text", nullable: false),
                     PasswordHash = table.Column<string>(type: "text", nullable: false),
                     Status = table.Column<string>(type: "text", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()"),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -404,7 +535,11 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     DeliveryId = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     DeliveryPlanId = table.Column<int>(type: "integer", nullable: false),
-                    DeliveredAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    FromFranchiseId = table.Column<int>(type: "integer", nullable: false),
+                    Status = table.Column<string>(type: "text", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    ConfirmedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    DeliveredAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -415,6 +550,12 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         principalTable: "delivery_plans",
                         principalColumn: "DeliveryPlanId",
                         onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_deliveries_franchises_FromFranchiseId",
+                        column: x => x.FromFranchiseId,
+                        principalTable: "franchises",
+                        principalColumn: "FranchiseId",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -424,7 +565,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     ProductionBatchId = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     ProductionPlanId = table.Column<int>(type: "integer", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -500,7 +641,10 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     BatchId = table.Column<int>(type: "integer", nullable: false),
                     Type = table.Column<string>(type: "text", nullable: false),
                     Quantity = table.Column<decimal>(type: "numeric", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    CreatedByUserId = table.Column<int>(type: "integer", nullable: true),
+                    Reason = table.Column<string>(type: "text", nullable: true),
+                    DeliveryId = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -541,18 +685,54 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "product_movements",
+                columns: table => new
+                {
+                    MovementId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    BatchId = table.Column<int>(type: "integer", nullable: false),
+                    Type = table.Column<string>(type: "text", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
+                    CreatedByUserId = table.Column<int>(type: "integer", nullable: true),
+                    Reason = table.Column<string>(type: "text", nullable: true),
+                    DeliveryId = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_product_movements", x => x.MovementId);
+                    table.ForeignKey(
+                        name: "FK_product_movements_product_batches_BatchId",
+                        column: x => x.BatchId,
+                        principalTable: "product_batches",
+                        principalColumn: "BatchId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "audit_logs",
                 columns: table => new
                 {
                     AuditLogId = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     UserId = table.Column<int>(type: "integer", nullable: true),
+                    FranchiseId = table.Column<int>(type: "integer", nullable: true),
                     Action = table.Column<string>(type: "text", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    EntityName = table.Column<string>(type: "text", nullable: true),
+                    EntityId = table.Column<int>(type: "integer", nullable: true),
+                    OldDataJson = table.Column<string>(type: "text", nullable: true),
+                    NewDataJson = table.Column<string>(type: "text", nullable: true),
+                    Reason = table.Column<string>(type: "text", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_audit_logs", x => x.AuditLogId);
+                    table.ForeignKey(
+                        name: "FK_audit_logs_franchises_FranchiseId",
+                        column: x => x.FranchiseId,
+                        principalTable: "franchises",
+                        principalColumn: "FranchiseId");
                     table.ForeignKey(
                         name: "FK_audit_logs_users_UserId",
                         column: x => x.UserId,
@@ -569,7 +749,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     UserId = table.Column<int>(type: "integer", nullable: false),
                     Content = table.Column<string>(type: "text", nullable: false),
                     Status = table.Column<string>(type: "text", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -588,7 +768,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 {
                     UserId = table.Column<int>(type: "integer", nullable: false),
                     FranchiseId = table.Column<int>(type: "integer", nullable: false),
-                    AssignedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    AssignedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -608,13 +788,67 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "delivery_ingredient_items",
+                columns: table => new
+                {
+                    DeliveryIngredientItemId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    DeliveryId = table.Column<int>(type: "integer", nullable: false),
+                    IngredientId = table.Column<int>(type: "integer", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_delivery_ingredient_items", x => x.DeliveryIngredientItemId);
+                    table.ForeignKey(
+                        name: "FK_delivery_ingredient_items_deliveries_DeliveryId",
+                        column: x => x.DeliveryId,
+                        principalTable: "deliveries",
+                        principalColumn: "DeliveryId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_delivery_ingredient_items_ingredients_IngredientId",
+                        column: x => x.IngredientId,
+                        principalTable: "ingredients",
+                        principalColumn: "IngredientId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "delivery_product_items",
+                columns: table => new
+                {
+                    DeliveryProductItemId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    DeliveryId = table.Column<int>(type: "integer", nullable: false),
+                    ProductId = table.Column<int>(type: "integer", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_delivery_product_items", x => x.DeliveryProductItemId);
+                    table.ForeignKey(
+                        name: "FK_delivery_product_items_deliveries_DeliveryId",
+                        column: x => x.DeliveryId,
+                        principalTable: "deliveries",
+                        principalColumn: "DeliveryId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_delivery_product_items_products_ProductId",
+                        column: x => x.ProductId,
+                        principalTable: "products",
+                        principalColumn: "ProductId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "receiving_reports",
                 columns: table => new
                 {
                     ReceivingReportId = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     DeliveryId = table.Column<int>(type: "integer", nullable: false),
-                    ReceivedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    ReceivedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -648,6 +882,11 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "DemandAggregationId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_audit_logs_FranchiseId",
+                table: "audit_logs",
+                column: "FranchiseId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_audit_logs_UserId",
                 table: "audit_logs",
                 column: "UserId");
@@ -663,10 +902,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "IngredientId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_boms_ProductId_Version",
+                name: "IX_boms_ProductId",
                 table: "boms",
-                columns: new[] { "ProductId", "Version" },
-                unique: true);
+                column: "ProductId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_deliveries_DeliveryPlanId",
@@ -674,9 +912,34 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "DeliveryPlanId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_deliveries_FromFranchiseId",
+                table: "deliveries",
+                column: "FromFranchiseId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_delivery_ingredient_items_DeliveryId",
+                table: "delivery_ingredient_items",
+                column: "DeliveryId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_delivery_ingredient_items_IngredientId",
+                table: "delivery_ingredient_items",
+                column: "IngredientId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_delivery_plans_FranchiseId",
                 table: "delivery_plans",
                 column: "FranchiseId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_delivery_product_items_DeliveryId",
+                table: "delivery_product_items",
+                column: "DeliveryId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_delivery_product_items_ProductId",
+                table: "delivery_product_items",
+                column: "ProductId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_demand_items_DemandAggregationId",
@@ -694,20 +957,28 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "FranchiseId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ingredient_batches_IngredientId_BatchCode_FranchiseId",
+                name: "IX_ingredient_batches_IngredientId",
                 table: "ingredient_batches",
-                columns: new[] { "IngredientId", "BatchCode", "FranchiseId" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ingredients_Name",
-                table: "ingredients",
-                column: "Name",
-                unique: true);
+                column: "IngredientId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_inventory_movements_BatchId",
                 table: "inventory_movements",
+                column: "BatchId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_product_batches_FranchiseId",
+                table: "product_batches",
+                column: "FranchiseId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_product_batches_ProductId",
+                table: "product_batches",
+                column: "ProductId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_product_movements_BatchId",
+                table: "product_movements",
                 column: "BatchId");
 
             migrationBuilder.CreateIndex(
@@ -731,27 +1002,19 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "FranchiseId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_products_Sku",
-                table: "products",
-                column: "Sku",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
                 name: "IX_receiving_reports_DeliveryId",
                 table: "receiving_reports",
                 column: "DeliveryId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_recipes_ProductId_Version",
+                name: "IX_recipes_ProductId",
                 table: "recipes",
-                columns: new[] { "ProductId", "Version" },
-                unique: true);
+                column: "ProductId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_roles_Name",
-                table: "roles",
-                column: "Name",
-                unique: true);
+                name: "IX_role_permissions_PermissionId",
+                table: "role_permissions",
+                column: "PermissionId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_sales_records_FranchiseId",
@@ -784,12 +1047,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "FranchiseId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_suppliers_Name",
-                table: "suppliers",
-                column: "Name",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
                 name: "IX_support_requests_UserId",
                 table: "support_requests",
                 column: "UserId");
@@ -800,21 +1057,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "FranchiseId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_users_Email",
-                table: "users",
-                column: "Email",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
                 name: "IX_users_RoleId",
                 table: "users",
                 column: "RoleId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_users_Username",
-                table: "users",
-                column: "Username",
-                unique: true);
         }
 
         /// <inheritdoc />
@@ -830,10 +1075,19 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 name: "bom_items");
 
             migrationBuilder.DropTable(
+                name: "delivery_ingredient_items");
+
+            migrationBuilder.DropTable(
+                name: "delivery_product_items");
+
+            migrationBuilder.DropTable(
                 name: "demand_items");
 
             migrationBuilder.DropTable(
                 name: "inventory_movements");
+
+            migrationBuilder.DropTable(
+                name: "product_movements");
 
             migrationBuilder.DropTable(
                 name: "production_batches");
@@ -846,6 +1100,12 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
             migrationBuilder.DropTable(
                 name: "recipes");
+
+            migrationBuilder.DropTable(
+                name: "revoked_tokens");
+
+            migrationBuilder.DropTable(
+                name: "role_permissions");
 
             migrationBuilder.DropTable(
                 name: "sales_records");
@@ -863,6 +1123,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 name: "support_requests");
 
             migrationBuilder.DropTable(
+                name: "system_settings");
+
+            migrationBuilder.DropTable(
                 name: "user_franchises");
 
             migrationBuilder.DropTable(
@@ -875,10 +1138,16 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 name: "ingredient_batches");
 
             migrationBuilder.DropTable(
+                name: "product_batches");
+
+            migrationBuilder.DropTable(
                 name: "production_plans");
 
             migrationBuilder.DropTable(
                 name: "deliveries");
+
+            migrationBuilder.DropTable(
+                name: "permissions");
 
             migrationBuilder.DropTable(
                 name: "store_orders");
@@ -890,10 +1159,10 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 name: "demand_aggregations");
 
             migrationBuilder.DropTable(
-                name: "products");
+                name: "ingredients");
 
             migrationBuilder.DropTable(
-                name: "ingredients");
+                name: "products");
 
             migrationBuilder.DropTable(
                 name: "delivery_plans");

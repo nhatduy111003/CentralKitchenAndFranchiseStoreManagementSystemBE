@@ -47,9 +47,19 @@ public class AdminProductsController : ControllerBase
         return Ok(ApiResponse.Ok("Status updated."));
     }
 
+    // Standard endpoint: DELETE /api/admin/products/123
     [HttpDelete("{id:int}")]
     public async Task<ActionResult<ApiResponse>> Deactivate(int id, CancellationToken ct)
     {
+        await _service.DeactivateAsync(id, ct);
+        return Ok(ApiResponse.Ok("Deactivated."));
+    }
+
+    // Compatibility endpoint: DELETE /api/admin/products?id=123
+    [HttpDelete]
+    public async Task<ActionResult<ApiResponse>> DeactivateByQuery([FromQuery] int id, CancellationToken ct)
+    {
+        if (id <= 0) return BadRequest(ApiResponse.Fail("id must be > 0.", errorCode: "VALIDATION_ERROR"));
         await _service.DeactivateAsync(id, ct);
         return Ok(ApiResponse.Ok("Deactivated."));
     }
