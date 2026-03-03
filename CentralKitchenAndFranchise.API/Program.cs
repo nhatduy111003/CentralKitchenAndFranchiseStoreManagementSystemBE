@@ -1,8 +1,8 @@
 ﻿// CentralKitchenAndFranchise.API/Program.cs  (FULL FILE - copy toàn bộ)
 using CentralKitchenAndFranchise.API.Middlewares;
+using CentralKitchenAndFranchise.BLL.Guards;
 using CentralKitchenAndFranchise.BLL.Services.Implementations;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
-using CentralKitchenAndFranchise.BLL.Guards;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.Repositories.Implementations;
 using CentralKitchenAndFranchise.DAL.Repositories.Interfaces;
@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using PdfSharp.Charting;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -191,6 +192,7 @@ builder.Services.AddScoped<IAllocationService, AllocationService>();
 builder.Services.AddScoped<IManagerDashboardService, ManagerDashboardService>();
 builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();
 builder.Services.AddScoped<IProductionPlanService, ProductionPlanService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
 
 var app = builder.Build();
 
