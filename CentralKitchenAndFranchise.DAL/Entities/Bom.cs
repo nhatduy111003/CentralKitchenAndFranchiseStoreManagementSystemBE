@@ -1,18 +1,18 @@
-namespace CentralKitchenAndFranchise.DAL.Entities;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 
-public class Bom
+namespace CentralKitchenAndFranchise.DAL.Entities
 {
-    public int BomId { get; set; }
+    public class Bom
+    {
+        public int BomId { get; set; }
+        public int ProductId { get; set; }
+        public int Version { get; set; }
+        public string Status { get; set; } = "DRAFT";
+        public DateTime CreatedAt { get; set; }
 
-    public int ProductId { get; set; }
-    public int Version { get; set; }
+        [NotMapped]
+        public DateTime UpdatedAt { get; set; }
 
-    // DRAFT | ACTIVE | INACTIVE
-    public string Status { get; set; } = "DRAFT";
-
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-
-    public Product Product { get; set; } = default!;
-    public ICollection<BomItem> Items { get; set; } = new List<BomItem>();
+        public ICollection<BomItem> Items { get; set; } = new List<BomItem>();
+    }
 }

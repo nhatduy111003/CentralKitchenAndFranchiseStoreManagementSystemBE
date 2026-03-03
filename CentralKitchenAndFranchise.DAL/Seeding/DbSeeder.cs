@@ -542,12 +542,10 @@ public static class DbSeeder
         var existing = db.Recipes.FirstOrDefault(x => x.ProductId == productId && x.Version == version);
         if (existing != null)
         {
-            var changed = false;
+            if (!string.Equals(existing.Status, status, StringComparison.OrdinalIgnoreCase))
+                existing.Status = status;
 
-            if (!string.Equals(existing.Status, status, StringComparison.OrdinalIgnoreCase)) { existing.Status = status; changed = true; }
-            if ((existing.Instructions ?? "") != instructions) { existing.Instructions = instructions; changed = true; }
-
-            if (changed) existing.UpdatedAt = now;
+            // DB không có UpdatedAt/Instructions -> bỏ
             return;
         }
 
@@ -556,12 +554,10 @@ public static class DbSeeder
             ProductId = productId,
             Version = version,
             Status = status,
-            Instructions = instructions,
-            CreatedAt = now,
-            UpdatedAt = now
+            CreatedAt = now
+            // UpdatedAt/Instructions: bỏ
         });
     }
-
     private static void EnsureBom(
         AppDbContext db,
         int productId,

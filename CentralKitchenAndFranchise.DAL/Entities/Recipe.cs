@@ -1,20 +1,20 @@
-﻿namespace CentralKitchenAndFranchise.DAL.Entities;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 
-public class Recipe
+namespace CentralKitchenAndFranchise.DAL.Entities
 {
-    public int RecipeId { get; set; }
+    public class Recipe
+    {
+        public int RecipeId { get; set; }
+        public int ProductId { get; set; }
+        public int Version { get; set; }
+        public string Status { get; set; } = "DRAFT";
+        public DateTime CreatedAt { get; set; }
 
-    public int ProductId { get; set; }
-    public int Version { get; set; }
+        // DB hiện tại KHÔNG có 2 cột này
+        [NotMapped]
+        public DateTime UpdatedAt { get; set; }
 
-    // DRAFT | ACTIVE | INACTIVE
-    public string Status { get; set; } = "DRAFT";
-
-    // Simple text instructions (manager-maintained)
-    public string? Instructions { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-
-    public Product Product { get; set; } = default!;
+        [NotMapped]
+        public string? Instructions { get; set; }
+    }
 }
