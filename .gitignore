@@ -1,0 +1,15 @@
+# build artifacts
+bin/
+obj/
+
+# IDE
+.vs/
+.idea/
+
+# logs
+logs/
+*.log
+
+# env
+.env
+.env.local

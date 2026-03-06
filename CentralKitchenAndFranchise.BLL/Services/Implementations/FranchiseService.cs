@@ -1,96 +1,174 @@
-﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Responses;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace CentralKitchenAndFranchise.BLL.Services.Implementations
+namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
+
+public class FranchiseService : IFranchiseService
 {
-    public class FranchiseService : IFranchiseService
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _current;
+
+    public FranchiseService(AppDbContext db, ICurrentUserService current)
     {
-        private readonly AppDbContext _context;
+        _db = db;
+        _current = current;
+    }
 
-        public FranchiseService(AppDbContext context)
+    public async Task<List<FranchiseDto>> GetAllAsync()
+    {
+        RequireAdminOrManager();
+
+        var items = await _db.Franchises
+            .AsNoTracking()
+            .OrderBy(x => x.FranchiseId)
+            .ToListAsync();
+
+        return items.Select(Map).ToList();
+    }
+
+    public async Task<FranchiseDto?> GetByIdAsync(int id)
+    {
+        RequireAdminOrManager();
+
+        var entity = await _db.Franchises.AsNoTracking().FirstOrDefaultAsync(x => x.FranchiseId == id);
+        return entity is null ? null : Map(entity);
+    }
+
+    public async Task<int> CreateAsync(FranchiseCreateDto dto)
+    {
+        RequireAdminOnly();
+        dto = dto ?? throw new ArgumentNullException(nameof(dto));
+
+        var entity = new Franchise
         {
-            _context = context;
-        }
+            Name = dto.Name.Trim(),
+            Type = dto.Type.Trim(),
+            Status = (dto.Status ?? "ACTIVE").Trim().ToUpperInvariant(),
+            Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim(),
+            Location = string.IsNullOrWhiteSpace(dto.Location) ? null : dto.Location.Trim(),
+            Latitude = dto.Latitude,
+            Longitude = dto.Longitude
+        };
 
-        public async Task<List<FranchiseDto>> GetAllAsync()
+        await _db.Franchises.AddAsync(entity);
+
+        await _db.AuditLogs.AddAsync(new AuditLog
         {
-            return await _context.Franchises
-                .Select(f => new FranchiseDto
-                {
-                    FranchiseId = f.FranchiseId,
-                    Name = f.Name,
-                    Type = f.Type,
-                    Status = f.Status,
-                    Address = f.Address,
-                    Location = f.Location
-                })
-                .ToListAsync();
-        }
+            UserId = _current.UserId,
+            FranchiseId = null,
+            Action = "CREATE",
+            EntityName = nameof(Franchise),
+            EntityId = null,
+            NewDataJson = JsonSerializer.Serialize(new { entity.Name, entity.Type, entity.Status }),
+            Reason = "Create franchise",
+            CreatedAt = DateTime.UtcNow
+        });
 
-        public async Task<FranchiseDto?> GetByIdAsync(int id)
+        await _db.SaveChangesAsync();
+        return entity.FranchiseId;
+    }
+
+    public async Task<bool> UpdateAsync(int id, FranchiseCreateDto dto)
+    {
+        RequireAdminOnly();
+        dto = dto ?? throw new ArgumentNullException(nameof(dto));
+
+        var entity = await _db.Franchises.FirstOrDefaultAsync(x => x.FranchiseId == id);
+        if (entity is null) return false;
+
+        var old = new
         {
-            var f = await _context.Franchises.FindAsync(id);
-            if (f == null) return null;
+            entity.Name,
+            entity.Type,
+            entity.Status,
+            entity.Address,
+            entity.Location,
+            entity.Latitude,
+            entity.Longitude
+        };
 
-            return new FranchiseDto
-            {
-                FranchiseId = f.FranchiseId,
-                Name = f.Name,
-                Type = f.Type,
-                Status = f.Status,
-                Address = f.Address,
-                Location = f.Location
-            };
-        }
+        entity.Name = dto.Name.Trim();
+        entity.Type = dto.Type.Trim();
+        entity.Status = (dto.Status ?? entity.Status).Trim().ToUpperInvariant();
+        entity.Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim();
+        entity.Location = string.IsNullOrWhiteSpace(dto.Location) ? null : dto.Location.Trim();
+        entity.Latitude = dto.Latitude;
+        entity.Longitude = dto.Longitude;
 
-        public async Task<int> CreateAsync(FranchiseCreateDto dto)
+        await _db.AuditLogs.AddAsync(new AuditLog
         {
-            var franchise = new Franchise
-            {
-                Name = dto.Name,
-                Type = dto.Type,
-                Status = dto.Status,
-                Address = dto.Address,
-                Location = dto.Location
-            };
+            UserId = _current.UserId,
+            FranchiseId = entity.FranchiseId,
+            Action = "UPDATE",
+            EntityName = nameof(Franchise),
+            EntityId = entity.FranchiseId,
+            OldDataJson = JsonSerializer.Serialize(old),
+            NewDataJson = JsonSerializer.Serialize(new { entity.Name, entity.Type, entity.Status, entity.Address, entity.Location, entity.Latitude, entity.Longitude }),
+            Reason = "Update franchise",
+            CreatedAt = DateTime.UtcNow
+        });
 
-            _context.Franchises.Add(franchise);
-            await _context.SaveChangesAsync();
+        await _db.SaveChangesAsync();
+        return true;
+    }
 
-            return franchise.FranchiseId;
-        }
+    public async Task<bool> DeleteAsync(int id)
+    {
+        RequireAdminOnly();
 
-        public async Task<bool> UpdateAsync(int id, FranchiseCreateDto dto)
-        {
-            var franchise = await _context.Franchises.FindAsync(id);
-            if (franchise == null) return false;
+        var entity = await _db.Franchises.FirstOrDefaultAsync(x => x.FranchiseId == id);
+        if (entity is null) return false;
 
-            franchise.Name = dto.Name;
-            franchise.Type = dto.Type;
-            franchise.Status = dto.Status;
-            franchise.Address = dto.Address;
-            franchise.Location = dto.Location;
-
-            await _context.SaveChangesAsync();
+        if (entity.Status == "INACTIVE")
             return true;
-        }
 
-        public async Task<bool> DeleteAsync(int id)
+        var old = new { entity.Status };
+
+        entity.Status = "INACTIVE";
+
+        await _db.AuditLogs.AddAsync(new AuditLog
         {
-            var franchise = await _context.Franchises.FindAsync(id);
-            if (franchise == null) return false;
+            UserId = _current.UserId,
+            FranchiseId = entity.FranchiseId,
+            Action = "DEACTIVATE",
+            EntityName = nameof(Franchise),
+            EntityId = entity.FranchiseId,
+            OldDataJson = JsonSerializer.Serialize(old),
+            NewDataJson = JsonSerializer.Serialize(new { entity.Status }),
+            Reason = "Deactivate franchise",
+            CreatedAt = DateTime.UtcNow
+        });
 
-            _context.Franchises.Remove(franchise);
-            await _context.SaveChangesAsync();
-            return true;
-        }
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    private static FranchiseDto Map(Franchise x) => new()
+    {
+        FranchiseId = x.FranchiseId,
+        Name = x.Name,
+        Type = x.Type,
+        Status = x.Status,
+        Address = x.Address,
+        Location = x.Location,
+        Latitude = x.Latitude,
+        Longitude = x.Longitude
+    };
+
+    private void RequireAdminOrManager()
+    {
+        if (!_current.IsInRole(RoleNames.Admin) && !_current.IsInRole(RoleNames.Manager))
+            throw new UnauthorizedAccessException("Only Admin/Manager can access franchises.");
+    }
+
+    private void RequireAdminOnly()
+    {
+        if (!_current.IsInRole(RoleNames.Admin))
+            throw new UnauthorizedAccessException("Only Admin can perform this action.");
     }
 }

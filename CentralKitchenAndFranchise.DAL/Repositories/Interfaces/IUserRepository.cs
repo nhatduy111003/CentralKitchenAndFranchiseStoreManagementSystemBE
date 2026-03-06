@@ -1,18 +1,8 @@
-﻿using CentralKitchenAndFranchise.DAL.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using CentralKitchenAndFranchise.DAL.Entities;
 
-namespace CentralKitchenAndFranchise.DAL.Repositories.Interfaces
+namespace CentralKitchenAndFranchise.DAL.Repositories.Interfaces;
+
+public interface IUserRepository
 {
-    public interface IUserRepository
-    {
-        Task<User?> GetByIdAsync(Guid id);
-        Task AddAsync(User user);
-        void Update(User user);
-        void Remove(User user);
-    }
-
+    Task<User?> FindByUsernameOrEmailAsync(string usernameOrEmail, CancellationToken ct = default);
 }

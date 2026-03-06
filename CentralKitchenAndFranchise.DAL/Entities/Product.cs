@@ -1,18 +1,25 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace CentralKitchenAndFranchise.DAL.Entities;
 
-namespace CentralKitchenAndFranchise.DAL.Entities
+public class Product
 {
-    public class Product
-    {
-        public int ProductId { get; set; }
-        public string Name { get; set; } = null!;
-        public string Sku { get; set; } = null!;
-        public string Unit { get; set; } = null!;
-        public string Status { get; set; } = "ACTIVE";
-    }
+    public int ProductId { get; set; }
+    public string Name { get; set; } = default!;
+    public string Sku { get; set; } = default!;
+    public string Unit { get; set; } = default!;
+    public string Status { get; set; } = "ACTIVE";
 
+    // FINISHED / SEMI_FINISHED (thu nhỏ)
+    public string ProductType { get; set; } = "FINISHED";
+
+    public ICollection<StoreCatalog> StoreCatalogs { get; set; } = new List<StoreCatalog>();
+    public ICollection<StoreOrderItem> StoreOrderItems { get; set; } = new List<StoreOrderItem>();
+    public ICollection<Bom> Boms { get; set; } = new List<Bom>();
+    public ICollection<Recipe> Recipes { get; set; } = new List<Recipe>();
+    public ICollection<ProductionPlanItem> ProductionPlanItems { get; set; } = new List<ProductionPlanItem>();
+    public ICollection<SalesRecord> SalesRecords { get; set; } = new List<SalesRecord>();
+    public ICollection<DemandItem> DemandItems { get; set; } = new List<DemandItem>();
+    public ICollection<AllocationItem> AllocationItems { get; set; } = new List<AllocationItem>();
+
+    public ICollection<ProductBatch> ProductBatches { get; set; } = new List<ProductBatch>();
+    public ICollection<DeliveryProductItem> DeliveryProductItems { get; set; } = new List<DeliveryProductItem>();
 }

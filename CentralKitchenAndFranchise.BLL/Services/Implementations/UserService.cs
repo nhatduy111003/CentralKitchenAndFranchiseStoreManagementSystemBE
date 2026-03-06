@@ -3,11 +3,6 @@ using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Requests;
 using Microsoft.EntityFrameworkCore;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 {
@@ -32,7 +27,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     Status = u.Status,
                     RoleId = u.RoleId,
                     RoleName = u.Role.Name,
-                    CreatedAt = u.CreatedAt
+
+                    // entity dùng DateTime, DTO dùng DateTimeOffset
+                    CreatedAt = new DateTimeOffset(u.CreatedAt, TimeSpan.Zero)
                 })
                 .ToListAsync();
         }
@@ -50,14 +47,16 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     Status = u.Status,
                     RoleId = u.RoleId,
                     RoleName = u.Role.Name,
-                    CreatedAt = u.CreatedAt
+                    CreatedAt = new DateTimeOffset(u.CreatedAt, TimeSpan.Zero)
                 })
                 .FirstOrDefaultAsync();
         }
 
         public async Task<UserDto> CreateAsync(CreateUserRequestDto dto)
         {
-            var passwordHash = HashPassword(dto.Password);
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+
+            var now = DateTime.UtcNow;
 
             var user = new User
             {
@@ -66,8 +65,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 PasswordHash = passwordHash,
                 RoleId = dto.RoleId,
                 Status = "ACTIVE",
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
+                CreatedAt = now,
+                UpdatedAt = now
             };
 
             _context.Users.Add(user);
@@ -86,7 +85,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 Status = user.Status,
                 RoleId = user.RoleId,
                 RoleName = roleName,
-                CreatedAt = user.CreatedAt
+                CreatedAt = new DateTimeOffset(user.CreatedAt, TimeSpan.Zero)
             };
         }
 
@@ -97,7 +96,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             user.RoleId = dto.RoleId;
             user.Status = dto.Status;
-            user.UpdatedAt = DateTimeOffset.UtcNow;
+            user.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
             return true;
@@ -111,13 +110,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             _context.Users.Remove(user);
             await _context.SaveChangesAsync();
             return true;
-        }
-
-        private static string HashPassword(string password)
-        {
-            using var sha256 = SHA256.Create();
-            var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-            return Convert.ToHexString(bytes);
         }
     }
 }

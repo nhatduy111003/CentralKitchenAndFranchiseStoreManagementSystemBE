@@ -12,15 +12,15 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CentralKitchenAndFranchise.DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260129030542_InitialCreate_Postgres")]
-    partial class InitialCreate_Postgres
+    [Migration("20260303170243_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.0")
+                .HasAnnotation("ProductVersion", "8.0.6")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -34,9 +34,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("AllocationId"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("DemandAggregationId")
                         .HasColumnType("integer");
@@ -92,14 +90,32 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("EntityId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("EntityName")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("FranchiseId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NewDataJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OldDataJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
 
                     b.Property<int?>("UserId")
                         .HasColumnType("integer");
 
                     b.HasKey("AuditLogId");
+
+                    b.HasIndex("FranchiseId");
 
                     b.HasIndex("UserId");
 
@@ -115,9 +131,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BomId"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("ProductId")
                         .HasColumnType("integer");
@@ -126,13 +140,15 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Version")
                         .HasColumnType("integer");
 
                     b.HasKey("BomId");
 
-                    b.HasIndex("ProductId", "Version")
-                        .IsUnique();
+                    b.HasIndex("ProductId");
 
                     b.ToTable("boms", (string)null);
                 });
@@ -171,19 +187,58 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("DeliveryId"));
 
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("DeliveredAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("DeliveryPlanId")
                         .HasColumnType("integer");
+
+                    b.Property<int>("FromFranchiseId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.HasKey("DeliveryId");
 
                     b.HasIndex("DeliveryPlanId");
 
+                    b.HasIndex("FromFranchiseId");
+
                     b.ToTable("deliveries", (string)null);
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DeliveryIngredientItem", b =>
+                {
+                    b.Property<int>("DeliveryIngredientItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("DeliveryIngredientItemId"));
+
+                    b.Property<int>("DeliveryId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("IngredientId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("DeliveryIngredientItemId");
+
+                    b.HasIndex("DeliveryId");
+
+                    b.HasIndex("IngredientId");
+
+                    b.ToTable("delivery_ingredient_items", (string)null);
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DeliveryPlan", b =>
@@ -207,6 +262,32 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     b.ToTable("delivery_plans", (string)null);
                 });
 
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DeliveryProductItem", b =>
+                {
+                    b.Property<int>("DeliveryProductItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("DeliveryProductItemId"));
+
+                    b.Property<int>("DeliveryId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("DeliveryProductItemId");
+
+                    b.HasIndex("DeliveryId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("delivery_product_items", (string)null);
+                });
+
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DemandAggregation", b =>
                 {
                     b.Property<int>("DemandAggregationId")
@@ -216,9 +297,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("DemandAggregationId"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateOnly>("PlanDate")
                         .HasColumnType("date");
@@ -265,8 +344,17 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     b.Property<string>("Address")
                         .HasColumnType("text");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision");
+
                     b.Property<string>("Location")
                         .HasColumnType("text");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -279,6 +367,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("FranchiseId");
 
@@ -294,13 +385,17 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("IngredientId"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("SafetyStock")
+                        .HasColumnType("numeric");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -310,10 +405,13 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.HasKey("IngredientId");
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.HasIndex("Name")
-                        .IsUnique();
+                    b.Property<decimal>("WasteThreshold")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("IngredientId");
 
                     b.ToTable("ingredients", (string)null);
                 });
@@ -346,8 +444,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasIndex("FranchiseId");
 
-                    b.HasIndex("IngredientId", "BatchCode", "FranchiseId")
-                        .IsUnique();
+                    b.HasIndex("IngredientId");
 
                     b.ToTable("ingredient_batches", (string)null);
                 });
@@ -364,12 +461,19 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("DeliveryId")
+                        .HasColumnType("integer");
 
                     b.Property<decimal>("Quantity")
                         .HasColumnType("numeric");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -382,6 +486,45 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     b.ToTable("inventory_movements", (string)null);
                 });
 
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Permission", b =>
+                {
+                    b.Property<int>("PermissionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PermissionId"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("GroupName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PermissionId");
+
+                    b.ToTable("permissions", (string)null);
+                });
+
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Product", b =>
                 {
                     b.Property<int>("ProductId")
@@ -391,6 +534,10 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ProductId"));
 
                     b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProductType")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -408,10 +555,80 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasKey("ProductId");
 
-                    b.HasIndex("Sku")
-                        .IsUnique();
-
                     b.ToTable("products", (string)null);
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductBatch", b =>
+                {
+                    b.Property<int>("BatchId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BatchId"));
+
+                    b.Property<string>("BatchCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly?>("ExpiredAt")
+                        .HasColumnType("date");
+
+                    b.Property<int>("FranchiseId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("BatchId");
+
+                    b.HasIndex("FranchiseId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("product_batches", (string)null);
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductMovement", b =>
+                {
+                    b.Property<int>("MovementId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("MovementId"));
+
+                    b.Property<int>("BatchId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("DeliveryId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("MovementId");
+
+                    b.HasIndex("BatchId");
+
+                    b.ToTable("product_movements", (string)null);
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductionBatch", b =>
@@ -423,9 +640,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ProductionBatchId"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("ProductionPlanId")
                         .HasColumnType("integer");
@@ -446,15 +661,19 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ProductionPlanId"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("FranchiseId")
                         .HasColumnType("integer");
 
                     b.Property<DateOnly>("PlanDate")
                         .HasColumnType("date");
+
+                    b.Property<int?>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdateAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("ProductionPlanId");
 
@@ -501,9 +720,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("ReceivedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("ReceivingReportId");
 
@@ -520,10 +737,11 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("RecipeId"));
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Instructions")
+                        .HasColumnType("text");
 
                     b.Property<int>("ProductId")
                         .HasColumnType("integer");
@@ -532,15 +750,40 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Version")
                         .HasColumnType("integer");
 
                     b.HasKey("RecipeId");
 
-                    b.HasIndex("ProductId", "Version")
-                        .IsUnique();
+                    b.HasIndex("ProductId");
 
                     b.ToTable("recipes", (string)null);
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.RevokedToken", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Jti")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("revoked_tokens", (string)null);
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Role", b =>
@@ -551,16 +794,38 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("RoleId"));
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("RoleId");
 
-                    b.HasIndex("Name")
-                        .IsUnique();
-
                     b.ToTable("roles", (string)null);
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.RolePermission", b =>
+                {
+                    b.Property<int>("RoleId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PermissionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("RoleId", "PermissionId");
+
+                    b.HasIndex("PermissionId");
+
+                    b.ToTable("role_permissions", (string)null);
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.SalesRecord", b =>
@@ -600,8 +865,18 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     b.Property<int>("ProductId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<decimal>("Price")
                         .HasColumnType("numeric");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("FranchiseId", "ProductId");
 
@@ -618,17 +893,33 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("StoreOrderId"));
 
+                    b.Property<string>("CancelReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("FranchiseId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("LockedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("OrderDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("StoreOrderId");
 
@@ -684,9 +975,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasKey("SupplierId");
 
-                    b.HasIndex("Name")
-                        .IsUnique();
-
                     b.ToTable("suppliers", (string)null);
                 });
 
@@ -703,9 +991,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -721,6 +1007,36 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     b.ToTable("support_requests", (string)null);
                 });
 
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.SystemSetting", b =>
+                {
+                    b.Property<int>("SystemSettingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("SystemSettingId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("SystemSettingId");
+
+                    b.ToTable("system_settings", (string)null);
+                });
+
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.User", b =>
                 {
                     b.Property<int>("UserId")
@@ -730,9 +1046,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("UserId"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -750,9 +1064,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Username")
                         .IsRequired()
@@ -760,13 +1072,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasKey("UserId");
 
-                    b.HasIndex("Email")
-                        .IsUnique();
-
                     b.HasIndex("RoleId");
-
-                    b.HasIndex("Username")
-                        .IsUnique();
 
                     b.ToTable("users", (string)null);
                 });
@@ -780,9 +1086,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("AssignedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("UserId", "FranchiseId");
 
@@ -811,13 +1115,13 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .IsRequired();
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "Franchise")
-                        .WithMany()
+                        .WithMany("AllocationItems")
                         .HasForeignKey("FranchiseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", "Product")
-                        .WithMany()
+                        .WithMany("AllocationItems")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -831,22 +1135,26 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.AuditLog", b =>
                 {
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "Franchise")
+                        .WithMany()
+                        .HasForeignKey("FranchiseId");
+
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId");
+
+                    b.Navigation("Franchise");
 
                     b.Navigation("User");
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Bom", b =>
                 {
-                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", "Product")
-                        .WithMany()
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", null)
+                        .WithMany("Boms")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.BomItem", b =>
@@ -858,7 +1166,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .IsRequired();
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Ingredient", "Ingredient")
-                        .WithMany()
+                        .WithMany("BomItems")
                         .HasForeignKey("IngredientId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -876,18 +1184,64 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "FromFranchise")
+                        .WithMany()
+                        .HasForeignKey("FromFranchiseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.Navigation("DeliveryPlan");
+
+                    b.Navigation("FromFranchise");
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DeliveryIngredientItem", b =>
+                {
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Delivery", "Delivery")
+                        .WithMany("IngredientItems")
+                        .HasForeignKey("DeliveryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Ingredient", "Ingredient")
+                        .WithMany()
+                        .HasForeignKey("IngredientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Delivery");
+
+                    b.Navigation("Ingredient");
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DeliveryPlan", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "Franchise")
-                        .WithMany()
+                        .WithMany("DeliveryPlans")
                         .HasForeignKey("FranchiseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Franchise");
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DeliveryProductItem", b =>
+                {
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Delivery", "Delivery")
+                        .WithMany("ProductItems")
+                        .HasForeignKey("DeliveryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", "Product")
+                        .WithMany("DeliveryProductItems")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Delivery");
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DemandItem", b =>
@@ -899,7 +1253,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .IsRequired();
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", "Product")
-                        .WithMany()
+                        .WithMany("DemandItems")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -912,13 +1266,13 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.IngredientBatch", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "Franchise")
-                        .WithMany()
+                        .WithMany("IngredientBatches")
                         .HasForeignKey("FranchiseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Ingredient", "Ingredient")
-                        .WithMany()
+                        .WithMany("IngredientBatches")
                         .HasForeignKey("IngredientId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -931,7 +1285,37 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.InventoryMovement", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.IngredientBatch", "Batch")
-                        .WithMany()
+                        .WithMany("InventoryMovements")
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Batch");
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductBatch", b =>
+                {
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "Franchise")
+                        .WithMany("ProductBatches")
+                        .HasForeignKey("FranchiseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", "Product")
+                        .WithMany("ProductBatches")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Franchise");
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductMovement", b =>
+                {
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.ProductBatch", "Batch")
+                        .WithMany("ProductMovements")
                         .HasForeignKey("BatchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -942,7 +1326,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductionBatch", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.ProductionPlan", "ProductionPlan")
-                        .WithMany()
+                        .WithMany("ProductionBatches")
                         .HasForeignKey("ProductionPlanId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -953,7 +1337,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductionPlan", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "Franchise")
-                        .WithMany()
+                        .WithMany("ProductionPlans")
                         .HasForeignKey("FranchiseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -964,13 +1348,13 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductionPlanItem", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", "Product")
-                        .WithMany()
+                        .WithMany("ProductionPlanItems")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.ProductionPlan", "ProductionPlan")
-                        .WithMany("ProductionPlanItems")
+                        .WithMany("Items")
                         .HasForeignKey("ProductionPlanId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -993,25 +1377,42 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Recipe", b =>
                 {
-                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", "Product")
-                        .WithMany()
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", null)
+                        .WithMany("Recipes")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
 
-                    b.Navigation("Product");
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.RolePermission", b =>
+                {
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Permission", "Permission")
+                        .WithMany("RolePermissions")
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Role", "Role")
+                        .WithMany("RolePermissions")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Permission");
+
+                    b.Navigation("Role");
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.SalesRecord", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "Franchise")
-                        .WithMany()
+                        .WithMany("SalesRecords")
                         .HasForeignKey("FranchiseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", "Product")
-                        .WithMany()
+                        .WithMany("SalesRecords")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1024,13 +1425,13 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.StoreCatalog", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "Franchise")
-                        .WithMany()
+                        .WithMany("StoreCatalogs")
                         .HasForeignKey("FranchiseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", "Product")
-                        .WithMany()
+                        .WithMany("StoreCatalogs")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1043,7 +1444,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.StoreOrder", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "Franchise")
-                        .WithMany()
+                        .WithMany("StoreOrders")
                         .HasForeignKey("FranchiseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1054,7 +1455,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.StoreOrderItem", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Product", "Product")
-                        .WithMany()
+                        .WithMany("StoreOrderItems")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1123,6 +1524,10 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Delivery", b =>
                 {
+                    b.Navigation("IngredientItems");
+
+                    b.Navigation("ProductItems");
+
                     b.Navigation("ReceivingReports");
                 });
 
@@ -1138,16 +1543,81 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Franchise", b =>
                 {
+                    b.Navigation("AllocationItems");
+
+                    b.Navigation("DeliveryPlans");
+
+                    b.Navigation("IngredientBatches");
+
+                    b.Navigation("ProductBatches");
+
+                    b.Navigation("ProductionPlans");
+
+                    b.Navigation("SalesRecords");
+
+                    b.Navigation("StoreCatalogs");
+
+                    b.Navigation("StoreOrders");
+
                     b.Navigation("UserFranchises");
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Ingredient", b =>
+                {
+                    b.Navigation("BomItems");
+
+                    b.Navigation("IngredientBatches");
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.IngredientBatch", b =>
+                {
+                    b.Navigation("InventoryMovements");
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Permission", b =>
+                {
+                    b.Navigation("RolePermissions");
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Product", b =>
+                {
+                    b.Navigation("AllocationItems");
+
+                    b.Navigation("Boms");
+
+                    b.Navigation("DeliveryProductItems");
+
+                    b.Navigation("DemandItems");
+
+                    b.Navigation("ProductBatches");
+
+                    b.Navigation("ProductionPlanItems");
+
+                    b.Navigation("Recipes");
+
+                    b.Navigation("SalesRecords");
+
+                    b.Navigation("StoreCatalogs");
+
+                    b.Navigation("StoreOrderItems");
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductBatch", b =>
+                {
+                    b.Navigation("ProductMovements");
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductionPlan", b =>
                 {
-                    b.Navigation("ProductionPlanItems");
+                    b.Navigation("Items");
+
+                    b.Navigation("ProductionBatches");
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Role", b =>
                 {
+                    b.Navigation("RolePermissions");
+
                     b.Navigation("Users");
                 });
 

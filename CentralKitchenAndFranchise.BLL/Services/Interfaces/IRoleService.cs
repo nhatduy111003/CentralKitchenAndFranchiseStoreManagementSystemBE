@@ -1,19 +1,16 @@
 ﻿using CentralKitchenAndFranchise.DTO.Requests;
-using CentralKitchenAndFranchise.DTO.Responses;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using CentralKitchenAndFranchise.DTO.Requests.Rbac;
+using CentralKitchenAndFranchise.DTO.Responses.Common;
+using CentralKitchenAndFranchise.DTO.Responses.Rbac;
 
-namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
+namespace CentralKitchenAndFranchise.BLL.Services.Interfaces;
+
+public interface IRoleService
 {
-    public interface IRoleService
-    {
-        Task<List<RoleDto>> GetAllAsync();
-        Task<RoleDto?> GetByIdAsync(int roleId);
-        Task<RoleDto> CreateAsync(RoleRequestDto dto);
-        Task<bool> UpdateAsync(int roleId, RoleRequestDto dto);
-        Task<bool> DeleteAsync(int roleId);
-    }
+    Task<PagedResult<RoleResponse>> SearchAsync(RoleListQuery query, CancellationToken ct = default);
+    Task<RoleResponse> GetByIdAsync(int id, CancellationToken ct = default);
+    Task<RoleResponse> CreateAsync(RoleRequestDto dto, CancellationToken ct = default);
+    Task<RoleResponse> UpdateAsync(int id, RoleRequestDto dto, CancellationToken ct = default);
+    Task<RoleResponse> ChangeStatusAsync(int id, ChangeEntityStatusRequest request, CancellationToken ct = default);
+    Task DeleteAsync(int id, string? reason, CancellationToken ct = default);
 }

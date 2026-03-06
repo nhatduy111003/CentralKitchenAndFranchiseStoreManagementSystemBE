@@ -1,62 +1,48 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
-using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
+using CentralKitchenAndFranchise.DTO.Requests.Rbac;
 using CentralKitchenAndFranchise.DTO.Responses;
+using CentralKitchenAndFranchise.DTO.Responses.Common;
+using CentralKitchenAndFranchise.DTO.Responses.Rbac;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
-// For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+namespace CentralKitchenAndFranchise.API.Controllers;
 
-namespace CentralKitchenAndFranchise.API.Controllers
+[ApiController]
+[Route("api/admin/roles")]
+[Authorize(Roles = RoleNames.Admin)]
+public class RolesController : ControllerBase
 {
-    [ApiController]
-    [Route("admin/roles")]
-    public class RolesController : ControllerBase
+    private readonly IRoleService _service;
+
+    public RolesController(IRoleService service) => _service = service;
+
+    [HttpGet]
+    public async Task<ActionResult<ApiResponse<PagedResult<RoleResponse>>>> GetList([FromQuery] RoleListQuery query, CancellationToken ct)
+        => Ok(ApiResponse<PagedResult<RoleResponse>>.Ok(await _service.SearchAsync(query, ct)));
+
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<ApiResponse<RoleResponse>>> GetById([FromRoute] int id, CancellationToken ct)
+        => Ok(ApiResponse<RoleResponse>.Ok(await _service.GetByIdAsync(id, ct)));
+
+    [HttpPost]
+    public async Task<ActionResult<ApiResponse<RoleResponse>>> Create([FromBody] RoleRequestDto dto, CancellationToken ct)
+        => Ok(ApiResponse<RoleResponse>.Ok(await _service.CreateAsync(dto, ct)));
+
+    [HttpPut("{id:int}")]
+    public async Task<ActionResult<ApiResponse<RoleResponse>>> Update([FromRoute] int id, [FromBody] RoleRequestDto dto, CancellationToken ct)
+        => Ok(ApiResponse<RoleResponse>.Ok(await _service.UpdateAsync(id, dto, ct)));
+
+    [HttpPatch("{id:int}/status")]
+    public async Task<ActionResult<ApiResponse<RoleResponse>>> ChangeStatus([FromRoute] int id, [FromBody] ChangeEntityStatusRequest request, CancellationToken ct)
+        => Ok(ApiResponse<RoleResponse>.Ok(await _service.ChangeStatusAsync(id, request, ct)));
+
+    [HttpDelete("{id:int}")]
+    public async Task<ActionResult<ApiResponse>> Delete([FromRoute] int id, [FromQuery] string? reason, CancellationToken ct)
     {
-        private readonly IRoleService _roleService;
-
-        public RolesController(IRoleService roleService)
-        {
-            _roleService = roleService;
-        }
-
-        [HttpGet]
-        public async Task<IActionResult> GetAll()
-        {
-            return Ok(await _roleService.GetAllAsync());
-        }
-
-        [HttpGet("{id:int}")]
-        public async Task<IActionResult> GetById(int id)
-        {
-            var role = await _roleService.GetByIdAsync(id);
-            if (role == null) return NotFound();
-            return Ok(role);
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> Create(RoleRequestDto dto)
-        {
-            var role = await _roleService.CreateAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = role.RoleId }, role);
-        }
-
-        [HttpPut("{id:int}")]
-        public async Task<IActionResult> Update(int id, RoleRequestDto dto)
-        {
-            var success = await _roleService.UpdateAsync(id, dto);
-            if (!success) return NotFound();
-            return NoContent();
-        }
-
-        [HttpDelete("{id:int}")]
-        public async Task<IActionResult> Delete(int id)
-        {
-            var success = await _roleService.DeleteAsync(id);
-            if (!success) return NotFound();
-            return NoContent();
-        }
+        await _service.DeleteAsync(id, reason, ct);
+        return Ok(ApiResponse.Ok("Deactivated"));
     }
-
 }

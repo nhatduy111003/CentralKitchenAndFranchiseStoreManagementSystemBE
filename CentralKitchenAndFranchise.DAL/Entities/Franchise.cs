@@ -1,21 +1,30 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace CentralKitchenAndFranchise.DAL.Entities;
 
-namespace CentralKitchenAndFranchise.DAL.Entities
+public class Franchise
 {
-    public class Franchise
-    {
-        public int FranchiseId { get; set; }
-        public string Name { get; set; } = null!;
-        public string Type { get; set; } = null!;
-        public string Status { get; set; } = null!;
-        public string? Address { get; set; }
-        public string? Location { get; set; }
+    public int FranchiseId { get; set; }
+    public string Name { get; set; } = default!;
+    public string Type { get; set; } = default!;
+    public string Status { get; set; } = default!;
+    public string? Address { get; set; }
+    public string? Location { get; set; }
+    public double? Latitude { get; set; }
 
-        public ICollection<UserFranchise> UserFranchises { get; set; } = new List<UserFranchise>();
-    }
+    public double? Longitude { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 
+    public ICollection<UserFranchise> UserFranchises { get; set; } = new List<UserFranchise>();
+
+    public ICollection<StoreCatalog> StoreCatalogs { get; set; } = new List<StoreCatalog>();
+    public ICollection<StoreOrder> StoreOrders { get; set; } = new List<StoreOrder>();
+    public ICollection<IngredientBatch> IngredientBatches { get; set; } = new List<IngredientBatch>();
+    public ICollection<ProductBatch> ProductBatches { get; set; } = new List<ProductBatch>();
+
+    public ICollection<ProductionPlan> ProductionPlans { get; set; } = new List<ProductionPlan>();
+
+    public ICollection<DeliveryPlan> DeliveryPlans { get; set; } = new List<DeliveryPlan>();
+    public ICollection<SalesRecord> SalesRecords { get; set; } = new List<SalesRecord>();
+
+    public ICollection<AllocationItem> AllocationItems { get; set; } = new List<AllocationItem>();
 }
