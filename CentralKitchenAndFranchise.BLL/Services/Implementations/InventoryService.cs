@@ -766,6 +766,182 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 total);
         }
 
+        public async Task<PagedResult<IngredientInventoryHistoryResponse>> GetStoreIngredientHistoryAsync(
+    int franchiseId,
+    InventoryHistoryQuery query,
+    CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            query ??= new InventoryHistoryQuery();
+
+            var page = query.Page <= 0 ? 1 : query.Page;
+            var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+            if (pageSize > 200) pageSize = 200;
+
+            var sortBy = (query.SortBy ?? "createdAt").Trim().ToLowerInvariant();
+            var sortDir = (query.SortDir ?? "desc").Trim().ToLowerInvariant();
+            if (sortDir is not ("asc" or "desc"))
+                throw new ArgumentException("sortDir must be asc or desc.");
+
+            var type = (query.Type ?? "ALL").Trim().ToUpperInvariant();
+
+            IQueryable<InventoryMovement> q = _db.InventoryMovements
+                .AsNoTracking()
+                .Include(x => x.Batch)
+                    .ThenInclude(b => b.Ingredient)
+                .Where(x =>
+                    x.Batch.FranchiseId == franchiseId &&
+                    x.Batch.Type == InventoryOwnerType.Franchise);
+
+            if (type != "ALL")
+                q = q.Where(x => x.Type == type);
+
+            if (query.IngredientId.HasValue && query.IngredientId.Value > 0)
+                q = q.Where(x => x.Batch.IngredientId == query.IngredientId.Value);
+
+            if (query.FromUtc.HasValue)
+            {
+                var from = DateTime.SpecifyKind(query.FromUtc.Value, DateTimeKind.Utc);
+                q = q.Where(x => x.CreatedAt >= from);
+            }
+
+            if (query.ToUtc.HasValue)
+            {
+                var to = DateTime.SpecifyKind(query.ToUtc.Value, DateTimeKind.Utc);
+                q = q.Where(x => x.CreatedAt <= to);
+            }
+
+            if (!string.IsNullOrWhiteSpace(query.Q))
+            {
+                var term = query.Q.Trim();
+                q = q.Where(x =>
+                    EF.Functions.ILike(x.Batch.Ingredient.Name, $"%{term}%") ||
+                    EF.Functions.ILike(x.Batch.BatchCode, $"%{term}%") ||
+                    (x.Reason != null && EF.Functions.ILike(x.Reason, $"%{term}%")));
+            }
+
+            q = ApplyIngredientHistorySort(q, sortBy, sortDir);
+
+            var total = await q.CountAsync(ct);
+
+            var items = await q
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(x => new IngredientInventoryHistoryResponse
+                {
+                    MovementId = x.MovementId,
+                    BatchId = x.BatchId,
+                    IngredientId = x.Batch.IngredientId,
+                    IngredientName = x.Batch.Ingredient.Name,
+                    Unit = x.Batch.Ingredient.Unit,
+                    BatchCode = x.Batch.BatchCode,
+                    ExpiredAt = x.Batch.ExpiredAt,
+                    Type = x.Type,
+                    Quantity = x.Quantity,
+                    DeliveryId = x.DeliveryId,
+                    CreatedByUserId = x.CreatedByUserId,
+                    Reason = x.Reason,
+                    CreatedAt = x.CreatedAt
+                })
+                .ToListAsync(ct);
+
+            return PagedResult<IngredientInventoryHistoryResponse>.Create(
+                items,
+                page,
+                pageSize,
+                total);
+        }
+
+        public async Task<PagedResult<ProductInventoryHistoryResponse>> GetStoreProductHistoryAsync(
+    int franchiseId,
+    InventoryHistoryQuery query,
+    CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            query ??= new InventoryHistoryQuery();
+
+            var page = query.Page <= 0 ? 1 : query.Page;
+            var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+            if (pageSize > 200) pageSize = 200;
+
+            var sortBy = (query.SortBy ?? "createdAt").Trim().ToLowerInvariant();
+            var sortDir = (query.SortDir ?? "desc").Trim().ToLowerInvariant();
+            if (sortDir is not ("asc" or "desc"))
+                throw new ArgumentException("sortDir must be asc or desc.");
+
+            var type = (query.Type ?? "ALL").Trim().ToUpperInvariant();
+
+            IQueryable<ProductMovement> q = _db.ProductMovements
+                .AsNoTracking()
+                .Include(x => x.Batch)
+                    .ThenInclude(b => b.Product)
+                .Where(x => x.Batch.FranchiseId == franchiseId);
+
+            if (type != "ALL")
+                q = q.Where(x => x.Type == type);
+
+            if (query.ProductId.HasValue && query.ProductId.Value > 0)
+                q = q.Where(x => x.Batch.ProductId == query.ProductId.Value);
+
+            if (query.FromUtc.HasValue)
+            {
+                var from = DateTime.SpecifyKind(query.FromUtc.Value, DateTimeKind.Utc);
+                q = q.Where(x => x.CreatedAt >= from);
+            }
+
+            if (query.ToUtc.HasValue)
+            {
+                var to = DateTime.SpecifyKind(query.ToUtc.Value, DateTimeKind.Utc);
+                q = q.Where(x => x.CreatedAt <= to);
+            }
+
+            if (!string.IsNullOrWhiteSpace(query.Q))
+            {
+                var term = query.Q.Trim();
+                q = q.Where(x =>
+                    EF.Functions.ILike(x.Batch.Product.Name, $"%{term}%") ||
+                    EF.Functions.ILike(x.Batch.Product.Sku, $"%{term}%") ||
+                    EF.Functions.ILike(x.Batch.BatchCode, $"%{term}%") ||
+                    (x.Reason != null && EF.Functions.ILike(x.Reason, $"%{term}%")));
+            }
+
+            q = ApplyProductHistorySort(q, sortBy, sortDir);
+
+            var total = await q.CountAsync(ct);
+
+            var items = await q
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(x => new ProductInventoryHistoryResponse
+                {
+                    MovementId = x.MovementId,
+                    BatchId = x.BatchId,
+                    ProductId = x.Batch.ProductId,
+                    ProductName = x.Batch.Product.Name,
+                    Sku = x.Batch.Product.Sku,
+                    Unit = x.Batch.Product.Unit,
+                    ProductType = x.Batch.Product.ProductType,
+                    BatchCode = x.Batch.BatchCode,
+                    ExpiredAt = x.Batch.ExpiredAt,
+                    Type = x.Type,
+                    Quantity = x.Quantity,
+                    DeliveryId = x.DeliveryId,
+                    CreatedByUserId = x.CreatedByUserId,
+                    Reason = x.Reason,
+                    CreatedAt = x.CreatedAt
+                })
+                .ToListAsync(ct);
+
+            return PagedResult<ProductInventoryHistoryResponse>.Create(
+                items,
+                page,
+                pageSize,
+                total);
+        }
+
+        //HELPERS
         private async Task<int> GetIntSettingAsync(string key, int fallback, CancellationToken ct)
         {
             var raw = await _db.SystemSettings
@@ -778,6 +954,52 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 return value;
 
             return fallback;
+        }
+
+        private static IQueryable<InventoryMovement> ApplyIngredientHistorySort(
+    IQueryable<InventoryMovement> q,
+    string sortBy,
+    string sortDir)
+        {
+            var desc = sortDir == "desc";
+
+            return sortBy switch
+            {
+                "quantity" => desc
+                    ? q.OrderByDescending(x => x.Quantity).ThenByDescending(x => x.MovementId)
+                    : q.OrderBy(x => x.Quantity).ThenBy(x => x.MovementId),
+
+                "type" => desc
+                    ? q.OrderByDescending(x => x.Type).ThenByDescending(x => x.MovementId)
+                    : q.OrderBy(x => x.Type).ThenBy(x => x.MovementId),
+
+                "createdat" or _ => desc
+                    ? q.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.MovementId)
+                    : q.OrderBy(x => x.CreatedAt).ThenBy(x => x.MovementId),
+            };
+        }
+
+        private static IQueryable<ProductMovement> ApplyProductHistorySort(
+            IQueryable<ProductMovement> q,
+            string sortBy,
+            string sortDir)
+        {
+            var desc = sortDir == "desc";
+
+            return sortBy switch
+            {
+                "quantity" => desc
+                    ? q.OrderByDescending(x => x.Quantity).ThenByDescending(x => x.MovementId)
+                    : q.OrderBy(x => x.Quantity).ThenBy(x => x.MovementId),
+
+                "type" => desc
+                    ? q.OrderByDescending(x => x.Type).ThenByDescending(x => x.MovementId)
+                    : q.OrderBy(x => x.Type).ThenBy(x => x.MovementId),
+
+                "createdat" or _ => desc
+                    ? q.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.MovementId)
+                    : q.OrderBy(x => x.CreatedAt).ThenBy(x => x.MovementId),
+            };
         }
     }
 }

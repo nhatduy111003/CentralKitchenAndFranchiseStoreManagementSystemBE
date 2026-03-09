@@ -60,9 +60,9 @@ namespace CentralKitchenAndFranchise.API.Controllers
         [HttpGet("ingredients")]
         [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff},{RoleNames.KitchenStaff}")]
         public async Task<ActionResult<ApiResponse<PagedResult<StoreIngredientInventoryResponse>>>> GetIngredientInventory(
-    int franchiseId,
-    [FromQuery] InventoryListQuery query,
-    CancellationToken ct)
+            int franchiseId,
+            [FromQuery] InventoryListQuery query,
+            CancellationToken ct)
         {
             var data = await _service.GetStoreIngredientInventoryAsync(franchiseId, query, ct);
             return Ok(ApiResponse<PagedResult<StoreIngredientInventoryResponse>>.Ok(data));
@@ -77,6 +77,28 @@ namespace CentralKitchenAndFranchise.API.Controllers
         {
             var data = await _service.GetStoreProductInventoryAsync(franchiseId, query, ct);
             return Ok(ApiResponse<PagedResult<StoreProductInventoryResponse>>.Ok(data));
+        }
+
+        [HttpGet("ingredients/history")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff},{RoleNames.KitchenStaff}")]
+        public async Task<ActionResult<ApiResponse<PagedResult<IngredientInventoryHistoryResponse>>>> GetIngredientHistory(
+            int franchiseId,
+            [FromQuery] InventoryHistoryQuery query,
+            CancellationToken ct)
+        {
+            var data = await _service.GetStoreIngredientHistoryAsync(franchiseId, query, ct);
+            return Ok(ApiResponse<PagedResult<IngredientInventoryHistoryResponse>>.Ok(data));
+        }
+
+        [HttpGet("products/history")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff},{RoleNames.KitchenStaff}")]
+        public async Task<ActionResult<ApiResponse<PagedResult<ProductInventoryHistoryResponse>>>> GetProductHistory(
+            int franchiseId,
+            [FromQuery] InventoryHistoryQuery query,
+            CancellationToken ct)
+        {
+            var data = await _service.GetStoreProductHistoryAsync(franchiseId, query, ct);
+            return Ok(ApiResponse<PagedResult<ProductInventoryHistoryResponse>>.Ok(data));
         }
     }
 }

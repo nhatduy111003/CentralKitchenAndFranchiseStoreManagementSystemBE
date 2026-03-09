@@ -30,13 +30,23 @@ namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
             CancellationToken ct = default);
 
         Task<PagedResult<StoreIngredientInventoryResponse>> GetStoreIngredientInventoryAsync(
-        int franchiseId,
-        InventoryListQuery query,
-        CancellationToken ct = default);
+            int franchiseId,
+            InventoryListQuery query,
+            CancellationToken ct = default);
 
         Task<PagedResult<StoreProductInventoryResponse>> GetStoreProductInventoryAsync(
-       int franchiseId,
-       InventoryListQuery query,
-       CancellationToken ct = default);
+           int franchiseId,
+           InventoryListQuery query,
+           CancellationToken ct = default);
+
+        Task<PagedResult<IngredientInventoryHistoryResponse>> GetStoreIngredientHistoryAsync(
+            int franchiseId,
+            InventoryHistoryQuery query,
+            CancellationToken ct = default);
+
+        Task<PagedResult<ProductInventoryHistoryResponse>> GetStoreProductHistoryAsync(
+            int franchiseId,
+            InventoryHistoryQuery query,
+            CancellationToken ct = default);
     }
 }
