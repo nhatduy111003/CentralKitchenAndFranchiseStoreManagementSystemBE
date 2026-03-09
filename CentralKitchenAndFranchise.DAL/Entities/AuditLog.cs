@@ -6,7 +6,7 @@ public class AuditLog
 
     public int? UserId { get; set; }
     public int? FranchiseId { get; set; }
-
+    public int? CentralKitchenId { get; set; }
     public string Action { get; set; } = null!;
 
     public string? EntityName { get; set; }
@@ -18,7 +18,7 @@ public class AuditLog
     public string? Reason { get; set; }
 
     public DateTime CreatedAt { get; set; }
-
+    public CentralKitchen? CentralKitchen { get; set; }
     public User? User { get; set; }
     public Franchise? Franchise { get; set; }
 }

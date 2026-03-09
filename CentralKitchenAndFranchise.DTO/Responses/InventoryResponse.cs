@@ -9,7 +9,7 @@ namespace CentralKitchenAndFranchise.DTO.Responses
     public class IssueIngredientsByProductionPlanResponse
     {
         public int ProductionPlanId { get; set; }
-        public int FranchiseId { get; set; }
+        public int CentralKitchenId { get; set; }
         public DateOnly PlanDate { get; set; }
         public DateTime IssuedAt { get; set; }
 

@@ -6,12 +6,7 @@ using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.ProductionPlans;
 using CentralKitchenAndFranchise.DTO.Responses.ProductionPlans;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 {
@@ -29,45 +24,63 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         }
 
         // BR-31 + BR-32: Generate plan theo PlanDate (cycle=ngày) từ TẤT CẢ đơn LOCKED
-        public async Task<ProductionPlanResponse> CreateAsync(int franchiseId, CreateProductionPlanDto request, CancellationToken ct = default)
+        // của các franchise thuộc CentralKitchen
+        public async Task<ProductionPlanResponse> CreateAsync(
+            int centralKitchenId,
+            CreateProductionPlanDto request,
+            CancellationToken ct = default)
         {
             if (request.PlanDate == default)
                 throw new ArgumentException("PlanDate is required.");
 
-            await _access.EnsureCanAccessAsync(franchiseId, ct);
+            await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
-            // prevent duplicate plan (FranchiseId + PlanDate)
-            var exists = await _db.ProductionPlans.AsNoTracking()
-                .AnyAsync(x => x.FranchiseId == franchiseId && x.PlanDate == request.PlanDate, ct);
+            var exists = await _db.ProductionPlans
+                .AsNoTracking()
+                .AnyAsync(x => x.CentralKitchenId == centralKitchenId && x.PlanDate == request.PlanDate, ct);
 
             if (exists)
                 throw new InvalidOperationException("Production plan already exists for this date.");
 
-            // BR-31: lấy TẤT CẢ đơn hợp lệ (LOCKED) của ngày đó
+            // Lấy các franchise thuộc central kitchen
+            var franchiseIds = await _db.Franchises
+                .AsNoTracking()
+                .Where(f => f.CentralKitchenId == centralKitchenId)
+                .Select(f => f.FranchiseId)
+                .ToListAsync(ct);
+
+            if (franchiseIds.Count == 0)
+                throw new InvalidOperationException("No franchises found for this central kitchen.");
+
+            // BR-31: lấy TẤT CẢ đơn LOCKED của ngày đó thuộc các franchise do CK quản lý
             var lockedOrders = await _db.StoreOrders
                 .AsNoTracking()
-                .Where(o => o.OrderDate == request.PlanDate && o.Status == StoreOrderStatus.Locked)
+                .Where(o =>
+                    o.OrderDate == request.PlanDate &&
+                    o.Status == StoreOrderStatus.Locked &&
+                    franchiseIds.Contains(o.FranchiseId))
                 .Include(o => o.Items)
                 .ToListAsync(ct);
 
             if (lockedOrders.Count == 0)
                 throw new InvalidOperationException("No LOCKED orders found for this date.");
 
-            // aggregate
             var productMap = lockedOrders
                 .SelectMany(o => o.Items)
                 .GroupBy(i => i.ProductId)
                 .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
 
-            // validate product active
-            var ids = productMap.Keys.ToList();
-            var activeIds = await _db.Products.AsNoTracking()
-                .Where(p => ids.Contains(p.ProductId) && p.Status == "ACTIVE")
+            var productIds = productMap.Keys.ToList();
+
+            var activeIds = await _db.Products
+                .AsNoTracking()
+                .Where(p => productIds.Contains(p.ProductId) && p.Status == ProductStatus.Active)
                 .Select(p => p.ProductId)
                 .ToListAsync(ct);
 
             var activeSet = activeIds.ToHashSet();
-            var missing = ids.Where(id => !activeSet.Contains(id)).ToList();
+            var missing = productIds.Where(id => !activeSet.Contains(id)).ToList();
+
             if (missing.Count > 0)
                 throw new InvalidOperationException("Some products are not ACTIVE or not found.");
 
@@ -77,7 +90,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             var plan = new ProductionPlan
             {
-                FranchiseId = franchiseId,
+                CentralKitchenId = centralKitchenId,
                 PlanDate = request.PlanDate,
                 Status = ProductionPlanStatus.DRAFT,
                 CreatedAt = now
@@ -98,79 +111,93 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             await _db.SaveChangesAsync(ct);
 
-            // Audit log (tạo plan cũng nên log)
             await AddAuditAsync(
-                action: "PRODUCTION_PLAN_CREATE",
-                franchiseId: franchiseId,
+                action: AuditAction.ProductionPlanCreate,
+                centralKitchenId: centralKitchenId,
                 entityName: "ProductionPlan",
                 entityId: plan.ProductionPlanId,
                 oldObj: null,
                 newObj: new
                 {
+                    CentralKitchenId = centralKitchenId,
                     plan.PlanDate,
                     Status = plan.Status.ToString(),
                     Items = productMap,
-                    LockedOrderIds = lockedOrders.Select(o => o.StoreOrderId).ToList()
+                    LockedOrderIds = lockedOrders.Select(o => o.StoreOrderId).ToList(),
+                    FranchiseIds = franchiseIds
                 },
                 reason: null,
                 ct: ct);
 
             await tx.CommitAsync(ct);
 
-            return await GetByIdAsync(franchiseId, plan.ProductionPlanId, ct);
+            return await GetByIdAsync(centralKitchenId, plan.ProductionPlanId, ct);
         }
 
         // BR-33: update status phải ghi log
-        public async Task<ProductionPlanResponse> UpdateStatusAsync(int franchiseId, int productionPlanId, UpdateProductionPlanStatusDto request, CancellationToken ct = default)
+        public async Task<ProductionPlanResponse> UpdateStatusAsync(
+            int centralKitchenId,
+            int productionPlanId,
+            UpdateProductionPlanStatusDto request,
+            CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(request.Status))
                 throw new ArgumentException("Status is required.");
 
-            await _access.EnsureCanAccessAsync(franchiseId, ct);
+            await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
             var plan = await _db.ProductionPlans
-                .FirstOrDefaultAsync(x => x.ProductionPlanId == productionPlanId && x.FranchiseId == franchiseId, ct);
+                .FirstOrDefaultAsync(
+                    x => x.ProductionPlanId == productionPlanId &&
+                         x.CentralKitchenId == centralKitchenId,
+                    ct);
 
             if (plan is null)
                 throw new KeyNotFoundException($"ProductionPlan {productionPlanId} not found.");
 
-            // parse string -> enum
-            if (!Enum.TryParse<ProductionPlanStatus>(request.Status.Trim(), ignoreCase: true, out var newStatus))
+            if (!Enum.TryParse<ProductionPlanStatus>(request.Status.Trim(), true, out var newStatus))
                 throw new ArgumentException("Invalid status value, must be DRAFT/CONFIRMED/IN_PROGRESS/COMPLETED/CANCELLED.");
 
             var old = new { Status = plan.Status?.ToString() };
 
-            // ---- FIX HERE: plan.Status is nullable (ProductionPlanStatus?)
             if (plan.Status is null)
                 throw new InvalidOperationException("ProductionPlan status is null (invalid data).");
 
             EnsureValidTransition(plan.Status.Value, newStatus);
-            // -----------------------------------------------
 
             plan.Status = newStatus;
 
             await _db.SaveChangesAsync(ct);
 
             await AddAuditAsync(
-                action: "PRODUCTION_PLAN_STATUS_UPDATE",
-                franchiseId: franchiseId,
+                action: AuditAction.ProductionPlanStatusUpdate,
+                centralKitchenId: centralKitchenId,
                 entityName: "ProductionPlan",
                 entityId: plan.ProductionPlanId,
                 oldObj: old,
-                newObj: new { Status = plan.Status?.ToString() },
+                newObj: new
+                {
+                    CentralKitchenId = centralKitchenId,
+                    Status = plan.Status?.ToString()
+                },
                 reason: string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim(),
                 ct: ct);
 
-            return await GetByIdAsync(franchiseId, plan.ProductionPlanId, ct);
+            return await GetByIdAsync(centralKitchenId, plan.ProductionPlanId, ct);
         }
 
-        public async Task<ProductionPlanResponse> GetByIdAsync(int franchiseId, int productionPlanId, CancellationToken ct = default)
+        public async Task<ProductionPlanResponse> GetByIdAsync(
+            int centralKitchenId,
+            int productionPlanId,
+            CancellationToken ct = default)
         {
-            await _access.EnsureCanAccessAsync(franchiseId, ct);
+            await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
-            var plan = await _db.ProductionPlans.AsNoTracking()
-                .Where(x => x.ProductionPlanId == productionPlanId && x.FranchiseId == franchiseId)
-                .Include(x => x.Items).ThenInclude(i => i.Product)
+            var plan = await _db.ProductionPlans
+                .AsNoTracking()
+                .Where(x => x.ProductionPlanId == productionPlanId && x.CentralKitchenId == centralKitchenId)
+                .Include(x => x.Items)
+                    .ThenInclude(i => i.Product)
                 .FirstOrDefaultAsync(ct);
 
             if (plan is null)
@@ -179,7 +206,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             return new ProductionPlanResponse
             {
                 ProductionPlanId = plan.ProductionPlanId,
-                FranchiseId = plan.FranchiseId,
+                CentralKitchenId = plan.CentralKitchenId,
                 PlanDate = plan.PlanDate,
                 Status = plan.Status?.ToString() ?? "UNKNOWN",
                 CreatedAt = plan.CreatedAt,
@@ -216,7 +243,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
         private async Task AddAuditAsync(
             string action,
-            int franchiseId,
+            int centralKitchenId,
             string entityName,
             int entityId,
             object? oldObj,
@@ -227,7 +254,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             var log = new AuditLog
             {
                 UserId = _current.UserId,
-                FranchiseId = franchiseId,
+                FranchiseId = null,
+                CentralKitchenId = centralKitchenId,
                 Action = action,
                 EntityName = entityName,
                 EntityId = entityId,

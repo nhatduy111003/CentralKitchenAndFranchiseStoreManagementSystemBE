@@ -76,6 +76,7 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 
         public DbSet<User> Users => Set<User>();
         public DbSet<Franchise> Franchises => Set<Franchise>();
+        public DbSet<CentralKitchen> CentralKitchens => Set<CentralKitchen>();
         public DbSet<UserFranchise> UserFranchises => Set<UserFranchise>();
 
         public DbSet<Ingredient> Ingredients => Set<Ingredient>();
@@ -126,7 +127,23 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 
             modelBuilder.Entity<User>(e => { e.ToTable("users"); e.HasKey(x => x.UserId); });
 
-            modelBuilder.Entity<Franchise>(e => { e.ToTable("franchises"); e.HasKey(x => x.FranchiseId); });
+            modelBuilder.Entity<CentralKitchen>(e =>
+            {
+                e.ToTable("central_kitchens");
+                e.HasKey(x => x.CentralKitchenId);
+            });
+
+            modelBuilder.Entity<Franchise>(e =>
+            {
+                e.ToTable("franchises");
+                e.HasKey(x => x.FranchiseId);
+
+                e.HasOne(f => f.CentralKitchen)
+                    .WithMany(c => c.Franchises)
+                    .HasForeignKey(f => f.CentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
             modelBuilder.Entity<UserFranchise>(e =>
             {
                 e.ToTable("user_franchises");
@@ -137,7 +154,6 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             modelBuilder.Entity<Supplier>(e => { e.ToTable("suppliers"); e.HasKey(x => x.SupplierId); });
             modelBuilder.Entity<Product>(e => { e.ToTable("products"); e.HasKey(x => x.ProductId); });
 
-            // store_catalog: DB bạn đang là singular
             modelBuilder.Entity<StoreCatalog>(e =>
             {
                 e.ToTable("store_catalog");
@@ -156,8 +172,16 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             modelBuilder.Entity<AllocationItem>(e => { e.ToTable("allocation_items"); e.HasKey(x => x.AllocationItemId); });
 
             // production
-            modelBuilder.Entity<ProductionPlan>(e => { e.ToTable("production_plans"); e.HasKey(x => x.ProductionPlanId); });
-            modelBuilder.Entity<ProductionPlanItem>(e => { e.ToTable("production_plan_items"); e.HasKey(x => x.ProductionPlanItemId); });
+            modelBuilder.Entity<ProductionPlan>(e =>
+            {
+                e.ToTable("production_plans");
+                e.HasKey(x => x.ProductionPlanId);
+
+                e.HasOne(x => x.CentralKitchen)
+                    .WithMany(x => x.ProductionPlans)
+                    .HasForeignKey(x => x.CentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            }); modelBuilder.Entity<ProductionPlanItem>(e => { e.ToTable("production_plan_items"); e.HasKey(x => x.ProductionPlanItemId); });
             modelBuilder.Entity<ProductionBatch>(e => { e.ToTable("production_batches"); e.HasKey(x => x.ProductionBatchId); });
 
             // recipe / bom
@@ -166,7 +190,42 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             modelBuilder.Entity<BomItem>(e => { e.ToTable("bom_items"); e.HasKey(x => x.BomItemId); });
 
             // inventory
-            modelBuilder.Entity<IngredientBatch>(e => { e.ToTable("ingredient_batches"); e.HasKey(x => x.BatchId); });
+            modelBuilder.Entity<IngredientBatch>(e =>
+            {
+                e.ToTable("ingredient_batches", tb =>
+                {
+                    tb.HasCheckConstraint(
+                        "CK_ingredient_batches_type_owner",
+                        @"
+                        (
+                            ""Type"" = 'FRANCHISE'
+                            AND ""FranchiseId"" IS NOT NULL
+                            AND ""CentralKitchenId"" IS NULL
+                        )
+                        OR
+                        (
+                            ""Type"" = 'CENTRAL_KITCHEN'
+                            AND ""FranchiseId"" IS NULL
+                            AND ""CentralKitchenId"" IS NOT NULL
+                        )");
+                });
+
+                e.HasKey(x => x.BatchId);
+
+                e.Property(x => x.Type)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                e.HasOne(x => x.Franchise)
+                    .WithMany(x => x.IngredientBatches)
+                    .HasForeignKey(x => x.FranchiseId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.CentralKitchen)
+                    .WithMany(x => x.IngredientBatches)
+                    .HasForeignKey(x => x.CentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
             modelBuilder.Entity<InventoryMovement>(e => { e.ToTable("inventory_movements"); e.HasKey(x => x.MovementId); });
 
             modelBuilder.Entity<ProductBatch>(e => { e.ToTable("product_batches"); e.HasKey(x => x.BatchId); });
