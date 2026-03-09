@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CentralKitchenAndFranchise.DTO.Responses
+namespace CentralKitchenAndFranchise.DTO.Responses.Inventory
 {
     public class IssueIngredientsByProductionPlanResponse
     {

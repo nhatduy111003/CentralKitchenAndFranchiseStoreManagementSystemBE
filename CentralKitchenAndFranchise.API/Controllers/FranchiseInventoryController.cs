@@ -1,7 +1,10 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
+using CentralKitchenAndFranchise.DTO.Requests.Inventory;
 using CentralKitchenAndFranchise.DTO.Responses;
+using CentralKitchenAndFranchise.DTO.Responses.Common;
+using CentralKitchenAndFranchise.DTO.Responses.Inventory;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -52,6 +55,28 @@ namespace CentralKitchenAndFranchise.API.Controllers
         {
             var data = await _service.InboundProductAsync(franchiseId, request, ct);
             return Ok(ApiResponse<ProductInboundResponse>.Ok(data));
+        }
+
+        [HttpGet("ingredients")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff},{RoleNames.KitchenStaff}")]
+        public async Task<ActionResult<ApiResponse<PagedResult<StoreIngredientInventoryResponse>>>> GetIngredientInventory(
+    int franchiseId,
+    [FromQuery] InventoryListQuery query,
+    CancellationToken ct)
+        {
+            var data = await _service.GetStoreIngredientInventoryAsync(franchiseId, query, ct);
+            return Ok(ApiResponse<PagedResult<StoreIngredientInventoryResponse>>.Ok(data));
+        }
+
+        [HttpGet("products")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff},{RoleNames.KitchenStaff}")]
+        public async Task<ActionResult<ApiResponse<PagedResult<StoreProductInventoryResponse>>>> GetProductInventory(
+            int franchiseId,
+            [FromQuery] InventoryListQuery query,
+            CancellationToken ct)
+        {
+            var data = await _service.GetStoreProductInventoryAsync(franchiseId, query, ct);
+            return Ok(ApiResponse<PagedResult<StoreProductInventoryResponse>>.Ok(data));
         }
     }
 }
