@@ -10,6 +10,7 @@ namespace CentralKitchenAndFranchise.API.Controllers;
 [ApiController]
 [Route("/api/admin/users")]
 [Authorize]
+[AllowAnonymous]
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;

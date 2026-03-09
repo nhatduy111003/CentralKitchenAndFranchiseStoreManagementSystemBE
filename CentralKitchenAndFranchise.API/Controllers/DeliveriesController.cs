@@ -53,4 +53,12 @@ public class DeliveriesController : ControllerBase
         await _service.ConfirmAsync(deliveryId, ct);
         return Ok(ApiResponse.Ok("Confirmed"));
     }
+
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
+    [HttpPost("api/deliveries/{deliveryId:int}/receive-confirm")]
+    public async Task<ActionResult<ApiResponse>> ReceiveConfirm([FromRoute] int deliveryId, CancellationToken ct)
+    {
+        await _service.ReceiveConfirmAsync(deliveryId, ct);
+        return Ok(ApiResponse.Ok("Received and completed."));
+    }
 }

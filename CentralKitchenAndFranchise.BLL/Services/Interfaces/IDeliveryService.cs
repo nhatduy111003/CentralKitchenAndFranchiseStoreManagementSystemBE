@@ -14,4 +14,6 @@ public interface IDeliveryService
     Task UpsertIngredientItemsAsync(int deliveryId, List<UpsertDeliveryIngredientItemRequest> items, CancellationToken ct = default);
 
     Task ConfirmAsync(int deliveryId, CancellationToken ct = default);
+
+    Task ReceiveConfirmAsync(int deliveryId, CancellationToken ct = default);
 }

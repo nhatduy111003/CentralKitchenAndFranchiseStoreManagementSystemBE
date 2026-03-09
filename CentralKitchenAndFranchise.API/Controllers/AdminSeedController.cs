@@ -14,6 +14,7 @@ namespace CentralKitchenAndFranchise.API.Controllers;
 [ApiController]
 [Route("api/admin/seed")]
 [Authorize(Roles = RoleNames.Admin)]
+[AllowAnonymous]
 public class AdminSeedController : ControllerBase
 {
     private readonly AppDbContext _db;
