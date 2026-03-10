@@ -28,18 +28,15 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 .AnyAsync(x => x.FranchiseId == franchiseId);
 
             if (!userExists || !franchiseExists)
-                throw new Exception("User or Franchise not found");
+                throw new Exception("Không tìm thấy người dùng hoặc bếp");
 
             var existingAssignment = await _context.UserFranchises
                 .FirstOrDefaultAsync(x => x.UserId == userId);
 
             if (existingAssignment != null)
             {
-                // Nếu đã thuộc franchise này → báo lỗi
                 if (existingAssignment.FranchiseId == franchiseId)
-                    throw new Exception("User already assigned to this franchise");
-
-                // Move sang franchise mới
+                    throw new Exception("User đã được gán vào Franchise này");
                 existingAssignment.FranchiseId = franchiseId;
                 existingAssignment.AssignedAt = DateTime.UtcNow;
             }
