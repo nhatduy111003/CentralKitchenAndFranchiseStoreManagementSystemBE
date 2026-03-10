@@ -34,8 +34,8 @@ public class IngredientService : IIngredientService
         if (status is not (IngredientStatus.Active or IngredientStatus.Inactive or "ALL"))
             throw new ArgumentException("status must be ACTIVE, INACTIVE, or ALL.");
 
-        var sortBy = (query.SortBy ?? "name").Trim();
-        var sortDir = (query.SortDir ?? "asc").Trim().ToLowerInvariant();
+        var sortBy = (query.SortBy ?? "createdat").Trim();
+        var sortDir = (query.SortDir ?? "desc").Trim().ToLowerInvariant();
         if (sortDir is not ("asc" or "desc"))
             throw new ArgumentException("sortDir must be asc or desc.");
 
@@ -209,11 +209,36 @@ public class IngredientService : IIngredientService
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {
-        await ChangeStatusAsync(id, new ChangeIngredientStatusRequest
+        RequireAdminOrManager();
+
+        var entity = await _uow.Ingredients.GetByIdAsync(id, ct);
+        if (entity is null)
+            throw new KeyNotFoundException($"Ingredient {id} not found.");
+
+        var old = new
         {
-            Status = IngredientStatus.Inactive,
-            Reason = "Deactivated via DELETE endpoint"
+            entity.IngredientId,
+            entity.Name,
+            entity.Unit,
+            entity.Price,
+            entity.Status
+        };
+
+        _uow.Ingredients.Remove(entity);
+
+        await _db.AuditLogs.AddAsync(new AuditLog
+        {
+            UserId = _current.UserId,
+            Action = "DELETE",
+            EntityName = "Ingredient",
+            EntityId = entity.IngredientId,
+            OldDataJson = JsonSerializer.Serialize(old),
+            NewDataJson = null,
+            Reason = "Hard delete ingredient",
+            CreatedAt = DateTime.UtcNow
         }, ct);
+
+        await _uow.SaveChangesAsync(ct);
     }
 
     private static IQueryable<Ingredient> ApplySort(IQueryable<Ingredient> q, string sortBy, string sortDir)
@@ -245,8 +270,7 @@ public class IngredientService : IIngredientService
             "wastethreshold" => desc ? q.OrderByDescending(x => x.WasteThreshold).ThenByDescending(x => x.IngredientId)
                                      : q.OrderBy(x => x.WasteThreshold).ThenBy(x => x.IngredientId),
 
-            _ => desc ? q.OrderByDescending(x => x.Name).ThenByDescending(x => x.IngredientId)
-                      : q.OrderBy(x => x.Name).ThenBy(x => x.IngredientId)
+            _ => q.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.IngredientId)
         };
     }
 
