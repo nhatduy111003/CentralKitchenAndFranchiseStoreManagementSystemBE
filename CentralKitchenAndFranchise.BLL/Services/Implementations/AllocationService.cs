@@ -35,6 +35,20 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
         public async Task AddItemAsync(int allocationId, AddAllocationItemDto dto)
         {
+            var franchiseExists = await _db.Franchises
+        .AnyAsync(x => x.FranchiseId == dto.FranchiseId);
+
+            if (!franchiseExists)
+                throw new Exception("Franchise không tồn tại");
+
+            var productExists = await _db.Products
+                .AnyAsync(x => x.ProductId == dto.ProductId);
+
+            if (!productExists)
+                throw new Exception("Product không tồn tại");
+
+            if (dto.Quantity <= 0)
+                throw new Exception("Số lượng phải lớn hơn 0");
             var item = new AllocationItem
             {
                 AllocationId = allocationId,

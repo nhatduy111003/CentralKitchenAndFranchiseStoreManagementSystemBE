@@ -28,6 +28,9 @@ namespace CentralKitchenAndFranchise.API.Controllers
         [HttpPost("{id}/items")]
         public async Task<IActionResult> AddItem(int id, AddAllocationItemDto dto)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
             await _service.AddItemAsync(id, dto);
             return Ok();
         }
