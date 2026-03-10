@@ -1,0 +1,15 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CentralKitchenAndFranchise.DTO.Requests.Demands
+{
+    public class AddDemandItemDto
+    {
+        public int ProductId { get; set; }
+        public decimal Quantity { get; set; }
+    }
+
+}
