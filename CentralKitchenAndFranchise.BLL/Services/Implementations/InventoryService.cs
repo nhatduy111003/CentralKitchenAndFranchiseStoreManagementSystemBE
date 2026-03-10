@@ -1001,6 +1001,115 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     : q.OrderBy(x => x.CreatedAt).ThenBy(x => x.MovementId),
             };
         }
+
+        public async Task<IngredientWasteResponse> CreateIngredientWasteAsync(
+            int franchiseId,
+            CreateIngredientWasteDto request,
+            CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            if (request == null)
+                throw new ArgumentException("Request body is required.");
+
+            if (request.BatchId <= 0)
+                throw new ArgumentException("BatchId must be positive.");
+
+            if (request.Quantity <= 0)
+                throw new ArgumentException("Quantity must be > 0.");
+
+            if (string.IsNullOrWhiteSpace(request.Reason))
+                throw new ArgumentException("Reason is required.");
+
+            var batch = await _db.IngredientBatches
+                .FirstOrDefaultAsync(b =>
+                    b.BatchId == request.BatchId &&
+                    b.Type == InventoryOwnerType.Franchise &&
+                    b.FranchiseId == franchiseId,
+                    ct);
+
+            if (batch is null)
+                throw new KeyNotFoundException($"IngredientBatch {request.BatchId} not found.");
+
+            var before = batch.Quantity;
+            if (before < request.Quantity)
+                throw new InvalidOperationException("Waste quantity exceeds available stock.");
+
+            var after = before - request.Quantity;
+            var now = DateTime.UtcNow;
+            var reason = BuildReason(request.Reason, request.Reference);
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            batch.Quantity = after;
+            await _db.SaveChangesAsync(ct);
+
+            var mv = new InventoryMovement
+            {
+                BatchId = batch.BatchId,
+                Type = "WASTE",
+                Quantity = request.Quantity,
+                CreatedByUserId = _current.UserId,
+                Reason = reason,
+                CreatedAt = now
+            };
+
+            _db.InventoryMovements.Add(mv);
+            await _db.SaveChangesAsync(ct);
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                UserId = _current.UserId,
+                FranchiseId = franchiseId,
+                Action = "INGREDIENT_WASTE",
+                EntityName = "IngredientBatch",
+                EntityId = batch.BatchId,
+                OldDataJson = JsonSerializer.Serialize(new
+                {
+                    batch.BatchId,
+                    batch.IngredientId,
+                    batch.BatchCode,
+                    batch.ExpiredAt,
+                    Quantity = before
+                }),
+                NewDataJson = JsonSerializer.Serialize(new
+                {
+                    batch.BatchId,
+                    batch.IngredientId,
+                    batch.BatchCode,
+                    batch.ExpiredAt,
+                    Quantity = after,
+                    Movement = new
+                    {
+                        mv.MovementId,
+                        mv.Type,
+                        WasteQuantity = request.Quantity,
+                        mv.CreatedAt,
+                        mv.Reason
+                    }
+                }),
+                Reason = reason,
+                CreatedAt = now
+            });
+
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
+            return new IngredientWasteResponse
+            {
+                BatchId = batch.BatchId,
+                MovementId = mv.MovementId,
+                FranchiseId = franchiseId,
+                IngredientId = batch.IngredientId,
+                BatchCode = batch.BatchCode,
+                ExpiredAt = batch.ExpiredAt,
+                BeforeQuantity = before,
+                WasteQuantity = request.Quantity,
+                AfterQuantity = after,
+                Reason = reason,
+                CreatedAt = now
+            };
+        }
     }
 }
 

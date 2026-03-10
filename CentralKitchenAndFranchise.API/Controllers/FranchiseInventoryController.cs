@@ -100,5 +100,16 @@ namespace CentralKitchenAndFranchise.API.Controllers
             var data = await _service.GetStoreProductHistoryAsync(franchiseId, query, ct);
             return Ok(ApiResponse<PagedResult<ProductInventoryHistoryResponse>>.Ok(data));
         }
+
+        [HttpPost("ingredients/waste")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
+        public async Task<ActionResult<ApiResponse<IngredientWasteResponse>>> CreateIngredientWaste(
+            int franchiseId,
+            [FromBody] CreateIngredientWasteDto request,
+            CancellationToken ct)
+        {
+            var data = await _service.CreateIngredientWasteAsync(franchiseId, request, ct);
+            return Ok(ApiResponse<IngredientWasteResponse>.Ok(data));
+        }
     }
 }

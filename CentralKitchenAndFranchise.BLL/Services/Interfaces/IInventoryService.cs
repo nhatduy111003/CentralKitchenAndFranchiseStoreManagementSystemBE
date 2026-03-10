@@ -48,5 +48,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
             int franchiseId,
             InventoryHistoryQuery query,
             CancellationToken ct = default);
+
+        Task<IngredientWasteResponse> CreateIngredientWasteAsync(
+            int franchiseId,
+            CreateIngredientWasteDto request,
+            CancellationToken ct = default);
     }
 }
