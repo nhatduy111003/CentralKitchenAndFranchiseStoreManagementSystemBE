@@ -1,8 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.UnitOfWork;
 using CentralKitchenAndFranchise.DTO.Config;
+using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.Auth;
 using CentralKitchenAndFranchise.DTO.Responses.Auth;
 using Microsoft.Extensions.Options;
@@ -38,13 +40,15 @@ public class AuthService : Interfaces.IAuthService
 
         var expires = DateTime.UtcNow.AddMinutes(_jwt.ExpiresInMinutes);
         var token = GenerateJwt(user.UserId, user.Username, user.Role.Name, expires);
+        var assignment = user.WorkAssignments.FirstOrDefault();
 
         return new LoginResponse
         {
             AccessToken = token,
             ExpiresInSeconds = (int)TimeSpan.FromMinutes(_jwt.ExpiresInMinutes).TotalSeconds,
             UserId = user.UserId,
-            FranchiseId = user.UserFranchises.FirstOrDefault()?.FranchiseId ?? 0,
+            FranchiseId = (int) (assignment?.AssignmentType == WorkAssignmentTypes.Franchise ? assignment.FranchiseId : 0),
+            CentralKitchenId = (int)(assignment?.AssignmentType == WorkAssignmentTypes.CentralKitchen ? assignment.CentralKitchenId : 0),
             Username = user.Username,
             Role = user.Role.Name
         };

@@ -115,7 +115,7 @@ public class ManagerDashboardService : IManagerDashboardService
 
     private async Task<List<int>> GetScopeFranchiseIdsAsync(CancellationToken ct)
     {
-        if (_current.IsInRole(RoleNames.Admin))
+        if (_current.IsInRole(RoleNames.Admin) || _current.IsInRole(RoleNames.Manager))
         {
             return await _db.Franchises
                 .AsNoTracking()
@@ -124,18 +124,8 @@ public class ManagerDashboardService : IManagerDashboardService
                 .ToListAsync(ct);
         }
 
-        return await _db.UserFranchises
-            .AsNoTracking()
-            .Where(uf => uf.UserId == _current.UserId)
-            .Join(
-                _db.Franchises.AsNoTracking().Where(f => f.Status == OrganizationStatus.Active),
-                uf => uf.FranchiseId,
-                f => f.FranchiseId,
-                (uf, f) => f.FranchiseId)
-            .Distinct()
-            .ToListAsync(ct);
+        return new List<int>();
     }
-
     private async Task<(
         DateOnly fromDate,
         DateOnly toDate,

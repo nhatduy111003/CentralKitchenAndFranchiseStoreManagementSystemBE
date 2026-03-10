@@ -5,6 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Intergrations\**" />
+    <EmbeddedResource Remove="Intergrations\**" />
+    <None Remove="Intergrations\**" />
+  </ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
 		<PackageReference Include="CloudinaryDotNet" Version="1.27.8" />
@@ -12,10 +18,6 @@
 		<PackageReference Include="payOS" Version="2.0.1" />
 		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
 	</ItemGroup>
-  <ItemGroup>
-    <Folder Include="Intergrations\Implementations\" />
-    <Folder Include="Intergrations\Interfaces\" />
-  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\CentralKitchenAndFranchise.DAL\CentralKitchenAndFranchise.DAL.csproj" />
   </ItemGroup>

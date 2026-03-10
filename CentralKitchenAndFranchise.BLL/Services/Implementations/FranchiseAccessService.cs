@@ -29,10 +29,12 @@ public class FranchiseAccessService : IFranchiseAccessService
         // Manager/StoreStaff scoped by user_franchises
         if ( _current.IsInRole(RoleNames.StoreStaff) )
         {
-            var ok = await _db.UserFranchises
+            var ok = await _db.UserWorkAssignments
                 .AsNoTracking()
-                .AnyAsync(x => x.UserId == _current.UserId && x.FranchiseId == franchiseId, ct);
-
+                .AnyAsync(x =>
+                    x.UserId == _current.UserId &&
+                    x.AssignmentType == WorkAssignmentTypes.Franchise &&
+                    x.FranchiseId == franchiseId, ct);
             if (!ok)
                 throw new ForbiddenAccessException("You do not have access to this franchise.");
 
@@ -53,10 +55,12 @@ public class FranchiseAccessService : IFranchiseAccessService
         // Manager/StoreStaff scoped by user_franchises
         if (_current.IsInRole(RoleNames.KitchenStaff))
         {
-            var ok = await _db.UserFranchises
+            var ok = await _db.UserWorkAssignments
                 .AsNoTracking()
-                .AnyAsync(x => x.UserId == _current.UserId && x.FranchiseId == ckId, ct);
-
+                .AnyAsync(x =>
+                    x.UserId == _current.UserId &&
+                    x.AssignmentType == WorkAssignmentTypes.CentralKitchen &&
+                    x.CentralKitchenId == ckId, ct);
             if (!ok)
                 throw new ForbiddenAccessException("You do not have access to this franchise.");
 

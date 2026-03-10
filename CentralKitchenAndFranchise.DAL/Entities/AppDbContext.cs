@@ -77,6 +77,7 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         public DbSet<User> Users => Set<User>();
         public DbSet<Franchise> Franchises => Set<Franchise>();
         public DbSet<CentralKitchen> CentralKitchens => Set<CentralKitchen>();
+        public DbSet<UserWorkAssignment> UserWorkAssignments => Set<UserWorkAssignment>();
         public DbSet<UserFranchise> UserFranchises => Set<UserFranchise>();
 
         public DbSet<Ingredient> Ingredients => Set<Ingredient>();
@@ -143,7 +144,41 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .HasForeignKey(f => f.CentralKitchenId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
+            modelBuilder.Entity<UserWorkAssignment>(e =>
+            {
+                e.ToTable("user_work_assignments");
 
+                e.HasKey(x => x.UserWorkAssignmentId);
+
+                e.Property(x => x.AssignmentType)
+                    .HasMaxLength(50)
+                    .IsRequired();
+
+                e.HasOne(x => x.User)
+                    .WithMany(x => x.WorkAssignments)
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                e.HasOne(x => x.Franchise)
+                    .WithMany(x => x.WorkAssignments)
+                    .HasForeignKey(x => x.FranchiseId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.CentralKitchen)
+                    .WithMany(x => x.WorkAssignments)
+                    .HasForeignKey(x => x.CentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasCheckConstraint(
+                            "CK_user_work_assignments_owner",
+                            @"(
+                    (assignment_type = 'FRANCHISE' AND franchise_id IS NOT NULL AND central_kitchen_id IS NULL)
+                    OR
+                    (assignment_type = 'CENTRAL_KITCHEN' AND franchise_id IS NULL AND central_kitchen_id IS NOT NULL)
+                )");
+
+                e.HasIndex(x => x.UserId).IsUnique();
+            });
             modelBuilder.Entity<UserFranchise>(e =>
             {
                 e.ToTable("user_franchises");

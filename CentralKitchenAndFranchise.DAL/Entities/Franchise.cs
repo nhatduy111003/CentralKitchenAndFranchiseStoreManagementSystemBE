@@ -17,8 +17,7 @@ public class Franchise
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
-    public ICollection<UserFranchise> UserFranchises { get; set; } = new List<UserFranchise>();
-
+    public ICollection<UserWorkAssignment> WorkAssignments { get; set; } = new List<UserWorkAssignment>();
     public ICollection<StoreCatalog> StoreCatalogs { get; set; } = new List<StoreCatalog>();
     public ICollection<StoreOrder> StoreOrders { get; set; } = new List<StoreOrder>();
     public ICollection<IngredientBatch> IngredientBatches { get; set; } = new List<IngredientBatch>();

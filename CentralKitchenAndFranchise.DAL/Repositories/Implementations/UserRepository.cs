@@ -15,7 +15,7 @@ public class UserRepository : IUserRepository
         var key = usernameOrEmail.Trim().ToLower();
         return _db.Users
             .Include(x => x.Role)
-            .Include(x => x.UserFranchises)
+            .Include(x => x.WorkAssignments)
             .FirstOrDefaultAsync(x =>
                 x.Username.ToLower() == key || x.Email.ToLower() == key, ct);
     }
