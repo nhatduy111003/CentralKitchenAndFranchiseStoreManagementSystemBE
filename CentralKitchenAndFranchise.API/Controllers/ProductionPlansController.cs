@@ -33,11 +33,13 @@ namespace CentralKitchenAndFranchise.API.Controllers
             return Ok(ApiResponse<ProductionPlanResponse>.Ok(data));
         }
 
+        [HttpPatch("{productionPlanId:int}/status")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.KitchenStaff}")]
         public async Task<ActionResult<ApiResponse<ProductionPlanResponse>>> UpdateStatus(
-        int centralKitchenId,
-        int productionPlanId,
-        [FromBody] UpdateProductionPlanStatusDto request,
-        CancellationToken ct)
+    int centralKitchenId,
+    int productionPlanId,
+    [FromBody] UpdateProductionPlanStatusDto request,
+    CancellationToken ct)
         {
             var data = await _service.UpdateStatusAsync(centralKitchenId, productionPlanId, request, ct);
             return Ok(ApiResponse<ProductionPlanResponse>.Ok(data));
