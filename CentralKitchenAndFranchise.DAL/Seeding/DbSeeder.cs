@@ -151,7 +151,7 @@ public static class DbSeeder
         return fr;
     }
 
-    // ===== Users + UserFranchise assignment =====
+    // ===== Users + UserWorkAssignment =====
     private static void SeedUsers(AppDbContext db)
     {
         var now = DateTime.UtcNow;
@@ -174,16 +174,43 @@ public static class DbSeeder
         var storeQ1 = EnsureUser(db, StoreQ1Username, StoreQ1Email, storeRoleId, now);
         var storeQ7 = EnsureUser(db, StoreQ7Username, StoreQ7Email, storeRoleId, now);
 
-        // Assign store staff to their franchise
-        EnsureUserFranchise(db, storeQ1.UserId, frQ1.FranchiseId, now);
-        EnsureUserFranchise(db, storeQ7.UserId, frQ7.FranchiseId, now);
+        // Assign OU-scoped users by UserWorkAssignment
+        EnsureUserWorkAssignment(
+            db,
+            storeQ1.UserId,
+            WorkAssignmentTypes.Franchise,
+            frQ1.FranchiseId,
+            null,
+            now);
 
-        // Optional: supply/kitchen could be associated with central kitchen (depends your flow)
-        var central = db.Franchises.First(x => x.Name == "Central Kitchen - HCMC");
-        EnsureUserFranchise(db, supply.UserId, central.FranchiseId, now);
-        EnsureUserFranchise(db, kitchen.UserId, central.FranchiseId, now);
+        EnsureUserWorkAssignment(
+            db,
+            storeQ7.UserId,
+            WorkAssignmentTypes.Franchise,
+            frQ7.FranchiseId,
+            null,
+            now);
 
-        // Admin/Manager are global by design -> no need to assign (and UserFranchise enforces 1 franchise per user)
+        // Supply / kitchen staff belong to central kitchen scope
+        var centralKitchen = db.CentralKitchens.First(x => x.Name == "Central Kitchen - HCMC");
+
+        EnsureUserWorkAssignment(
+            db,
+            supply.UserId,
+            WorkAssignmentTypes.CentralKitchen,
+            null,
+            centralKitchen.CentralKitchenId,
+            now);
+
+        EnsureUserWorkAssignment(
+            db,
+            kitchen.UserId,
+            WorkAssignmentTypes.CentralKitchen,
+            null,
+            centralKitchen.CentralKitchenId,
+            now);
+
+        // Admin/Manager are global by design -> no assignment required
         db.SaveChanges();
     }
 
@@ -234,26 +261,40 @@ public static class DbSeeder
         return user;
     }
 
-    private static void EnsureUserFranchise(AppDbContext db, int userId, int franchiseId, DateTime now)
+    private static void EnsureUserWorkAssignment(
+    AppDbContext db,
+    int userId,
+    string assignmentType,
+    int? franchiseId,
+    int? centralKitchenId,
+    DateTime now)
     {
-        // Constraint: Enforce single franchise per user (unique index on UserId)
-        var existing = db.UserFranchises.FirstOrDefault(x => x.UserId == userId);
+        var existing = db.UserWorkAssignments.FirstOrDefault(x => x.UserId == userId);
+
         if (existing == null)
         {
-            db.UserFranchises.Add(new UserFranchise
+            db.UserWorkAssignments.Add(new UserWorkAssignment
             {
                 UserId = userId,
+                AssignmentType = assignmentType,
                 FranchiseId = franchiseId,
+                CentralKitchenId = centralKitchenId,
                 AssignedAt = now
             });
             return;
         }
 
-        if (existing.FranchiseId != franchiseId)
-        {
-            existing.FranchiseId = franchiseId;
-            existing.AssignedAt = now;
-        }
+        var changed =
+            !string.Equals(existing.AssignmentType, assignmentType, StringComparison.OrdinalIgnoreCase) ||
+            existing.FranchiseId != franchiseId ||
+            existing.CentralKitchenId != centralKitchenId;
+
+        if (!changed) return;
+
+        existing.AssignmentType = assignmentType;
+        existing.FranchiseId = franchiseId;
+        existing.CentralKitchenId = centralKitchenId;
+        existing.AssignedAt = now;
     }
 
     // ===== System Settings =====

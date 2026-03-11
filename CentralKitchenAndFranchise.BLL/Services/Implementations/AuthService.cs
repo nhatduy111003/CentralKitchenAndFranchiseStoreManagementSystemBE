@@ -47,8 +47,13 @@ public class AuthService : Interfaces.IAuthService
             AccessToken = token,
             ExpiresInSeconds = (int)TimeSpan.FromMinutes(_jwt.ExpiresInMinutes).TotalSeconds,
             UserId = user.UserId,
-            FranchiseId = (int) (assignment?.AssignmentType == WorkAssignmentTypes.Franchise ? assignment.FranchiseId : 0),
-            CentralKitchenId = (int)(assignment?.AssignmentType == WorkAssignmentTypes.CentralKitchen ? assignment.CentralKitchenId : 0),
+            FranchiseId = assignment?.AssignmentType == WorkAssignmentTypes.Franchise
+                ? assignment.FranchiseId ?? 0
+                : 0,
+
+            CentralKitchenId = assignment?.AssignmentType == WorkAssignmentTypes.CentralKitchen
+                ? assignment.CentralKitchenId ?? 0
+                : 0,
             Username = user.Username,
             Role = user.Role.Name
         };

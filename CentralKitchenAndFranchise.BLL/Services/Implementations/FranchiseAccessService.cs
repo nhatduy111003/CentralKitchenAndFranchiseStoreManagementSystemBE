@@ -26,7 +26,7 @@ public class FranchiseAccessService : IFranchiseAccessService
         if (_current.IsInRole(RoleNames.Admin) || _current.IsInRole(RoleNames.Manager))
             return;
 
-        // Manager/StoreStaff scoped by user_franchises
+        // StoreStaff is franchise-scoped by user_work_assignments
         if ( _current.IsInRole(RoleNames.StoreStaff) )
         {
             var ok = await _db.UserWorkAssignments
@@ -52,7 +52,7 @@ public class FranchiseAccessService : IFranchiseAccessService
         if (_current.IsInRole(RoleNames.Admin) || _current.IsInRole(RoleNames.Manager))
             return;
 
-        // Manager/StoreStaff scoped by user_franchises
+        // KitchenStaff is central-kitchen-scoped by user_work_assignments
         if (_current.IsInRole(RoleNames.KitchenStaff))
         {
             var ok = await _db.UserWorkAssignments
@@ -62,11 +62,10 @@ public class FranchiseAccessService : IFranchiseAccessService
                     x.AssignmentType == WorkAssignmentTypes.CentralKitchen &&
                     x.CentralKitchenId == ckId, ct);
             if (!ok)
-                throw new ForbiddenAccessException("You do not have access to this franchise.");
-
+                throw new ForbiddenAccessException("You do not have access to this central kitchen.");
             return;
         }
 
-        throw new ForbiddenAccessException("You do not have permission to access this franchise.");
+        throw new ForbiddenAccessException("You do not have permission to access this central kitchen.");
     }
 }
