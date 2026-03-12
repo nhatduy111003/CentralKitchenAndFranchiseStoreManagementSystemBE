@@ -85,14 +85,27 @@ public class IngredientService : IIngredientService
     {
         RequireAdminOrManager();
 
+        if (request.SupplierId.HasValue)
+        {
+            var supplierExists = await _db.Suppliers.AsNoTracking()
+                .AnyAsync(x => x.SupplierId == request.SupplierId.Value);
+
+            if (!supplierExists)
+                throw new KeyNotFoundException($"Supplier {request.SupplierId.Value} not found.");
+        }
+
         if (string.IsNullOrWhiteSpace(request.Name)) throw new ArgumentException("Name is required.");
         if (string.IsNullOrWhiteSpace(request.Unit)) throw new ArgumentException("Unit is required.");
         if (request.Price < 0) throw new ArgumentException("Price must be >= 0.");
+
+        if (request.ShelfLifeDays <= 0)
+            throw new ArgumentException("ShelfLifeDays must be greater than or equal to 0.");
 
         var now = DateTime.UtcNow;
 
         var entity = new Ingredient
         {
+            SupplierId = request.SupplierId,
             Name = request.Name.Trim(),
             Unit = request.Unit.Trim(),
             Status = IngredientStatus.Active,
@@ -102,7 +115,8 @@ public class IngredientService : IIngredientService
             SafetyStock = request.SafetyStock,
             WasteThreshold = request.WasteThreshold,
             CreatedAt = now,
-            UpdatedAt = now
+            UpdatedAt = now,
+            ShelfLifeDays = request.ShelfLifeDays,
         };
 
         await _uow.Ingredients.AddAsync(entity, ct);
@@ -132,8 +146,12 @@ public class IngredientService : IIngredientService
     {
         RequireAdminOrManager();
 
+
+
         var entity = await _uow.Ingredients.GetByIdAsync(id, ct);
         if (entity is null) throw new KeyNotFoundException($"Ingredient {id} not found.");
+        if (request.ShelfLifeDays <= 0)
+            throw new ArgumentException("ShelfLifeDays must be greater than 0.");
         if (request.Price < 0) throw new ArgumentException("Price must be >= 0.");
 
         var old = new
@@ -143,7 +161,8 @@ public class IngredientService : IIngredientService
             entity.Status,
             entity.Price,         
             entity.SafetyStock,
-            entity.WasteThreshold
+            entity.WasteThreshold,
+            entity.ShelfLifeDays,
         };
 
         entity.Name = request.Name.Trim();
@@ -151,6 +170,7 @@ public class IngredientService : IIngredientService
         entity.Price = request.Price; 
         entity.SafetyStock = request.SafetyStock;
         entity.WasteThreshold = request.WasteThreshold;
+        entity.ShelfLifeDays = request.ShelfLifeDays;
         entity.UpdatedAt = DateTime.UtcNow;
 
         _uow.Ingredients.Update(entity);
@@ -300,7 +320,9 @@ public class IngredientService : IIngredientService
 
     private static IngredientResponse ToDto(Ingredient x) => new()
     {
+        SupplierId = x.SupplierId,
         Id = x.IngredientId,
+        SupplierName = x.Supplier?.Name,
         Name = x.Name,
         Unit = x.Unit,
         Status = x.Status,
@@ -310,6 +332,7 @@ public class IngredientService : IIngredientService
         SafetyStock = x.SafetyStock,
         WasteThreshold = x.WasteThreshold,
         CreatedAt = new DateTimeOffset(DateTime.SpecifyKind(x.CreatedAt, DateTimeKind.Utc)),
-        UpdatedAt = new DateTimeOffset(DateTime.SpecifyKind(x.UpdatedAt, DateTimeKind.Utc))
+        UpdatedAt = new DateTimeOffset(DateTime.SpecifyKind(x.UpdatedAt, DateTimeKind.Utc)),
+        ShelfLifeDays = x.ShelfLifeDays,
     };
 }

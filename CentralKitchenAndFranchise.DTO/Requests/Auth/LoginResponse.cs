@@ -8,6 +8,7 @@ public class LoginResponse
 
     public int UserId { get; set; }
     public int FranchiseId { get; set; }
+    public int CentralKitchenId { get; set; }
     public string Username { get; set; } = default!;
     public string Role { get; set; } = default!;
 }

@@ -7,8 +7,8 @@ public class Product
     public string Sku { get; set; } = default!;
     public string Unit { get; set; } = default!;
     public string Status { get; set; } = "ACTIVE";
-
-    // FINISHED / SEMI_FINISHED (thu nhỏ)
+    public int ShelfLifeDays { get; set; }
+    // FINISHED / SEMI_FINISHED 
     public string ProductType { get; set; } = "FINISHED";
 
     public ICollection<StoreCatalog> StoreCatalogs { get; set; } = new List<StoreCatalog>();

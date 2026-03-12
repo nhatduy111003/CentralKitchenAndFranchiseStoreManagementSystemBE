@@ -26,13 +26,15 @@ public class FranchiseAccessService : IFranchiseAccessService
         if (_current.IsInRole(RoleNames.Admin) || _current.IsInRole(RoleNames.Manager))
             return;
 
-        // Manager/StoreStaff scoped by user_franchises
-        if ( _current.IsInRole(RoleNames.StoreStaff) || _current.IsInRole(RoleNames.KitchenStaff))
+        // StoreStaff is franchise-scoped by user_work_assignments
+        if ( _current.IsInRole(RoleNames.StoreStaff) )
         {
-            var ok = await _db.UserFranchises
+            var ok = await _db.UserWorkAssignments
                 .AsNoTracking()
-                .AnyAsync(x => x.UserId == _current.UserId && x.FranchiseId == franchiseId, ct);
-
+                .AnyAsync(x =>
+                    x.UserId == _current.UserId &&
+                    x.AssignmentType == WorkAssignmentTypes.Franchise &&
+                    x.FranchiseId == franchiseId, ct);
             if (!ok)
                 throw new ForbiddenAccessException("You do not have access to this franchise.");
 
@@ -40,5 +42,30 @@ public class FranchiseAccessService : IFranchiseAccessService
         }
 
         throw new ForbiddenAccessException("You do not have permission to access this franchise.");
+    }
+
+    public async Task EnsureCanAccessCentralKitchenAsync(int ckId, CancellationToken ct = default)
+    {
+        if (ckId <= 0)
+            throw new ArgumentException("centralKitchenId must be a positive integer.");
+
+        if (_current.IsInRole(RoleNames.Admin) || _current.IsInRole(RoleNames.Manager))
+            return;
+
+        // KitchenStaff is central-kitchen-scoped by user_work_assignments
+        if (_current.IsInRole(RoleNames.KitchenStaff))
+        {
+            var ok = await _db.UserWorkAssignments
+                .AsNoTracking()
+                .AnyAsync(x =>
+                    x.UserId == _current.UserId &&
+                    x.AssignmentType == WorkAssignmentTypes.CentralKitchen &&
+                    x.CentralKitchenId == ckId, ct);
+            if (!ok)
+                throw new ForbiddenAccessException("You do not have access to this central kitchen.");
+            return;
+        }
+
+        throw new ForbiddenAccessException("You do not have permission to access this central kitchen.");
     }
 }

@@ -20,4 +20,7 @@ public class ProductUpdateRequest
     [Required]
     [StringLength(30)]
     public string ProductType { get; set; } = default!;
+
+    [Range(1, int.MaxValue)]
+    public int ShelfLifeDays { get; set; }
 }
