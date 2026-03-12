@@ -2,7 +2,7 @@
 
 public interface IFranchiseAccessService
 {
-    // Admin: luôn true. Manager: phải thuộc user_franchises. Role khác: false.
+    // Admin,Manager: luôn true. Role khác: false.
     Task EnsureCanAccessAsync(int franchiseId, CancellationToken ct = default);
     Task EnsureCanAccessCentralKitchenAsync(int ckId, CancellationToken ct = default);
 

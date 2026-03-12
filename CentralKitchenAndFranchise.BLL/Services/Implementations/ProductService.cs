@@ -75,7 +75,8 @@ public class ProductService : IProductService
                 Sku = x.Sku,
                 Unit = x.Unit,
                 Status = x.Status,
-                ProductType = x.ProductType
+                ProductType = x.ProductType,
+                ShelfLifeDays = x.ShelfLifeDays
             })
             .ToListAsync(ct);
 
@@ -98,7 +99,8 @@ public class ProductService : IProductService
             Sku = p.Sku,
             Unit = p.Unit,
             Status = p.Status,
-            ProductType = p.ProductType
+            ProductType = p.ProductType,
+            ShelfLifeDays = p.ShelfLifeDays
         };
     }
 
@@ -114,7 +116,7 @@ public class ProductService : IProductService
         var sku = req.Sku.Trim();
         var unit = req.Unit.Trim();
         var type = NormalizeProductType(req.ProductType);
-
+        if (req.ShelfLifeDays <= 0) throw new ArgumentException("Shelf life days must greater than 0 ");
         // soft conflict guard (no DB unique index currently)
         var existsSku = await _db.Products.AsNoTracking().AnyAsync(x => x.Sku == sku, ct);
         if (existsSku) throw new InvalidOperationException($"SKU '{sku}' already exists.");
@@ -125,7 +127,8 @@ public class ProductService : IProductService
             Sku = sku,
             Unit = unit,
             ProductType = type,
-            Status = ProductStatus.Active
+            Status = ProductStatus.Active,
+            ShelfLifeDays = req.ShelfLifeDays
         };
 
         await _db.Products.AddAsync(entity, ct);
@@ -143,7 +146,8 @@ public class ProductService : IProductService
                 entity.Sku,
                 entity.Unit,
                 entity.ProductType,
-                entity.Status
+                entity.Status,
+                entity.ShelfLifeDays
             }),
             Reason = "Create product master data",
             CreatedAt = DateTime.UtcNow
@@ -158,6 +162,7 @@ public class ProductService : IProductService
         RequireAdminOrManager();
         if (id <= 0) throw new ArgumentException("id must be a positive integer.");
         req = req ?? throw new ArgumentNullException(nameof(req));
+                if (req.ShelfLifeDays <= 0) throw new ArgumentException("Shelf life days must greater than 0 ");
 
         var entity = await _db.Products.FirstOrDefaultAsync(x => x.ProductId == id, ct);
         if (entity is null) throw new KeyNotFoundException($"Product {id} not found.");
@@ -166,6 +171,7 @@ public class ProductService : IProductService
         var sku = req.Sku.Trim();
         var unit = req.Unit.Trim();
         var type = NormalizeProductType(req.ProductType);
+        if (req.ShelfLifeDays <= 0) throw new ArgumentException("Shelf life days must greater than 0 ");
 
         var existsSku = await _db.Products.AsNoTracking()
             .AnyAsync(x => x.Sku == sku && x.ProductId != id, ct);
@@ -177,14 +183,15 @@ public class ProductService : IProductService
             entity.Sku,
             entity.Unit,
             entity.ProductType,
-            entity.Status
+            entity.Status,
+            entity.ShelfLifeDays
         };
 
         entity.Name = name;
         entity.Sku = sku;
         entity.Unit = unit;
         entity.ProductType = type;
-
+        entity.ShelfLifeDays = req.ShelfLifeDays;
         await _db.AuditLogs.AddAsync(new AuditLog
         {
             UserId = _current.UserId,
@@ -198,7 +205,8 @@ public class ProductService : IProductService
                 entity.Sku,
                 entity.Unit,
                 entity.ProductType,
-                entity.Status
+                entity.Status,
+                entity.ShelfLifeDays
             }),
             Reason = "Update product master data",
             CreatedAt = DateTime.UtcNow

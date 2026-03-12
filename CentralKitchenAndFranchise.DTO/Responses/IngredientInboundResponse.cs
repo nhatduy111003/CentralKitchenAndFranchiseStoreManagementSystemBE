@@ -12,7 +12,7 @@ namespace CentralKitchenAndFranchise.DTO.Responses
         public int FranchiseId { get; set; }
         public int IngredientId { get; set; }
         public string BatchCode { get; set; } = "";
-        public DateOnly ExpiredAt { get; set; }
+        public DateOnly? ExpiredAt { get; set; }
         public decimal Quantity { get; set; }
 
         public int CreatedMovementId { get; set; }

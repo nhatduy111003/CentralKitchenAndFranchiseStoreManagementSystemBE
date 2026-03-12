@@ -8,4 +8,5 @@ public class ProductResponse
     public string Unit { get; set; } = default!;
     public string Status { get; set; } = default!;
     public string ProductType { get; set; } = default!;
+    public int ShelfLifeDays { get; set; }
 }

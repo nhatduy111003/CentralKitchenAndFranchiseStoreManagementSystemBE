@@ -1,4 +1,5 @@
 ﻿using CentralKitchenAndFranchise.DTO.Requests;
+using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
 using CentralKitchenAndFranchise.DTO.Responses;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Interfaces

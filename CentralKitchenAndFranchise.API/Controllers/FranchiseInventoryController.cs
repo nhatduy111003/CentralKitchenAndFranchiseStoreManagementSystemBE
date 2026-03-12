@@ -1,6 +1,7 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
+using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
 using CentralKitchenAndFranchise.DTO.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

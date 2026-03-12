@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -10,8 +11,10 @@ namespace CentralKitchenAndFranchise.DTO.Requests
     {
         public int ProductId { get; set; }
         public string BatchCode { get; set; } = default!;
-        public DateOnly? ExpiredAt { get; set; }
         public decimal Quantity { get; set; }
         public string? Reason { get; set; }
+
+        [Range(1, int.MaxValue)]
+        public int ShelfLifeDays { get; set; }
     }
 }

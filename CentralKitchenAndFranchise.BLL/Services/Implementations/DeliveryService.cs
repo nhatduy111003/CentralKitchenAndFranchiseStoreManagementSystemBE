@@ -1,4 +1,5 @@
-using System.Text.Json;
+﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -14,7 +15,10 @@ public class DeliveryService : IDeliveryService
     private readonly ICurrentUserService _current;
     private readonly IFranchiseAccessService _franchiseAccess;
 
-    public DeliveryService(AppDbContext db, ICurrentUserService current, IFranchiseAccessService franchiseAccess)
+    public DeliveryService(
+        AppDbContext db,
+        ICurrentUserService current,
+        IFranchiseAccessService franchiseAccess)
     {
         _db = db;
         _current = current;
@@ -25,10 +29,12 @@ public class DeliveryService : IDeliveryService
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
 
-        if (request.ToFranchiseId <= 0) throw new ArgumentException("ToFranchiseId is required.");
+        if (request.ToFranchiseId <= 0)
+            throw new ArgumentException("ToFranchiseId is required.");
 
         var exists = await _db.Franchises.AnyAsync(x => x.FranchiseId == request.ToFranchiseId, ct);
-        if (!exists) throw new KeyNotFoundException($"Franchise {request.ToFranchiseId} not found.");
+        if (!exists)
+            throw new KeyNotFoundException($"Franchise {request.ToFranchiseId} not found.");
 
         var plan = new DeliveryPlan
         {
@@ -39,7 +45,16 @@ public class DeliveryService : IDeliveryService
         _db.DeliveryPlans.Add(plan);
         await _db.SaveChangesAsync(ct);
 
-        await AddAuditAsync("DELIVERY_PLAN_CREATE", "DeliveryPlan", plan.DeliveryPlanId, request.ToFranchiseId, null, plan, null, ct);
+        await AddAuditAsync(
+            action: "DELIVERY_PLAN_CREATE",
+            entityName: "DeliveryPlan",
+            entityId: plan.DeliveryPlanId,
+            franchiseId: request.ToFranchiseId,
+            oldObj: null,
+            newObj: plan,
+            reason: null,
+            ct: ct);
+
         return plan.DeliveryPlanId;
     }
 
@@ -47,21 +62,30 @@ public class DeliveryService : IDeliveryService
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
 
-        if (request.DeliveryPlanId <= 0) throw new ArgumentException("DeliveryPlanId is required.");
-        if (request.FromFranchiseId <= 0) throw new ArgumentException("FromFranchiseId is required.");
+        if (request.DeliveryPlanId <= 0)
+            throw new ArgumentException("DeliveryPlanId is required.");
 
-        var plan = await _db.DeliveryPlans.FirstOrDefaultAsync(p => p.DeliveryPlanId == request.DeliveryPlanId, ct);
-        if (plan is null) throw new KeyNotFoundException($"DeliveryPlan {request.DeliveryPlanId} not found.");
+        if (request.FromCentralKitchenId <= 0)
+            throw new ArgumentException("FromCentralKitchenId is required.");
 
-        var fromExists = await _db.Franchises.AnyAsync(x => x.FranchiseId == request.FromFranchiseId, ct);
-        if (!fromExists) throw new KeyNotFoundException($"From franchise {request.FromFranchiseId} not found.");
+        var plan = await _db.DeliveryPlans
+            .FirstOrDefaultAsync(p => p.DeliveryPlanId == request.DeliveryPlanId, ct);
+
+        if (plan is null)
+            throw new KeyNotFoundException($"DeliveryPlan {request.DeliveryPlanId} not found.");
+
+        var fromExists = await _db.CentralKitchens
+            .AnyAsync(x => x.CentralKitchenId == request.FromCentralKitchenId, ct);
+
+        if (!fromExists)
+            throw new KeyNotFoundException($"CentralKitchen {request.FromCentralKitchenId} not found.");
 
         var now = DateTime.UtcNow;
 
         var delivery = new Delivery
         {
             DeliveryPlanId = request.DeliveryPlanId,
-            FromFranchiseId = request.FromFranchiseId,
+            FromCentralKitchenId = request.FromCentralKitchenId,
             Status = DeliveryStatus.Created,
             CreatedAt = now,
             DeliveredAt = now
@@ -70,7 +94,16 @@ public class DeliveryService : IDeliveryService
         _db.Deliveries.Add(delivery);
         await _db.SaveChangesAsync(ct);
 
-        await AddAuditAsync("DELIVERY_CREATE", "Delivery", delivery.DeliveryId, request.FromFranchiseId, null, delivery, null, ct);
+        await AddAuditAsync(
+            action: "DELIVERY_CREATE",
+            entityName: "Delivery",
+            entityId: delivery.DeliveryId,
+            franchiseId: plan.FranchiseId,
+            oldObj: null,
+            newObj: delivery,
+            reason: null,
+            ct: ct);
+
         return delivery.DeliveryId;
     }
 
@@ -79,26 +112,32 @@ public class DeliveryService : IDeliveryService
         _ = _current.UserId;
 
         var delivery = await _db.Deliveries
-            .Include(d => d.DeliveryPlan).ThenInclude(p => p.Franchise)
-            .Include(d => d.FromFranchise)
-            .Include(d => d.ProductItems).ThenInclude(i => i.Product)
-            .Include(d => d.IngredientItems).ThenInclude(i => i.Ingredient)
+            .Include(d => d.DeliveryPlan)
+                .ThenInclude(p => p.Franchise)
+            .Include(d => d.FromCentralKitchen)
+            .Include(d => d.ProductItems)
+                .ThenInclude(i => i.Product)
+            .Include(d => d.IngredientItems)
+                .ThenInclude(i => i.Ingredient)
             .FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
 
-        if (delivery is null) throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
+        if (delivery is null)
+            throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
 
         return new DeliveryDetailsResponse
         {
             DeliveryId = delivery.DeliveryId,
             DeliveryPlanId = delivery.DeliveryPlanId,
-            FromFranchiseId = delivery.FromFranchiseId,
-            FromFranchiseName = delivery.FromFranchise.Name,
+            FromCentralKitchenId = delivery.FromCentralKitchenId,
+            FromCentralKitchenName = delivery.FromCentralKitchen.Name,
             ToFranchiseId = delivery.DeliveryPlan.FranchiseId,
             ToFranchiseName = delivery.DeliveryPlan.Franchise.Name,
             Status = delivery.Status,
             PlannedDate = delivery.DeliveryPlan.PlannedDate,
             CreatedAt = new DateTimeOffset(DateTime.SpecifyKind(delivery.CreatedAt, DateTimeKind.Utc)),
-            ConfirmedAt = delivery.ConfirmedAt is null ? null : new DateTimeOffset(DateTime.SpecifyKind(delivery.ConfirmedAt.Value, DateTimeKind.Utc)),
+            ConfirmedAt = delivery.ConfirmedAt is null
+                ? null
+                : new DateTimeOffset(DateTime.SpecifyKind(delivery.ConfirmedAt.Value, DateTimeKind.Utc)),
             ProductItems = delivery.ProductItems.Select(x => new DeliveryProductItemDto
             {
                 ProductId = x.ProductId,
@@ -117,24 +156,32 @@ public class DeliveryService : IDeliveryService
     public async Task UpsertProductItemsAsync(int deliveryId, List<UpsertDeliveryProductItemRequest> items, CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
-        if (items is null || items.Count == 0) throw new ArgumentException("Items is required.");
+
+        if (items is null || items.Count == 0)
+            throw new ArgumentException("Items is required.");
 
         var delivery = await _db.Deliveries.FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
-        if (delivery is null) throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
-        if (delivery.Status != DeliveryStatus.Created) throw new InvalidOperationException("Can only edit items when delivery is CREATED.");
+        if (delivery is null)
+            throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
+
+        if (delivery.Status != DeliveryStatus.Created)
+            throw new InvalidOperationException("Can only edit items when delivery is CREATED.");
 
         var productIds = items.Select(x => x.ProductId).Distinct().ToList();
+
         var existingProducts = await _db.Products
             .Where(p => productIds.Contains(p.ProductId))
             .Select(p => p.ProductId)
             .ToListAsync(ct);
 
         var missing = productIds.Except(existingProducts).ToList();
-        if (missing.Count > 0) throw new KeyNotFoundException($"Product not found: {string.Join(',', missing)}");
+        if (missing.Count > 0)
+            throw new KeyNotFoundException($"Product not found: {string.Join(',', missing)}");
 
         foreach (var req in items)
         {
-            if (req.Quantity <= 0) throw new ArgumentException("Quantity must be > 0.");
+            if (req.Quantity <= 0)
+                throw new ArgumentException("Quantity must be > 0.");
 
             var line = await _db.DeliveryProductItems
                 .FirstOrDefaultAsync(x => x.DeliveryId == deliveryId && x.ProductId == req.ProductId, ct);
@@ -160,24 +207,32 @@ public class DeliveryService : IDeliveryService
     public async Task UpsertIngredientItemsAsync(int deliveryId, List<UpsertDeliveryIngredientItemRequest> items, CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
-        if (items is null || items.Count == 0) throw new ArgumentException("Items is required.");
+
+        if (items is null || items.Count == 0)
+            throw new ArgumentException("Items is required.");
 
         var delivery = await _db.Deliveries.FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
-        if (delivery is null) throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
-        if (delivery.Status != DeliveryStatus.Created) throw new InvalidOperationException("Can only edit items when delivery is CREATED.");
+        if (delivery is null)
+            throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
 
-        var ids = items.Select(x => x.IngredientId).Distinct().ToList();
-        var existing = await _db.Ingredients
-            .Where(p => ids.Contains(p.IngredientId))
-            .Select(p => p.IngredientId)
+        if (delivery.Status != DeliveryStatus.Created)
+            throw new InvalidOperationException("Can only edit items when delivery is CREATED.");
+
+        var ingredientIds = items.Select(x => x.IngredientId).Distinct().ToList();
+
+        var existingIngredients = await _db.Ingredients
+            .Where(i => ingredientIds.Contains(i.IngredientId))
+            .Select(i => i.IngredientId)
             .ToListAsync(ct);
 
-        var missing = ids.Except(existing).ToList();
-        if (missing.Count > 0) throw new KeyNotFoundException($"Ingredient not found: {string.Join(',', missing)}");
+        var missing = ingredientIds.Except(existingIngredients).ToList();
+        if (missing.Count > 0)
+            throw new KeyNotFoundException($"Ingredient not found: {string.Join(',', missing)}");
 
         foreach (var req in items)
         {
-            if (req.Quantity <= 0) throw new ArgumentException("Quantity must be > 0.");
+            if (req.Quantity <= 0)
+                throw new ArgumentException("Quantity must be > 0.");
 
             var line = await _db.DeliveryIngredientItems
                 .FirstOrDefaultAsync(x => x.DeliveryId == deliveryId && x.IngredientId == req.IngredientId, ct);
@@ -210,14 +265,16 @@ public class DeliveryService : IDeliveryService
             .Include(d => d.IngredientItems)
             .FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
 
-        if (delivery is null) throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
-        if (delivery.Status != DeliveryStatus.Created) throw new InvalidOperationException("Delivery is not in CREATED status.");
+        if (delivery is null)
+            throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
 
-        var fromFranchiseId = delivery.FromFranchiseId;
+        if (delivery.Status != DeliveryStatus.Created)
+            throw new InvalidOperationException("Delivery is not in CREATED status.");
+
+        var fromCentralKitchenId = delivery.FromCentralKitchenId;
         var toFranchiseId = delivery.DeliveryPlan.FranchiseId;
 
-        // Manager scope: BOTH from + to
-        await _franchiseAccess.EnsureCanAccessAsync(fromFranchiseId, ct);
+        await _franchiseAccess.EnsureCanAccessCentralKitchenAsync(fromCentralKitchenId, ct);
         await _franchiseAccess.EnsureCanAccessAsync(toFranchiseId, ct);
 
         if (delivery.ProductItems.Count == 0 && delivery.IngredientItems.Count == 0)
@@ -228,10 +285,28 @@ public class DeliveryService : IDeliveryService
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
         foreach (var line in delivery.IngredientItems)
-            await TransferIngredientAsync(deliveryId, fromFranchiseId, toFranchiseId, line.IngredientId, line.Quantity, now, ct);
+        {
+            await TransferIngredientAsync(
+                deliveryId,
+                fromCentralKitchenId,
+                toFranchiseId,
+                line.IngredientId,
+                line.Quantity,
+                now,
+                ct);
+        }
 
         foreach (var line in delivery.ProductItems)
-            await TransferProductAsync(deliveryId, fromFranchiseId, toFranchiseId, line.ProductId, line.Quantity, now, ct);
+        {
+            await TransferProductAsync(
+                deliveryId,
+                fromCentralKitchenId,
+                toFranchiseId,
+                line.ProductId,
+                line.Quantity,
+                now,
+                ct);
+        }
 
         delivery.Status = DeliveryStatus.Confirmed;
         delivery.ConfirmedAt = now;
@@ -239,34 +314,65 @@ public class DeliveryService : IDeliveryService
 
         await _db.SaveChangesAsync(ct);
 
-        await AddAuditAsync("DELIVERY_CONFIRM", "Delivery", delivery.DeliveryId, fromFranchiseId,
+        await AddAuditAsync(
+            action: "DELIVERY_CONFIRM",
+            entityName: "Delivery",
+            entityId: delivery.DeliveryId,
+            franchiseId: toFranchiseId,
             oldObj: new { Status = DeliveryStatus.Created },
             newObj: new { delivery.Status, delivery.ConfirmedAt },
-            reason: null, ct: ct);
+            reason: null,
+            ct: ct);
 
         await tx.CommitAsync(ct);
     }
 
-    // ============ FEFO helpers ============
-    private async Task TransferIngredientAsync(int deliveryId, int fromFranchiseId, int toFranchiseId, int ingredientId, decimal requiredQty, DateTime now, CancellationToken ct)
-    {
-        if (requiredQty <= 0) throw new ArgumentException("Quantity must be > 0.");
+    // =========================================================
+    // FEFO transfer helpers
+    // =========================================================
 
-        var ingredient = await _db.Ingredients.FirstOrDefaultAsync(x => x.IngredientId == ingredientId, ct);
-        if (ingredient is null) throw new KeyNotFoundException($"Ingredient {ingredientId} not found.");
+    private async Task TransferIngredientAsync(
+        int deliveryId,
+        int fromCentralKitchenId,
+        int toFranchiseId,
+        int ingredientId,
+        decimal requiredQty,
+        DateTime now,
+        CancellationToken ct)
+    {
+        if (requiredQty <= 0)
+            throw new ArgumentException("Quantity must be > 0.");
+
+        var ingredient = await _db.Ingredients
+            .FirstOrDefaultAsync(x => x.IngredientId == ingredientId, ct);
+
+        if (ingredient is null)
+            throw new KeyNotFoundException($"Ingredient {ingredientId} not found.");
+
         if (!string.Equals(ingredient.Status, IngredientStatus.Active, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Ingredient {ingredientId} is not ACTIVE.");
 
+        // Vì ExpiredAt là derived => phải Include Ingredient rồi sort in-memory
         var batches = await _db.IngredientBatches
-            .Where(b => b.FranchiseId == fromFranchiseId && b.IngredientId == ingredientId && b.Quantity > 0)
-            .OrderBy(b => b.ExpiredAt == null)
-            .ThenBy(b => b.ExpiredAt)
-            .ThenBy(b => b.BatchId)
+            .Include(b => b.Ingredient)
+            .Where(b =>
+                b.Type == InventoryOwnerType.CentralKitchen &&
+                b.CentralKitchenId == fromCentralKitchenId &&
+                b.IngredientId == ingredientId &&
+                b.Quantity > 0)
             .ToListAsync(ct);
+
+        batches = batches
+            .OrderBy(b => b.CalculateExpiredAt() == null)
+            .ThenBy(b => b.CalculateExpiredAt())
+            .ThenBy(b => b.CreatedAt)
+            .ThenBy(b => b.BatchId)
+            .ToList();
 
         var total = batches.Sum(b => b.Quantity);
         if (total < requiredQty)
-            throw new InvalidOperationException($"Insufficient ingredient stock. IngredientId={ingredientId}, required={requiredQty}, available={total}");
+            throw new InvalidOperationException(
+                $"Insufficient ingredient stock. IngredientId={ingredientId}, required={requiredQty}, available={total}");
 
         var remain = requiredQty;
 
@@ -278,6 +384,7 @@ public class DeliveryService : IDeliveryService
             if (take <= 0) continue;
 
             src.Quantity -= take;
+
             _db.InventoryMovements.Add(new InventoryMovement
             {
                 BatchId = src.BatchId,
@@ -290,7 +397,9 @@ public class DeliveryService : IDeliveryService
             });
 
             var dest = await _db.IngredientBatches.FirstOrDefaultAsync(b =>
+                b.Type == InventoryOwnerType.Franchise &&
                 b.FranchiseId == toFranchiseId &&
+                b.CentralKitchenId == null &&
                 b.IngredientId == ingredientId &&
                 b.BatchCode == src.BatchCode, ct);
 
@@ -298,13 +407,21 @@ public class DeliveryService : IDeliveryService
             {
                 dest = new IngredientBatch
                 {
+                    Type = InventoryOwnerType.Franchise,
                     FranchiseId = toFranchiseId,
+                    CentralKitchenId = null,
                     IngredientId = ingredientId,
                     BatchCode = src.BatchCode,
-                    ExpiredAt = src.ExpiredAt,
-                    Quantity = 0
+                    Quantity = 0,
+                    CreatedAt = src.CreatedAt
                 };
+
                 _db.IngredientBatches.Add(dest);
+            }
+            else if (dest.CreatedAt != src.CreatedAt)
+            {
+                throw new InvalidOperationException(
+                    $"Ingredient batch age conflict for BatchCode={src.BatchCode} at destination franchise {toFranchiseId}.");
             }
 
             dest.Quantity += take;
@@ -324,25 +441,47 @@ public class DeliveryService : IDeliveryService
         }
     }
 
-    private async Task TransferProductAsync(int deliveryId, int fromFranchiseId, int toFranchiseId, int productId, decimal requiredQty, DateTime now, CancellationToken ct)
+    private async Task TransferProductAsync(
+        int deliveryId,
+        int fromCentralKitchenId,
+        int toFranchiseId,
+        int productId,
+        decimal requiredQty,
+        DateTime now,
+        CancellationToken ct)
     {
-        if (requiredQty <= 0) throw new ArgumentException("Quantity must be > 0.");
+        if (requiredQty <= 0)
+            throw new ArgumentException("Quantity must be > 0.");
 
-        var product = await _db.Products.FirstOrDefaultAsync(x => x.ProductId == productId, ct);
-        if (product is null) throw new KeyNotFoundException($"Product {productId} not found.");
-        if (!string.Equals(product.Status, IngredientStatus.Active, StringComparison.OrdinalIgnoreCase))
+        var product = await _db.Products
+            .FirstOrDefaultAsync(x => x.ProductId == productId, ct);
+
+        if (product is null)
+            throw new KeyNotFoundException($"Product {productId} not found.");
+
+        if (!string.Equals(product.Status, ProductStatus.Active, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Product {productId} is not ACTIVE.");
 
+        // Vì ExpiredAt là derived => phải Include Product rồi sort in-memory
         var batches = await _db.ProductBatches
-            .Where(b => b.FranchiseId == fromFranchiseId && b.ProductId == productId && b.Quantity > 0)
-            .OrderBy(b => b.ExpiredAt == null)
-            .ThenBy(b => b.ExpiredAt)
-            .ThenBy(b => b.BatchId)
+            .Include(b => b.Product)
+            .Where(b =>
+                b.CentralKitchenId == fromCentralKitchenId &&
+                b.ProductId == productId &&
+                b.Quantity > 0)
             .ToListAsync(ct);
+
+        batches = batches
+            .OrderBy(b => b.CalculateExpiredAt() == null)
+            .ThenBy(b => b.CalculateExpiredAt())
+            .ThenBy(b => b.CreatedAt)
+            .ThenBy(b => b.BatchId)
+            .ToList();
 
         var total = batches.Sum(b => b.Quantity);
         if (total < requiredQty)
-            throw new InvalidOperationException($"Insufficient product stock. ProductId={productId}, required={requiredQty}, available={total}");
+            throw new InvalidOperationException(
+                $"Insufficient product stock. ProductId={productId}, required={requiredQty}, available={total}");
 
         var remain = requiredQty;
 
@@ -354,6 +493,7 @@ public class DeliveryService : IDeliveryService
             if (take <= 0) continue;
 
             src.Quantity -= take;
+
             _db.ProductMovements.Add(new ProductMovement
             {
                 BatchId = src.BatchId,
@@ -367,6 +507,7 @@ public class DeliveryService : IDeliveryService
 
             var dest = await _db.ProductBatches.FirstOrDefaultAsync(b =>
                 b.FranchiseId == toFranchiseId &&
+                b.CentralKitchenId == null &&
                 b.ProductId == productId &&
                 b.BatchCode == src.BatchCode, ct);
 
@@ -375,13 +516,19 @@ public class DeliveryService : IDeliveryService
                 dest = new ProductBatch
                 {
                     FranchiseId = toFranchiseId,
+                    CentralKitchenId = null,
                     ProductId = productId,
                     BatchCode = src.BatchCode,
-                    ExpiredAt = src.ExpiredAt,
                     Quantity = 0,
-                    CreatedAt = now
+                    CreatedAt = src.CreatedAt
                 };
+
                 _db.ProductBatches.Add(dest);
+            }
+            else if (dest.CreatedAt != src.CreatedAt)
+            {
+                throw new InvalidOperationException(
+                    $"Product batch age conflict for BatchCode={src.BatchCode} at destination franchise {toFranchiseId}.");
             }
 
             dest.Quantity += take;
@@ -404,13 +551,22 @@ public class DeliveryService : IDeliveryService
     private void RequireOneOf(params string[] roles)
     {
         var role = _current.Role;
+
         if (roles.Any(r => string.Equals(r, role, StringComparison.OrdinalIgnoreCase)))
             return;
 
         throw new UnauthorizedAccessException("You do not have permission for this action.");
     }
 
-    private async Task AddAuditAsync(string action, string entityName, int entityId, int? franchiseId, object? oldObj, object? newObj, string? reason, CancellationToken ct)
+    private async Task AddAuditAsync(
+        string action,
+        string entityName,
+        int entityId,
+        int? franchiseId,
+        object? oldObj,
+        object? newObj,
+        string? reason,
+        CancellationToken ct)
     {
         _db.AuditLogs.Add(new AuditLog
         {

@@ -174,7 +174,13 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         (""AssignmentType"" = 'CENTRAL_KITCHEN' AND ""FranchiseId"" IS NULL AND ""CentralKitchenId"" IS NOT NULL)
     )");
             });
-            modelBuilder.Entity<Ingredient>(e => { e.ToTable("ingredients"); e.HasKey(x => x.IngredientId); });
+            modelBuilder.Entity<Ingredient>(e =>
+            {
+                e.HasOne(x => x.Supplier)
+                    .WithMany(x => x.Ingredients)
+                    .HasForeignKey(x => x.SupplierId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
             modelBuilder.Entity<Supplier>(e => { e.ToTable("suppliers"); e.HasKey(x => x.SupplierId); });
             modelBuilder.Entity<Product>(e => { e.ToTable("products"); e.HasKey(x => x.ProductId); });
 
@@ -332,8 +338,22 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .HasForeignKey(x => x.CentralKitchenId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
-            
-            modelBuilder.Entity<Delivery>(e => { e.ToTable("deliveries"); e.HasKey(x => x.DeliveryId); });
+
+            modelBuilder.Entity<Delivery>(e =>
+            {
+                e.ToTable("deliveries");
+                e.HasKey(x => x.DeliveryId);
+
+                e.HasOne(x => x.DeliveryPlan)
+                    .WithMany(x => x.Deliveries)
+                    .HasForeignKey(x => x.DeliveryPlanId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                e.HasOne(x => x.FromCentralKitchen)
+                    .WithMany()
+                    .HasForeignKey(x => x.FromCentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
 
             modelBuilder.Entity<DeliveryProductItem>(e => { e.ToTable("delivery_product_items"); e.HasKey(x => x.DeliveryProductItemId); });
             modelBuilder.Entity<DeliveryIngredientItem>(e => { e.ToTable("delivery_ingredient_items"); e.HasKey(x => x.DeliveryIngredientItemId); });

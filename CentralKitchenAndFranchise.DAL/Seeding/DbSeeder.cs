@@ -1,4 +1,4 @@
-﻿using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
@@ -562,20 +562,20 @@ public static class DbSeeder
     {
         var ingredients = new[]
         {
-            new SeedIngredient("Black Tea Leaves", "g",   0.06m, 1000m, 100m),
-            new SeedIngredient("Oolong Tea Leaves", "g",  0.08m, 1000m, 100m),
-            new SeedIngredient("Jasmine Green Tea Leaves", "g", 0.07m, 1000m, 100m),
-            new SeedIngredient("Milk Powder", "g",        0.10m, 1500m, 100m),
-            new SeedIngredient("Non-dairy Creamer", "g",  0.09m, 1500m, 100m),
-            new SeedIngredient("Sugar Syrup", "ml",       0.02m, 3000m, 0m),
-            new SeedIngredient("Brown Sugar", "g",        0.03m, 2000m, 0m),
-            new SeedIngredient("Tapioca Pearls (Dry)", "g", 0.04m, 2000m, 0m),
-            new SeedIngredient("Taro Powder", "g",        0.12m, 1000m, 0m),
-            new SeedIngredient("Water", "ml",             0.0005m, 50000m, 0m),
-            new SeedIngredient("Ice Cubes", "g",          0.001m, 5000m, 0m),
-            new SeedIngredient("Cup 500ml", "pcs",        0.20m, 500m, 0m),
-            new SeedIngredient("Lid 500ml", "pcs",        0.08m, 500m, 0m),
-            new SeedIngredient("Straw", "pcs",            0.03m, 500m, 0m),
+            new SeedIngredient("Black Tea Leaves", "g", 0.06m, 1000m, 100m, 365),
+            new SeedIngredient("Oolong Tea Leaves", "g", 0.08m, 1000m, 100m, 365),
+            new SeedIngredient("Jasmine Green Tea Leaves", "g", 0.07m, 1000m, 100m, 365),
+            new SeedIngredient("Milk Powder", "g", 0.10m, 1500m, 100m, 270),
+            new SeedIngredient("Non-dairy Creamer", "g", 0.09m, 1500m, 100m, 270),
+            new SeedIngredient("Sugar Syrup", "ml", 0.02m, 3000m, 0m, 120),
+            new SeedIngredient("Brown Sugar", "g", 0.03m, 2000m, 0m, 365),
+            new SeedIngredient("Tapioca Pearls (Dry)", "g", 0.04m, 2000m, 0m, 240),
+            new SeedIngredient("Taro Powder", "g", 0.12m, 1000m, 0m, 240),
+            new SeedIngredient("Water", "ml", 0.0005m, 50000m, 0m, 365),
+            new SeedIngredient("Ice Cubes", "g", 0.001m, 5000m, 0m, 7),
+            new SeedIngredient("Cup 500ml", "pcs", 0.20m, 500m, 0m, 3650),
+            new SeedIngredient("Lid 500ml", "pcs", 0.08m, 500m, 0m, 3650),
+            new SeedIngredient("Straw", "pcs", 0.03m, 500m, 0m, 3650),
         };
 
         foreach (var item in ingredients)
@@ -587,13 +587,13 @@ public static class DbSeeder
 
         var products = new[]
         {
-            new SeedProduct("Classic Milk Tea 500ml", "FT-CLMT-500", "cup", ProductTypes.Finished),
-            new SeedProduct("Brown Sugar Milk Tea 500ml", "FT-BSMT-500", "cup", ProductTypes.Finished),
-            new SeedProduct("Taro Milk Tea 500ml", "FT-TARO-500", "cup", ProductTypes.Finished),
+            new SeedProduct("Classic Milk Tea 500ml", "FT-CLMT-500", "cup", ProductTypes.Finished, 2),
+            new SeedProduct("Brown Sugar Milk Tea 500ml", "FT-BSMT-500", "cup", ProductTypes.Finished, 2),
+            new SeedProduct("Taro Milk Tea 500ml", "FT-TARO-500", "cup", ProductTypes.Finished, 2),
 
-            new SeedProduct("Brown Sugar Syrup (Batch)", "SF-BSS-001", "ml", ProductTypes.SemiFinished),
-            new SeedProduct("Black Tea Concentrate (Batch)", "SF-BT-001", "ml", ProductTypes.SemiFinished),
-            new SeedProduct("Cooked Tapioca Pearls (Batch)", "SF-PEARL-001", "g", ProductTypes.SemiFinished),
+            new SeedProduct("Brown Sugar Syrup (Batch)", "SF-BSS-001", "ml", ProductTypes.SemiFinished, 2),
+            new SeedProduct("Black Tea Concentrate (Batch)", "SF-BT-001", "ml", ProductTypes.SemiFinished, 2),
+            new SeedProduct("Cooked Tapioca Pearls (Batch)", "SF-PEARL-001", "g", ProductTypes.SemiFinished, 2),
         };
 
         foreach (var product in products)
@@ -658,6 +658,12 @@ public static class DbSeeder
                 changed = true;
             }
 
+            if (existing.ShelfLifeDays != seed.ShelfLifeDays)
+            {
+                existing.ShelfLifeDays = seed.ShelfLifeDays;
+                changed = true;
+            }
+
             if (changed)
             {
                 existing.UpdatedAt = now;
@@ -674,6 +680,7 @@ public static class DbSeeder
             Price = seed.Price,
             SafetyStock = seed.SafetyStock,
             WasteThreshold = seed.WasteThreshold,
+            ShelfLifeDays = seed.ShelfLifeDays,
             CreatedAt = now,
             UpdatedAt = now
         });
@@ -688,6 +695,7 @@ public static class DbSeeder
             existing.Unit = seed.Unit;
             existing.Status = ProductStatus.Active;
             existing.ProductType = seed.ProductType;
+            existing.ShelfLifeDays = seed.ShelfLifeDays;
             return;
         }
 
@@ -697,7 +705,8 @@ public static class DbSeeder
             Sku = seed.Sku,
             Unit = seed.Unit,
             Status = ProductStatus.Active,
-            ProductType = seed.ProductType
+            ProductType = seed.ProductType,
+            ShelfLifeDays = seed.ShelfLifeDays
         });
     }
 
@@ -1027,7 +1036,7 @@ public static class DbSeeder
     }
 
     // ==================================================
-    // 8) CentralKitchen ingredient inventory (stable part)
+    // 8) CentralKitchen ingredient inventory (derived expiry)
     // ==================================================
     private static void SeedCentralKitchenIngredientInventory(AppDbContext db, DateTime now)
     {
@@ -1043,7 +1052,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-BTL-001",
             quantity: 10000m,
-            expiredAt: DateOnly.FromDateTime(now.AddMonths(12)));
+            createdAt: CreatedAtFromTargetExpiry(now.AddMonths(12), I("Black Tea Leaves").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1053,7 +1062,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-MP-001",
             quantity: 8000m,
-            expiredAt: DateOnly.FromDateTime(now.AddMonths(9)));
+            createdAt: CreatedAtFromTargetExpiry(now.AddMonths(9), I("Milk Powder").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1063,7 +1072,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-NDC-001",
             quantity: 8000m,
-            expiredAt: DateOnly.FromDateTime(now.AddMonths(9)));
+            createdAt: CreatedAtFromTargetExpiry(now.AddMonths(9), I("Non-dairy Creamer").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1073,7 +1082,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-SS-001",
             quantity: 12000m,
-            expiredAt: DateOnly.FromDateTime(now.AddMonths(4)));
+            createdAt: CreatedAtFromTargetExpiry(now.AddMonths(4), I("Sugar Syrup").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1083,7 +1092,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-BS-001",
             quantity: 6000m,
-            expiredAt: DateOnly.FromDateTime(now.AddMonths(12)));
+            createdAt: CreatedAtFromTargetExpiry(now.AddMonths(12), I("Brown Sugar").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1093,7 +1102,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-TP-001",
             quantity: 7000m,
-            expiredAt: DateOnly.FromDateTime(now.AddMonths(8)));
+            createdAt: CreatedAtFromTargetExpiry(now.AddMonths(8), I("Tapioca Pearls (Dry)").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1103,7 +1112,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-TARO-001",
             quantity: 4000m,
-            expiredAt: DateOnly.FromDateTime(now.AddMonths(8)));
+            createdAt: CreatedAtFromTargetExpiry(now.AddMonths(8), I("Taro Powder").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1113,7 +1122,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-WATER-001",
             quantity: 100000m,
-            expiredAt: null);
+            createdAt: CreatedAtFromTargetExpiry(now.AddYears(1), I("Water").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1123,7 +1132,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-ICE-001",
             quantity: 30000m,
-            expiredAt: null);
+            createdAt: CreatedAtFromTargetExpiry(now.AddDays(7), I("Ice Cubes").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1133,7 +1142,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-CUP-001",
             quantity: 1000m,
-            expiredAt: null);
+            createdAt: CreatedAtFromTargetExpiry(now.AddYears(3), I("Cup 500ml").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1143,7 +1152,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-LID-001",
             quantity: 1000m,
-            expiredAt: null);
+            createdAt: CreatedAtFromTargetExpiry(now.AddYears(3), I("Lid 500ml").ShelfLifeDays));
 
         EnsureIngredientBatch(
             db,
@@ -1153,7 +1162,7 @@ public static class DbSeeder
             centralKitchenId: ck.CentralKitchenId,
             batchCode: "CK-ING-STRAW-001",
             quantity: 1000m,
-            expiredAt: null);
+            createdAt: CreatedAtFromTargetExpiry(now.AddYears(3), I("Straw").ShelfLifeDays));
 
         db.SaveChanges();
     }
@@ -1166,7 +1175,7 @@ public static class DbSeeder
         int? centralKitchenId,
         string batchCode,
         decimal quantity,
-        DateOnly? expiredAt)
+        DateTime createdAt)
     {
         var existing = db.IngredientBatches.FirstOrDefault(x => x.BatchCode == batchCode);
         if (existing != null)
@@ -1176,7 +1185,7 @@ public static class DbSeeder
             existing.FranchiseId = franchiseId;
             existing.CentralKitchenId = centralKitchenId;
             existing.Quantity = quantity;
-            existing.ExpiredAt = expiredAt;
+            existing.CreatedAt = createdAt;
             return;
         }
 
@@ -1188,7 +1197,7 @@ public static class DbSeeder
             CentralKitchenId = centralKitchenId,
             BatchCode = batchCode,
             Quantity = quantity,
-            ExpiredAt = expiredAt
+            CreatedAt = createdAt
         });
     }
 
@@ -1200,13 +1209,15 @@ public static class DbSeeder
         string Unit,
         decimal Price,
         decimal SafetyStock,
-        decimal WasteThreshold);
+        decimal WasteThreshold,
+        int ShelfLifeDays);
 
     private sealed record SeedProduct(
         string Name,
         string Sku,
         string Unit,
-        string ProductType);
+        string ProductType,
+        int ShelfLifeDays);
 
     private sealed record BomSeedItem(
         int IngredientId,
@@ -1231,9 +1242,9 @@ public static class DbSeeder
             submittedAt: now.AddHours(-7),
             items: new[]
             {
-            new StoreOrderSeedItem(P("FT-CLMT-500").ProductId, 35m),
-            new StoreOrderSeedItem(P("FT-BSMT-500").ProductId, 28m),
-            new StoreOrderSeedItem(P("FT-TARO-500").ProductId, 18m),
+                new StoreOrderSeedItem(P("FT-CLMT-500").ProductId, 35m),
+                new StoreOrderSeedItem(P("FT-BSMT-500").ProductId, 28m),
+                new StoreOrderSeedItem(P("FT-TARO-500").ProductId, 18m),
             });
 
         EnsureStoreOrder(
@@ -1245,9 +1256,9 @@ public static class DbSeeder
             submittedAt: now.AddHours(-5),
             items: new[]
             {
-            new StoreOrderSeedItem(P("FT-CLMT-500").ProductId, 30m),
-            new StoreOrderSeedItem(P("FT-BSMT-500").ProductId, 24m),
-            new StoreOrderSeedItem(P("FT-TARO-500").ProductId, 20m),
+                new StoreOrderSeedItem(P("FT-CLMT-500").ProductId, 30m),
+                new StoreOrderSeedItem(P("FT-BSMT-500").ProductId, 24m),
+                new StoreOrderSeedItem(P("FT-TARO-500").ProductId, 20m),
             });
 
         EnsureStoreOrder(
@@ -1259,8 +1270,8 @@ public static class DbSeeder
             submittedAt: null,
             items: new[]
             {
-            new StoreOrderSeedItem(P("FT-CLMT-500").ProductId, 20m),
-            new StoreOrderSeedItem(P("FT-BSMT-500").ProductId, 16m),
+                new StoreOrderSeedItem(P("FT-CLMT-500").ProductId, 20m),
+                new StoreOrderSeedItem(P("FT-BSMT-500").ProductId, 16m),
             });
 
         db.SaveChanges();
@@ -1333,12 +1344,12 @@ public static class DbSeeder
     }
 
     private sealed record StoreOrderSeedItem(
-    int ProductId,
-    decimal Quantity);
+        int ProductId,
+        decimal Quantity);
+
     // ==================================================
     // 10) Seed Demand Aggregations (stable part)
     // ==================================================
-
     private static void SeedDemandAggregations(AppDbContext db, DateTime now)
     {
         var targetDates = db.StoreOrders
@@ -1423,7 +1434,7 @@ public static class DbSeeder
     }
 
     // ==================================================
-    // 11) Seed Production Plans + Production Runs 
+    // 11) Seed Production Plans + Production Runs
     // ==================================================
     private static void SeedProductionPlansAndRuns(AppDbContext db, DateTime now)
     {
@@ -1458,7 +1469,7 @@ public static class DbSeeder
                 productionDate: aggregation.PlanDate,
                 quantity: totalQty,
                 status: ProductionRunStatuses.Completed,
-                completedAt: now);
+                completedAt: UtcAtStartOfDay(aggregation.PlanDate).AddHours(8));
         }
 
         db.SaveChanges();
@@ -1550,20 +1561,17 @@ public static class DbSeeder
             ProductionDate = productionDate,
             Quantity = quantity,
             Status = status,
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = completedAt ?? DateTime.UtcNow,
             CompletedAt = completedAt
         });
     }
 
     // ==================================================
-    // 12) Seed ProductBatch 
+    // 12) Seed ProductBatch (derived expiry, CK-owned)
     // ==================================================
     private static void SeedCentralKitchenProductInventory(AppDbContext db, DateTime now)
     {
         var ck = db.CentralKitchens.First(x => x.Name == CentralKitchenName);
-
-        // ProductBatch hiện vẫn bắt buộc FranchiseId => dùng franchise cùng hệ làm anchor tạm
-        var anchorFranchise = db.Franchises.First(x => x.Name == FranchiseQ1Name);
 
         var completedRuns = db.ProductionRuns
             .Where(x => x.Status == ProductionRunStatuses.Completed)
@@ -1579,16 +1587,17 @@ public static class DbSeeder
             foreach (var item in planItems)
             {
                 var batchCode = $"PB-{run.RunCode}-{item.ProductId}";
+                var createdAt = run.CompletedAt ?? UtcAtStartOfDay(run.ProductionDate).AddHours(8);
 
                 EnsureProductBatch(
                     db,
                     productId: item.ProductId,
                     productionRunId: run.ProductionRunId,
-                    franchiseId: anchorFranchise.FranchiseId,
+                    franchiseId: null,
                     centralKitchenId: ck.CentralKitchenId,
                     batchCode: batchCode,
                     quantity: item.Quantity,
-                    expiredAt: run.ProductionDate.AddDays(2));
+                    createdAt: createdAt);
             }
         }
 
@@ -1599,11 +1608,11 @@ public static class DbSeeder
         AppDbContext db,
         int productId,
         int? productionRunId,
-        int franchiseId,
+        int? franchiseId,
         int? centralKitchenId,
         string batchCode,
         decimal quantity,
-        DateOnly? expiredAt)
+        DateTime createdAt)
     {
         var existing = db.ProductBatches.FirstOrDefault(x => x.BatchCode == batchCode);
         if (existing != null)
@@ -1613,7 +1622,7 @@ public static class DbSeeder
             existing.FranchiseId = franchiseId;
             existing.CentralKitchenId = centralKitchenId;
             existing.Quantity = quantity;
-            existing.ExpiredAt = expiredAt;
+            existing.CreatedAt = createdAt;
             return;
         }
 
@@ -1625,8 +1634,23 @@ public static class DbSeeder
             CentralKitchenId = centralKitchenId,
             BatchCode = batchCode,
             Quantity = quantity,
-            ExpiredAt = expiredAt,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = createdAt
         });
+    }
+
+    // ==================================================
+    // Helpers
+    // ==================================================
+    private static DateTime CreatedAtFromTargetExpiry(DateTime targetExpiryUtc, int shelfLifeDays)
+    {
+        if (shelfLifeDays <= 0)
+            throw new InvalidOperationException("ShelfLifeDays must be > 0 for derived expiry seeding.");
+
+        return DateTime.SpecifyKind(targetExpiryUtc.Date, DateTimeKind.Utc).AddDays(-shelfLifeDays);
+    }
+
+    private static DateTime UtcAtStartOfDay(DateOnly date)
+    {
+        return DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
     }
 }
