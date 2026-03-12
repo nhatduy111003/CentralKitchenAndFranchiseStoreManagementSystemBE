@@ -27,8 +27,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         // INGREDIENT INBOUND
         // =========================================================
         // Logic quan trọng:
-        // - FE không gửi ExpiredAt nữa
-        // - Batch ingredient lưu CreatedAt
         // - ExpiredAt được derive từ CreatedAt + Ingredient.ShelfLifeDays
         // - BatchCode unique theo (IngredientId, BatchCode, FranchiseId)
         public async Task<IngredientInboundResponse> InboundIngredientAsync(
@@ -502,9 +500,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         // Phần product vẫn đang dùng ExpiredAt persisted trên ProductBatch,
         // chưa chuyển sang flow derived như ingredient.
         public async Task<ProductInboundResponse> InboundProductAsync(
-            int franchiseId,
-            CreateProductInboundDto request,
-            CancellationToken ct = default)
+    int franchiseId,
+    CreateProductInboundDto request,
+    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
@@ -524,6 +522,13 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (product is null)
                 throw new KeyNotFoundException($"Product {request.ProductId} not found.");
 
+            if (!string.Equals(product.Status, ProductStatus.Active, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Product {request.ProductId} is not ACTIVE.");
+
+            if (product.ShelfLifeDays <= 0)
+                throw new InvalidOperationException(
+                    $"Product {request.ProductId} has invalid ShelfLifeDays={product.ShelfLifeDays}. Product master data must be fixed.");
+
             var now = DateTime.UtcNow;
 
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
@@ -537,6 +542,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 Quantity = request.Quantity,
                 CreatedAt = now
             };
+
+            // gắn navigation để helper derive expiry hoạt động
             batch.Product = product;
 
             _db.ProductBatches.Add(batch);
@@ -553,7 +560,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             var mv = new ProductMovement
             {
                 BatchId = batch.BatchId,
-                Type = "IN",
+                Type = MovementType.In,
                 Quantity = request.Quantity,
                 CreatedByUserId = _current.UserId,
                 Reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim(),
@@ -563,6 +570,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             _db.ProductMovements.Add(mv);
             await _db.SaveChangesAsync(ct);
+
+            var expiredAt = batch.CalculateExpiredAt();
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -578,6 +587,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     batch.ProductId,
                     batch.FranchiseId,
                     batch.BatchCode,
+                    batch.CreatedAt,
+                    ExpiredAt = expiredAt,
                     batch.Quantity,
                     Movement = new
                     {
@@ -593,7 +604,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             });
 
             await _db.SaveChangesAsync(ct);
-
             await tx.CommitAsync(ct);
 
             return new ProductInboundResponse
@@ -602,6 +612,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 FranchiseId = franchiseId,
                 ProductId = batch.ProductId,
                 BatchCode = batch.BatchCode,
+                ExpiredAt = expiredAt,
                 Quantity = batch.Quantity,
                 CreatedMovementId = mv.MovementId,
                 CreatedAt = mv.CreatedAt

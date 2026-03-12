@@ -301,8 +301,30 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 
             modelBuilder.Entity<ProductBatch>(e =>
             {
-                e.ToTable("product_batches");
+                e.ToTable("product_batches", tb =>
+                {
+                    tb.HasCheckConstraint(
+                        "CK_product_batches_owner",
+                        @"
+            (
+                ""FranchiseId"" IS NOT NULL
+                AND ""CentralKitchenId"" IS NULL
+            )
+            OR
+            (
+                ""FranchiseId"" IS NULL
+                AND ""CentralKitchenId"" IS NOT NULL
+            )");
+                });
+
                 e.HasKey(x => x.BatchId);
+
+                e.Property(x => x.BatchCode)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                e.Property(x => x.Quantity)
+                    .HasColumnType("numeric(18,2)");
 
                 e.HasOne(x => x.Product)
                     .WithMany(x => x.ProductBatches)
@@ -318,7 +340,25 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .WithMany(x => x.ProductBatches)
                     .HasForeignKey(x => x.CentralKitchenId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.ProductionRun)
+                    .WithMany(x => x.ProductBatches)
+                    .HasForeignKey(x => x.ProductionRunId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                // Franchise-owned uniqueness
+                e.HasIndex(x => new { x.ProductId, x.FranchiseId, x.BatchCode })
+                    .IsUnique()
+                    .HasDatabaseName("UX_product_batches_product_franchise_batchcode")
+                    .HasFilter(@"""FranchiseId"" IS NOT NULL AND ""CentralKitchenId"" IS NULL");
+
+                // CentralKitchen-owned uniqueness
+                e.HasIndex(x => new { x.ProductId, x.CentralKitchenId, x.BatchCode })
+                    .IsUnique()
+                    .HasDatabaseName("UX_product_batches_product_ck_batchcode")
+                    .HasFilter(@"""CentralKitchenId"" IS NOT NULL AND ""FranchiseId"" IS NULL");
             });
+
 
             modelBuilder.Entity<ProductMovement>(e => { e.ToTable("product_movements"); e.HasKey(x => x.MovementId); });
 

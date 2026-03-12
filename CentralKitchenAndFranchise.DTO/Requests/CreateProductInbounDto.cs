@@ -1,20 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace CentralKitchenAndFranchise.DTO.Requests
 {
     public class CreateProductInboundDto
     {
-        public int ProductId { get; set; }
-        public string BatchCode { get; set; } = default!;
-        public decimal Quantity { get; set; }
-        public string? Reason { get; set; }
-
         [Range(1, int.MaxValue)]
-        public int ShelfLifeDays { get; set; }
+        public int ProductId { get; set; }
+
+        [Required]
+        public string BatchCode { get; set; } = default!;
+
+        [Range(typeof(decimal), "0.000001", "79228162514264337593543950335")]
+        public decimal Quantity { get; set; }
+
+        public string? Reason { get; set; }
     }
 }
