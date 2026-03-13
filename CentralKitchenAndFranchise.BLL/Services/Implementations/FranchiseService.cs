@@ -33,30 +33,56 @@ public class FranchiseService : IFranchiseService
     {
         RequireAdminOrManager();
 
-        var query = _db.Franchises
-            .AsNoTracking()
-            .Include(x => x.CentralKitchen)
-            .OrderByDescending(x => x.CreatedAt)
-            .AsQueryable();
-
-        // TODO:
-        // Nếu sau này chốt manager scope thật thì filter ở đây,
-        // không để comment ở controller rồi service trả full data.
-
-        var items = await query.ToListAsync();
-        return items.Select(Map).ToList();
+        return await (
+            from f in _db.Franchises.AsNoTracking()
+            join ck in _db.CentralKitchens.AsNoTracking()
+                on f.CentralKitchenId equals ck.CentralKitchenId into ckGroup
+            from ck in ckGroup.DefaultIfEmpty()
+            orderby f.CreatedAt descending
+            select new FranchiseResponseDto
+            {
+                FranchiseId = f.FranchiseId,
+                CentralKitchenId = f.CentralKitchenId,
+                CentralKitchenName = ck != null ? ck.Name : null,
+                Name = f.Name,
+                Type = f.Type,
+                Status = f.Status,
+                Address = f.Address,
+                Location = f.Location,
+                Latitude = f.Latitude,
+                Longitude = f.Longitude,
+                CreatedAt = f.CreatedAt,
+                UpdatedAt = f.UpdatedAt
+            }
+        ).ToListAsync();
     }
 
     public async Task<FranchiseResponseDto?> GetByIdAsync(int id)
     {
         RequireAdminOrManager();
 
-        var entity = await _db.Franchises
-            .AsNoTracking()
-            .Include(x => x.CentralKitchen)
-            .FirstOrDefaultAsync(x => x.FranchiseId == id);
-
-        return entity is null ? null : Map(entity);
+        return await (
+            from f in _db.Franchises.AsNoTracking()
+            join ck in _db.CentralKitchens.AsNoTracking()
+                on f.CentralKitchenId equals ck.CentralKitchenId into ckGroup
+            from ck in ckGroup.DefaultIfEmpty()
+            where f.FranchiseId == id
+            select new FranchiseResponseDto
+            {
+                FranchiseId = f.FranchiseId,
+                CentralKitchenId = f.CentralKitchenId,
+                CentralKitchenName = ck != null ? ck.Name : null,
+                Name = f.Name,
+                Type = f.Type,
+                Status = f.Status,
+                Address = f.Address,
+                Location = f.Location,
+                Latitude = f.Latitude,
+                Longitude = f.Longitude,
+                CreatedAt = f.CreatedAt,
+                UpdatedAt = f.UpdatedAt
+            }
+        ).FirstOrDefaultAsync();
     }
 
     public async Task<int> CreateAsync(FranchiseCreateDto dto)
@@ -65,6 +91,8 @@ public class FranchiseService : IFranchiseService
         ArgumentNullException.ThrowIfNull(dto);
 
         await EnsureCentralKitchenExistsAsync(dto.CentralKitchenId);
+
+        var now = DateTime.UtcNow;
 
         var entity = new Franchise
         {
@@ -75,7 +103,9 @@ public class FranchiseService : IFranchiseService
             Address = NormalizeNullable(dto.Address),
             Location = NormalizeNullable(dto.Location),
             Latitude = dto.Latitude,
-            Longitude = dto.Longitude
+            Longitude = dto.Longitude,
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -108,11 +138,14 @@ public class FranchiseService : IFranchiseService
         RequireAdminOnly();
         ArgumentNullException.ThrowIfNull(dto);
 
+        await EnsureCentralKitchenExistsAsync(dto.CentralKitchenId);
+
         var entity = await _db.Franchises.FirstOrDefaultAsync(x => x.FranchiseId == id);
         if (entity is null) return false;
 
         var old = ToAuditSnapshot(entity);
 
+        entity.CentralKitchenId = dto.CentralKitchenId;
         entity.Name = NormalizeRequired(dto.Name, nameof(dto.Name));
         entity.Type = NormalizeRequired(dto.Type, nameof(dto.Type));
         entity.Status = NormalizeStatus(dto.Status, entity.Status);
@@ -120,6 +153,7 @@ public class FranchiseService : IFranchiseService
         entity.Location = NormalizeNullable(dto.Location);
         entity.Latitude = dto.Latitude;
         entity.Longitude = dto.Longitude;
+        entity.UpdatedAt = DateTime.UtcNow;
 
         await _db.AuditLogs.AddAsync(new AuditLog
         {
@@ -154,6 +188,7 @@ public class FranchiseService : IFranchiseService
         var old = ToAuditSnapshot(entity);
 
         entity.Status = StatusInactive;
+        entity.UpdatedAt = DateTime.UtcNow;
 
         await _db.AuditLogs.AddAsync(new AuditLog
         {
@@ -186,21 +221,7 @@ public class FranchiseService : IFranchiseService
             throw new InvalidOperationException($"Central kitchen {centralKitchenId} does not exist.");
     }
 
-    private static FranchiseResponseDto Map(Franchise x) => new()
-    {
-        FranchiseId = x.FranchiseId,
-        CentralKitchenId = x.CentralKitchenId,
-        CentralKitchenName = x.CentralKitchen?.Name,
-        Name = x.Name,
-        Type = x.Type,
-        Status = x.Status,
-        Address = x.Address,
-        Location = x.Location,
-        Latitude = x.Latitude,
-        Longitude = x.Longitude,
-        CreatedAt = x.CreatedAt,
-        UpdatedAt = x.UpdatedAt
-    };
+
 
     private static object ToAuditSnapshot(Franchise x) => new
     {

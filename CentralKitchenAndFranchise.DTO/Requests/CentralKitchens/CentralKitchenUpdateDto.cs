@@ -1,10 +1,8 @@
-﻿namespace CentralKitchenAndFranchise.DTO.Requests.Franchise;
+﻿namespace CentralKitchenAndFranchise.DTO.Requests.CentralKitchens;
 
-public class FranchiseUpdateDto
+public class CentralKitchenUpdateDto
 {
-    public int CentralKitchenId { get; set; }
     public string Name { get; set; } = null!;
-    public string Type { get; set; } = null!;
     public string? Status { get; set; }
     public string? Address { get; set; }
     public string? Location { get; set; }

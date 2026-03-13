@@ -39,14 +39,12 @@ public class AdminSeedController : ControllerBase
         if (!_env.IsDevelopment())
             throw new UnauthorizedAccessException("Seed API is only available in Development environment.");
 
-        // Defensive: ensure caller still exists (avoid weird states during reset)
         var caller = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == _current.UserId, ct);
         if (caller is null)
             throw new UnauthorizedAccessException("Current user not found.");
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-        // List tables to be truncated (for reporting)
         var tables = await _db.Database
             .SqlQueryRaw<string>(
                 "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> '__EFMigrationsHistory' ORDER BY tablename")
@@ -68,7 +66,6 @@ END $$;";
 
         await _db.Database.ExecuteSqlRawAsync(truncateAllSql, ct);
 
-        // Re-seed baseline so you don't lock yourself out after truncating users/roles
         DbSeeder.Seed(_db);
 
         await tx.CommitAsync(ct);
@@ -104,8 +101,8 @@ END $$;";
         if (!_env.IsDevelopment())
             throw new UnauthorizedAccessException("Seed API is only available in Development environment.");
 
-        var sentinelFranchiseName = "Franchise Store A";
-        var sentinelSku = "SKU-MILKTEA-01";
+        const string sentinelFranchiseName = "Franchise Store A";
+        const string sentinelSku = "SKU-MILKTEA-01";
 
         var alreadySeeded =
             await _db.Franchises.AsNoTracking().AnyAsync(x => x.Name == sentinelFranchiseName, ct)
@@ -115,22 +112,38 @@ END $$;";
         if (alreadySeeded)
             return Ok(ApiResponse<SeedSampleDataResponse>.Ok(resp, "Sample data already seeded."));
 
-        // Ensure required roles exist (DbSeeder should have created them)
-        var adminRoleId = await _db.Roles.Where(r => r.Name == RoleNames.Admin).Select(r => r.RoleId).FirstOrDefaultAsync(ct);
-        var managerRoleId = await _db.Roles.Where(r => r.Name == RoleNames.Manager).Select(r => r.RoleId).FirstOrDefaultAsync(ct);
+        var adminRoleId = await _db.Roles
+            .Where(r => r.Name == RoleNames.Admin)
+            .Select(r => r.RoleId)
+            .FirstOrDefaultAsync(ct);
 
-        // NOTE: change RoleNames.StoreStaff if your codebase uses different constant
-        var storeStaffRoleId = await _db.Roles.Where(r => r.Name == RoleNames.StoreStaff).Select(r => r.RoleId).FirstOrDefaultAsync(ct);
+        var managerRoleId = await _db.Roles
+            .Where(r => r.Name == RoleNames.Manager)
+            .Select(r => r.RoleId)
+            .FirstOrDefaultAsync(ct);
+
+        var storeStaffRoleId = await _db.Roles
+            .Where(r => r.Name == RoleNames.StoreStaff)
+            .Select(r => r.RoleId)
+            .FirstOrDefaultAsync(ct);
+
+        var defaultCentralKitchenId = await _db.CentralKitchens
+            .AsNoTracking()
+            .OrderBy(x => x.CentralKitchenId)
+            .Select(x => x.CentralKitchenId)
+            .FirstOrDefaultAsync(ct);
+
+        if (defaultCentralKitchenId == 0)
+            throw new InvalidOperationException("No central kitchen found. Ensure DbSeeder.Seed(db) ran.");
 
         if (adminRoleId == 0 || managerRoleId == 0 || storeStaffRoleId == 0)
             throw new InvalidOperationException("Required roles not found. Ensure DbSeeder.Seed(db) ran.");
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-        var now = DateTime.UtcNow;
-
         // 1) Franchises
         var (franchiseAId, createdA) = await EnsureFranchiseAsync(
+            centralKitchenId: defaultCentralKitchenId,
             name: "Franchise Store A",
             type: "STORE",
             address: "Sample Address A",
@@ -143,6 +156,7 @@ END $$;";
         resp.FranchiseIds.Add(franchiseAId);
 
         var (franchiseBId, createdB) = await EnsureFranchiseAsync(
+            centralKitchenId: defaultCentralKitchenId,
             name: "Franchise Store B",
             type: "STORE",
             address: "Sample Address B",
@@ -185,13 +199,12 @@ END $$;";
         if (createdStoreB) resp.UsersCreated++;
         resp.UserIds.Add(storeB.UserId);
 
-        // Assign store staff to OU (IMPORTANT: unique index on UserId => upsert by UserId)
         await EnsureUserWorkAssignmentAsync(
-    storeA.UserId,
-    WorkAssignmentTypes.Franchise,
-    franchiseAId,
-    null,
-    ct);
+            storeA.UserId,
+            WorkAssignmentTypes.Franchise,
+            franchiseAId,
+            null,
+            ct);
 
         await EnsureUserWorkAssignmentAsync(
             storeB.UserId,
@@ -199,6 +212,15 @@ END $$;";
             franchiseBId,
             null,
             ct);
+
+        // Optional but recommended: assign manager to central kitchen
+        await EnsureUserWorkAssignmentAsync(
+            manager.UserId,
+            WorkAssignmentTypes.CentralKitchen,
+            null,
+            defaultCentralKitchenId,
+            ct);
+
         // 3) Suppliers
         var (supplierAlphaId, createdSup1) = await EnsureSupplierAsync(
             name: "Supplier Alpha",
@@ -219,12 +241,12 @@ END $$;";
         // 4) Ingredients
         var ingredientsToEnsure = new[]
         {
-            new IngredientSeed("Black Tea", "g",   0.02m,   5000,  0.05m),
-            new IngredientSeed("Milk",     "ml",  0.01m,  20000,  0.05m),
-            new IngredientSeed("Sugar",    "g",   0.005m, 10000,  0.03m),
-            new IngredientSeed("Tapioca Pearls","g",0.03m, 8000,  0.08m),
-            new IngredientSeed("Ice",      "g",   0.0002m,30000,  0.10m),
-            new IngredientSeed("Cocoa Powder","g",0.04m,   3000,  0.06m),
+            new IngredientSeed("Black Tea", "g", 0.02m, 5000, 0.05m),
+            new IngredientSeed("Milk", "ml", 0.01m, 20000, 0.05m),
+            new IngredientSeed("Sugar", "g", 0.005m, 10000, 0.03m),
+            new IngredientSeed("Tapioca Pearls", "g", 0.03m, 8000, 0.08m),
+            new IngredientSeed("Ice", "g", 0.0002m, 30000, 0.10m),
+            new IngredientSeed("Cocoa Powder", "g", 0.04m, 3000, 0.06m),
         };
 
         foreach (var i in ingredientsToEnsure)
@@ -237,12 +259,12 @@ END $$;";
         // 5) Products
         var productsToEnsure = new[]
         {
-            new ProductSeed("Milk Tea",       "SKU-MILKTEA-01", "cup", "FINISHED"),
-            new ProductSeed("Pearl Milk Tea", "SKU-PEARL-01",   "cup", "FINISHED"),
-            new ProductSeed("Chocolate Milk", "SKU-CHOCO-01",   "cup", "FINISHED"),
-            new ProductSeed("Cooked Pearls",  "SKU-PEARLS-SS",  "g",   "SEMI_FINISHED"),
-            new ProductSeed("Sugar Syrup",    "SKU-SYRUP-SS",   "ml",  "SEMI_FINISHED"),
-            new ProductSeed("Tea Base",       "SKU-TEA-SS",     "ml",  "SEMI_FINISHED"),
+            new ProductSeed("Milk Tea", "SKU-MILKTEA-01", "cup", "FINISHED"),
+            new ProductSeed("Pearl Milk Tea", "SKU-PEARL-01", "cup", "FINISHED"),
+            new ProductSeed("Chocolate Milk", "SKU-CHOCO-01", "cup", "FINISHED"),
+            new ProductSeed("Cooked Pearls", "SKU-PEARLS-SS", "g", "SEMI_FINISHED"),
+            new ProductSeed("Sugar Syrup", "SKU-SYRUP-SS", "ml", "SEMI_FINISHED"),
+            new ProductSeed("Tea Base", "SKU-TEA-SS", "ml", "SEMI_FINISHED"),
         };
 
         foreach (var p in productsToEnsure)
@@ -253,7 +275,10 @@ END $$;";
         }
 
         // 6) Store Catalog mapping
-        var allActiveProducts = await _db.Products.AsNoTracking().Where(x => x.Status == "ACTIVE").ToListAsync(ct);
+        var allActiveProducts = await _db.Products
+            .AsNoTracking()
+            .Where(x => x.Status == "ACTIVE")
+            .ToListAsync(ct);
 
         foreach (var product in allActiveProducts)
         {
@@ -264,7 +289,7 @@ END $$;";
             if (createdMapB) resp.StoreCatalogItemsCreated++;
         }
 
-        // 7) One audit log entry for traceability
+        // 7) Audit log
         await _db.AuditLogs.AddAsync(new AuditLog
         {
             UserId = _current.UserId,
@@ -295,6 +320,7 @@ END $$;";
     // Helpers
     // ==========================================================
     private async Task<(int franchiseId, bool created)> EnsureFranchiseAsync(
+        int centralKitchenId,
         string name,
         string type,
         string address,
@@ -306,12 +332,47 @@ END $$;";
         var existing = await _db.Franchises.FirstOrDefaultAsync(x => x.Name == name, ct);
         if (existing is not null)
         {
-            // normalize active for testing convenience
             var changed = false;
+
+            if (existing.CentralKitchenId != centralKitchenId)
+            {
+                existing.CentralKitchenId = centralKitchenId;
+                changed = true;
+            }
 
             if (!string.Equals(existing.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
             {
                 existing.Status = "ACTIVE";
+                changed = true;
+            }
+
+            if (!string.Equals(existing.Type, type, StringComparison.Ordinal))
+            {
+                existing.Type = type;
+                changed = true;
+            }
+
+            if (!string.Equals(existing.Address, address, StringComparison.Ordinal))
+            {
+                existing.Address = address;
+                changed = true;
+            }
+
+            if (!string.Equals(existing.Location, location, StringComparison.Ordinal))
+            {
+                existing.Location = location;
+                changed = true;
+            }
+
+            if (existing.Latitude != latitude)
+            {
+                existing.Latitude = latitude;
+                changed = true;
+            }
+
+            if (existing.Longitude != longitude)
+            {
+                existing.Longitude = longitude;
                 changed = true;
             }
 
@@ -327,6 +388,7 @@ END $$;";
         var now = DateTime.UtcNow;
         var entity = new Franchise
         {
+            CentralKitchenId = centralKitchenId,
             Name = name,
             Type = type,
             Status = "ACTIVE",
@@ -362,8 +424,18 @@ END $$;";
         {
             var changed = false;
 
-            if (existing.RoleId != roleId) { existing.RoleId = roleId; changed = true; }
-            if (!string.Equals(existing.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase)) { existing.Status = "ACTIVE"; changed = true; }
+            if (existing.RoleId != roleId)
+            {
+                existing.RoleId = roleId;
+                changed = true;
+            }
+
+            if (!string.Equals(existing.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+            {
+                existing.Status = "ACTIVE";
+                changed = true;
+            }
+
             if (string.IsNullOrWhiteSpace(existing.PasswordHash))
             {
                 existing.PasswordHash = BCrypt.Net.BCrypt.HashPassword(passwordPlain);
@@ -398,11 +470,11 @@ END $$;";
     }
 
     private async Task EnsureUserWorkAssignmentAsync(
-    int userId,
-    string assignmentType,
-    int? franchiseId,
-    int? centralKitchenId,
-    CancellationToken ct)
+        int userId,
+        string assignmentType,
+        int? franchiseId,
+        int? centralKitchenId,
+        CancellationToken ct)
     {
         var existing = await _db.UserWorkAssignments
             .FirstOrDefaultAsync(x => x.UserId == userId, ct);
@@ -437,12 +509,16 @@ END $$;";
         await _db.SaveChangesAsync(ct);
     }
 
-    private async Task<(int supplierId, bool created)> EnsureSupplierAsync(string name, string contactInfo, CancellationToken ct)
+    private async Task<(int supplierId, bool created)> EnsureSupplierAsync(
+        string name,
+        string contactInfo,
+        CancellationToken ct)
     {
         var existing = await _db.Suppliers.FirstOrDefaultAsync(x => x.Name == name, ct);
         if (existing is not null)
         {
             var changed = false;
+
             if (!string.Equals(existing.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
             {
                 existing.Status = "ACTIVE";
@@ -481,7 +557,6 @@ END $$;";
                 changed = true;
             }
 
-            // keep your demo consistent
             if (existing.Unit != seed.Unit) { existing.Unit = seed.Unit; changed = true; }
             if (existing.Price != seed.Price) { existing.Price = seed.Price; changed = true; }
             if (existing.SafetyStock != seed.SafetyStock) { existing.SafetyStock = seed.SafetyStock; changed = true; }
@@ -534,8 +609,6 @@ END $$;";
 
             if (changed)
             {
-                // If Product has UpdatedAt in your schema, set it; if not, keep as-is.
-                // existing.UpdatedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync(ct);
             }
 
@@ -563,7 +636,9 @@ END $$;";
         decimal basePrice,
         CancellationToken ct)
     {
-        var existing = await _db.StoreCatalogs.FirstOrDefaultAsync(x => x.FranchiseId == franchiseId && x.ProductId == product.ProductId, ct);
+        var existing = await _db.StoreCatalogs
+            .FirstOrDefaultAsync(x => x.FranchiseId == franchiseId && x.ProductId == product.ProductId, ct);
+
         if (existing is not null)
         {
             if (!string.Equals(existing.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
@@ -572,6 +647,7 @@ END $$;";
                 existing.UpdatedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync(ct);
             }
+
             return (false, existing);
         }
 

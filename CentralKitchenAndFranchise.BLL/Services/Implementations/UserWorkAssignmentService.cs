@@ -54,7 +54,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             }
             else
             {
-                throw new Exception("Invalid assignment type");
+                throw new Exception("Type must be FRANCHISE or CENTRAL_KITCHEN");
             }
 
             var existingAssignment = await _context.UserWorkAssignments

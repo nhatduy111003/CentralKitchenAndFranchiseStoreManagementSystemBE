@@ -178,6 +178,7 @@ builder.Services.AddScoped<IIngredientService, IngredientService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IFranchiseService, FranchiseService>();
+builder.Services.AddScoped<ICentralKitchenService, CentralKitchenService>();
 builder.Services.AddScoped<IIngredientGuard, IngredientGuard>();
 builder.Services.AddScoped<ISupplierService, SupplierService>();
 builder.Services.AddScoped<IProductService,
@@ -200,13 +201,18 @@ builder.Services.AddScoped<IBomService, BomService>();
 builder.Services.AddScoped<IRecipeService, RecipeService>();
 
 var app = builder.Build();
-
-// Auto migrate + seed
-using (var scope = app.Services.CreateScope())
+//auto migrate in development env
+if (app.Environment.IsDevelopment())
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
     DbSeeder.Seed(db);
+
+    CentralKitchenAndFranchise.API.Dev.HashTool.Print();
+
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 if (app.Environment.IsDevelopment())
