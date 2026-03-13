@@ -174,13 +174,18 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         (""AssignmentType"" = 'CENTRAL_KITCHEN' AND ""FranchiseId"" IS NULL AND ""CentralKitchenId"" IS NOT NULL)
     )");
             });
+
             modelBuilder.Entity<Ingredient>(e =>
             {
+                e.ToTable("ingredients");
+                e.HasKey(x => x.IngredientId);
+
                 e.HasOne(x => x.Supplier)
                     .WithMany(x => x.Ingredients)
                     .HasForeignKey(x => x.SupplierId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
+
             modelBuilder.Entity<Supplier>(e => { e.ToTable("suppliers"); e.HasKey(x => x.SupplierId); });
             modelBuilder.Entity<Product>(e => { e.ToTable("products"); e.HasKey(x => x.ProductId); });
 

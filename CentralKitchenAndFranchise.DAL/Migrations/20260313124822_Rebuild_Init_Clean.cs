@@ -7,7 +7,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CentralKitchenAndFranchise.DAL.Migrations
 {
     /// <inheritdoc />
-    public partial class Rebuild_Init_After_DerivedExpiry : Migration
+    public partial class Rebuild_Init_Clean : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -341,7 +341,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Ingredients",
+                name: "ingredients",
                 columns: table => new
                 {
                     IngredientId = table.Column<int>(type: "integer", nullable: false)
@@ -359,9 +359,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Ingredients", x => x.IngredientId);
+                    table.PrimaryKey("PK_ingredients", x => x.IngredientId);
                     table.ForeignKey(
-                        name: "FK_Ingredients_suppliers_SupplierId",
+                        name: "FK_ingredients_suppliers_SupplierId",
                         column: x => x.SupplierId,
                         principalTable: "suppliers",
                         principalColumn: "SupplierId",
@@ -686,16 +686,16 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 {
                     table.PrimaryKey("PK_bom_items", x => x.BomItemId);
                     table.ForeignKey(
-                        name: "FK_bom_items_Ingredients_IngredientId",
-                        column: x => x.IngredientId,
-                        principalTable: "Ingredients",
-                        principalColumn: "IngredientId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
                         name: "FK_bom_items_boms_BomId",
                         column: x => x.BomId,
                         principalTable: "boms",
                         principalColumn: "BomId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_bom_items_ingredients_IngredientId",
+                        column: x => x.IngredientId,
+                        principalTable: "ingredients",
+                        principalColumn: "IngredientId",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -718,12 +718,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     table.PrimaryKey("PK_ingredient_batches", x => x.BatchId);
                     table.CheckConstraint("CK_ingredient_batches_type_owner", "\r\n                        (\r\n                            \"Type\" = 'FRANCHISE'\r\n                            AND \"FranchiseId\" IS NOT NULL\r\n                            AND \"CentralKitchenId\" IS NULL\r\n                        )\r\n                        OR\r\n                        (\r\n                            \"Type\" = 'CENTRAL_KITCHEN'\r\n                            AND \"FranchiseId\" IS NULL\r\n                            AND \"CentralKitchenId\" IS NOT NULL\r\n                        )");
                     table.ForeignKey(
-                        name: "FK_ingredient_batches_Ingredients_IngredientId",
-                        column: x => x.IngredientId,
-                        principalTable: "Ingredients",
-                        principalColumn: "IngredientId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
                         name: "FK_ingredient_batches_central_kitchens_CentralKitchenId",
                         column: x => x.CentralKitchenId,
                         principalTable: "central_kitchens",
@@ -735,6 +729,12 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         principalTable: "franchises",
                         principalColumn: "FranchiseId",
                         onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ingredient_batches_ingredients_IngredientId",
+                        column: x => x.IngredientId,
+                        principalTable: "ingredients",
+                        principalColumn: "IngredientId",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -804,13 +804,14 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     ProductionRunId = table.Column<int>(type: "integer", nullable: true),
                     FranchiseId = table.Column<int>(type: "integer", nullable: true),
                     CentralKitchenId = table.Column<int>(type: "integer", nullable: true),
-                    BatchCode = table.Column<string>(type: "text", nullable: false),
-                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
+                    BatchCode = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_product_batches", x => x.BatchId);
+                    table.CheckConstraint("CK_product_batches_owner", "\r\n            (\r\n                \"FranchiseId\" IS NOT NULL\r\n                AND \"CentralKitchenId\" IS NULL\r\n            )\r\n            OR\r\n            (\r\n                \"FranchiseId\" IS NULL\r\n                AND \"CentralKitchenId\" IS NOT NULL\r\n            )");
                     table.ForeignKey(
                         name: "FK_product_batches_central_kitchens_CentralKitchenId",
                         column: x => x.CentralKitchenId,
@@ -827,7 +828,8 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         name: "FK_product_batches_production_runs_ProductionRunId",
                         column: x => x.ProductionRunId,
                         principalTable: "production_runs",
-                        principalColumn: "ProductionRunId");
+                        principalColumn: "ProductionRunId",
+                        onDelete: ReferentialAction.SetNull);
                     table.ForeignKey(
                         name: "FK_product_batches_products_ProductId",
                         column: x => x.ProductId,
@@ -875,16 +877,16 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 {
                     table.PrimaryKey("PK_delivery_ingredient_items", x => x.DeliveryIngredientItemId);
                     table.ForeignKey(
-                        name: "FK_delivery_ingredient_items_Ingredients_IngredientId",
-                        column: x => x.IngredientId,
-                        principalTable: "Ingredients",
-                        principalColumn: "IngredientId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
                         name: "FK_delivery_ingredient_items_deliveries_DeliveryId",
                         column: x => x.DeliveryId,
                         principalTable: "deliveries",
                         principalColumn: "DeliveryId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_delivery_ingredient_items_ingredients_IngredientId",
+                        column: x => x.IngredientId,
+                        principalTable: "ingredients",
+                        principalColumn: "IngredientId",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -1086,8 +1088,8 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "IngredientId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Ingredients_SupplierId",
-                table: "Ingredients",
+                name: "IX_ingredients_SupplierId",
+                table: "ingredients",
                 column: "SupplierId");
 
             migrationBuilder.CreateIndex(
@@ -1106,14 +1108,23 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "FranchiseId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_product_batches_ProductId",
-                table: "product_batches",
-                column: "ProductId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_product_batches_ProductionRunId",
                 table: "product_batches",
                 column: "ProductionRunId");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_product_batches_product_ck_batchcode",
+                table: "product_batches",
+                columns: new[] { "ProductId", "CentralKitchenId", "BatchCode" },
+                unique: true,
+                filter: "\"CentralKitchenId\" IS NOT NULL AND \"FranchiseId\" IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_product_batches_product_franchise_batchcode",
+                table: "product_batches",
+                columns: new[] { "ProductId", "FranchiseId", "BatchCode" },
+                unique: true,
+                filter: "\"FranchiseId\" IS NOT NULL AND \"CentralKitchenId\" IS NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_product_movements_BatchId",
@@ -1304,7 +1315,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 name: "demand_aggregations");
 
             migrationBuilder.DropTable(
-                name: "Ingredients");
+                name: "ingredients");
 
             migrationBuilder.DropTable(
                 name: "production_runs");
