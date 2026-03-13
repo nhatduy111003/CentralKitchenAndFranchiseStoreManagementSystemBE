@@ -11,7 +11,7 @@ public class CreateIngredientRequest
     [StringLength(200, MinimumLength = 2)]
     public string Name { get; set; } = default!;
 
-    [Required]
+    [Required(ErrorMessage = "Đơn vị tính không được để trống")]
     [StringLength(50, MinimumLength = 1)]
     public string Unit { get; set; } = default!;
 

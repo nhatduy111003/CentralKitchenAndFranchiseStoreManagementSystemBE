@@ -25,7 +25,7 @@ public class FranchiseService : IFranchiseService
 
         var items = await _db.Franchises
             .AsNoTracking()
-            .OrderBy(x => x.FranchiseId)
+            .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
 
         return items.Select(Map).ToList();
@@ -52,7 +52,10 @@ public class FranchiseService : IFranchiseService
             Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim(),
             Location = string.IsNullOrWhiteSpace(dto.Location) ? null : dto.Location.Trim(),
             Latitude = dto.Latitude,
-            Longitude = dto.Longitude
+            Longitude = dto.Longitude,
+            CentralKitchenId = dto.CentralKitchenId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
         };
 
         await _db.Franchises.AddAsync(entity);
@@ -120,27 +123,34 @@ public class FranchiseService : IFranchiseService
     public async Task<bool> DeleteAsync(int id)
     {
         RequireAdminOnly();
+        var hasUsers = await _db.UserWorkAssignments
+    .AnyAsync(x => x.FranchiseId == id);
 
+        if (hasUsers)
+            throw new InvalidOperationException("Không thể xóa người dùng đã gán !");
         var entity = await _db.Franchises.FirstOrDefaultAsync(x => x.FranchiseId == id);
         if (entity is null) return false;
 
-        if (entity.Status == "INACTIVE")
-            return true;
+        var old = new
+        {
+            entity.FranchiseId,
+            entity.Name,
+            entity.Type,
+            entity.Status
+        };
 
-        var old = new { entity.Status };
-
-        entity.Status = "INACTIVE";
+        _db.Franchises.Remove(entity);
 
         await _db.AuditLogs.AddAsync(new AuditLog
         {
             UserId = _current.UserId,
             FranchiseId = entity.FranchiseId,
-            Action = "DEACTIVATE",
+            Action = "DELETE",
             EntityName = nameof(Franchise),
             EntityId = entity.FranchiseId,
             OldDataJson = JsonSerializer.Serialize(old),
-            NewDataJson = JsonSerializer.Serialize(new { entity.Status }),
-            Reason = "Deactivate franchise",
+            NewDataJson = null,
+            Reason = "Hard delete franchise",
             CreatedAt = DateTime.UtcNow
         });
 

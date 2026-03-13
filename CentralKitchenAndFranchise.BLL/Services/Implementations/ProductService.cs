@@ -19,10 +19,6 @@ public class ProductService : IProductService
         _db = db;
         _current = current;
     }
-
-    // =========================
-    // READ
-    // =========================
     public async Task<PagedResult<ProductResponse>> SearchAsync(ProductListQuery query, CancellationToken ct = default)
     {
         RequireAdminOrManager();
@@ -103,10 +99,6 @@ public class ProductService : IProductService
             ShelfLifeDays = p.ShelfLifeDays
         };
     }
-
-    // =========================
-    // WRITE (CRUD)
-    // =========================
     public async Task<int> CreateAsync(ProductCreateRequest req, CancellationToken ct = default)
     {
         RequireAdminOrManager();
@@ -249,10 +241,43 @@ public class ProductService : IProductService
 
     public Task DeactivateAsync(int id, CancellationToken ct = default)
         => ChangeStatusAsync(id, new ProductStatusUpdateRequest { Status = ProductStatus.Inactive }, ct);
+    public async Task DeleteAsync(int id, CancellationToken ct = default)
+    {
+        RequireAdminOrManager();
 
-    // =========================
-    // Helpers
-    // =========================
+        if (id <= 0)
+            throw new ArgumentException("id must be a positive integer.");
+
+        var entity = await _db.Products.FirstOrDefaultAsync(x => x.ProductId == id, ct);
+        if (entity is null)
+            throw new KeyNotFoundException($"Product {id} not found.");
+
+        var old = new
+        {
+            entity.ProductId,
+            entity.Name,
+            entity.Sku,
+            entity.Unit,
+            entity.ProductType,
+            entity.Status
+        };
+
+        _db.Products.Remove(entity);
+
+        await _db.AuditLogs.AddAsync(new AuditLog
+        {
+            UserId = _current.UserId,
+            Action = "DELETE",
+            EntityName = nameof(Product),
+            EntityId = entity.ProductId,
+            OldDataJson = JsonSerializer.Serialize(old),
+            NewDataJson = null,
+            Reason = "Hard delete product",
+            CreatedAt = DateTime.UtcNow
+        }, ct);
+
+        await _db.SaveChangesAsync(ct);
+    }
     private void RequireAdminOrManager()
     {
         var role = _current.Role;
