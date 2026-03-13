@@ -1,5 +1,5 @@
-﻿using CentralKitchenAndFranchise.DTO.Requests;
-using CentralKitchenAndFranchise.DTO.Responses;
+﻿using CentralKitchenAndFranchise.DTO.Requests.Franchise;
+using CentralKitchenAndFranchise.DTO.Responses.Franchise;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,10 +10,12 @@ namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
 {
     public interface IFranchiseService
     {
-        Task<List<FranchiseDto>> GetAllAsync();
-        Task<FranchiseDto?> GetByIdAsync(int id);
+        Task<List<FranchiseResponseDto>> GetAllAsync();
+        Task<FranchiseResponseDto?> GetByIdAsync(int id);
+
         Task<int> CreateAsync(FranchiseCreateDto dto);
-        Task<bool> UpdateAsync(int id, FranchiseCreateDto dto);
+        Task<bool> UpdateAsync(int id, FranchiseUpdateDto dto);
+
         Task<bool> DeleteAsync(int id);
     }
 

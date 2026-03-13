@@ -257,7 +257,7 @@ public class DeliveryService : IDeliveryService
 
     public async Task ConfirmAsync(int deliveryId, CancellationToken ct = default)
     {
-        RequireOneOf(RoleNames.Admin, RoleNames.Manager);
+        RequireOneOf(RoleNames.Admin, RoleNames.Manager,RoleNames.SupplyCoordinator);
 
         var delivery = await _db.Deliveries
             .Include(d => d.DeliveryPlan)

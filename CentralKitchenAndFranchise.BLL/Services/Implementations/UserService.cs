@@ -76,9 +76,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
             var now = DateTime.UtcNow;
-            var role = await _context.Roles
-                .AsNoTracking()
-                .FirstOrDefaultAsync(r => r.RoleId == dto.RoleId);
+
 
             if (role is null)
                 throw new KeyNotFoundException($"Role {dto.RoleId} not found.");

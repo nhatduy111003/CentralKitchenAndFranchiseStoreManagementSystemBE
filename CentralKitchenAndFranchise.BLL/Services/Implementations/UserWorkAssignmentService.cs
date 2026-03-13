@@ -1,8 +1,10 @@
-﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+﻿using CentralKitchenAndFranchise.BLL.Exceptions;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Responses.WorkAssignment;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations
@@ -10,14 +12,18 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
     public class UserWorkAssignmentService : IUserWorkAssignmentService
     {
         private readonly AppDbContext _context;
+        private readonly ICurrentUserService _current;
 
-        public UserWorkAssignmentService(AppDbContext context)
+        public UserWorkAssignmentService(AppDbContext context, ICurrentUserService current)
         {
             _context = context;
+            _current = current;
         }
 
         public async Task AssignAsync(AssignUserWorkAssignmentDto dto)
         {
+            RequireAdminOrManager();
+
             var userExists = await _context.Users
                 .AnyAsync(x => x.UserId == dto.UserId);
 
@@ -83,9 +89,11 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             await _context.SaveChangesAsync();
         }
-
+        
         public async Task RemoveAsync(int userId)
         {
+            RequireAdminOrManager();
+
             var entity = await _context.UserWorkAssignments
                 .FirstOrDefaultAsync(x => x.UserId == userId);
 
@@ -98,6 +106,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
         public async Task<UserWorkAssignmentResponse?> GetByUserAsync(int userId)
         {
+            RequireAdminOrManager();
+
             return await _context.UserWorkAssignments
                 .Where(x => x.UserId == userId)
                 .Select(x => new UserWorkAssignmentResponse
@@ -116,6 +126,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             int? franchiseId,
             int? centralKitchenId)
         {
+            RequireAdminOrManager();
+
             var query = _context.UserWorkAssignments
                 .Include(x => x.User)
                     .ThenInclude(u => u.Role)
@@ -157,6 +169,12 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     AssignedAt = x.AssignedAt
                 })
                 .ToListAsync();
+        }
+
+        private void RequireAdminOrManager()
+        {
+            if (!_current.IsInRole(RoleNames.Admin) && !_current.IsInRole(RoleNames.Manager))
+                throw new ForbiddenAccessException("Admin/Manager role required.");
         }
     }
 }

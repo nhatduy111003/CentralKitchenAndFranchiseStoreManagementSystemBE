@@ -1,9 +1,12 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CentralKitchenAndFranchise.API.Controllers
 {
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [ApiController]
     [Route("api/admin/user-work-assignments")]
     public class UserWorkAssignmentController : ControllerBase
