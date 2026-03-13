@@ -1,10 +1,5 @@
 ﻿using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Responses;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
 {
@@ -15,17 +10,20 @@ namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
             CreateIngredientInboundDto request,
             CancellationToken ct = default);
 
-        Task<IssueIngredientsByProductionPlanResponse> IssueIngredientsByProductionPlanAsync(
-        int franchiseId,
-        int productionPlanId,
-        IssueIngredientsByProductionPlanDto request,
-        CancellationToken ct = default);
-
         Task<AdjustIngredientInventoryResponse> AdjustIngredientAsync(
-        int franchiseId,
-        AdjustIngredientInventoryDto request,
-        CancellationToken ct = default);
+            int franchiseId,
+            AdjustIngredientInventoryDto request,
+            CancellationToken ct = default);
 
-        Task<ProductInboundResponse> InboundProductAsync(int franchiseId, CreateProductInboundDto request, CancellationToken ct = default);
+        Task<ProductInboundResponse> InboundProductAsync(
+            int franchiseId,
+            CreateProductInboundDto request,
+            CancellationToken ct = default);
+
+        Task<IssueIngredientsByProductionPlanResponse> IssueIngredientsByProductionPlanAsync(
+            int centralKitchenId,
+            int productionPlanId,
+            IssueIngredientsByProductionPlanDto request,
+            CancellationToken ct = default);
     }
 }

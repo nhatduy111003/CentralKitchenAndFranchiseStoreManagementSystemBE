@@ -1,5 +1,6 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DAL.Enums;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.Dashboard;
 using CentralKitchenAndFranchise.DTO.Responses.Dashboard;
@@ -13,19 +14,25 @@ public class ManagerDashboardService : IManagerDashboardService
     private readonly ICurrentUserService _current;
     private readonly IFranchiseAccessService _franchiseAccess;
 
-    public ManagerDashboardService(AppDbContext db, ICurrentUserService current, IFranchiseAccessService franchiseAccess)
+    public ManagerDashboardService(
+        AppDbContext db,
+        ICurrentUserService current,
+        IFranchiseAccessService franchiseAccess)
     {
         _db = db;
         _current = current;
         _franchiseAccess = franchiseAccess;
     }
 
-    public async Task<ManagerDashboardOverviewResponse> GetOverviewAsync(ManagerDashboardOverviewQuery query, CancellationToken ct = default)
+    public async Task<ManagerDashboardOverviewResponse> GetOverviewAsync(
+        ManagerDashboardOverviewQuery query,
+        CancellationToken ct = default)
     {
         RequireAdminOrManager();
         query ??= new ManagerDashboardOverviewQuery();
 
-        var (fromDate, toDate, tzOffsetMinutes, limit, fromUtc, toUtcExclusive, todayLocal) = await NormalizeQueryAsync(query, ct);
+        var (fromDate, toDate, tzOffsetMinutes, limit, fromUtc, toUtcExclusive, todayLocal) =
+            await NormalizeQueryAsync(query, ct);
 
         // Scope:
         // - Admin: all ACTIVE franchises
@@ -57,19 +64,22 @@ public class ManagerDashboardService : IManagerDashboardService
         return resp;
     }
 
-    public async Task<ManagerDashboardOverviewResponse> GetFranchiseOverviewAsync(int franchiseId, ManagerDashboardOverviewQuery query, CancellationToken ct = default)
+    public async Task<ManagerDashboardOverviewResponse> GetFranchiseOverviewAsync(
+        int franchiseId,
+        ManagerDashboardOverviewQuery query,
+        CancellationToken ct = default)
     {
         RequireAdminOrManager();
 
-        // enforce scope when franchiseId is present
         await _franchiseAccess.EnsureCanAccessAsync(franchiseId, ct);
 
         query ??= new ManagerDashboardOverviewQuery();
-        var (fromDate, toDate, tzOffsetMinutes, limit, fromUtc, toUtcExclusive, todayLocal) = await NormalizeQueryAsync(query, ct);
+        var (fromDate, toDate, tzOffsetMinutes, limit, fromUtc, toUtcExclusive, todayLocal) =
+            await NormalizeQueryAsync(query, ct);
 
-        // Ensure franchise exists and ACTIVE (default policy)
-        var franchise = await _db.Franchises.AsNoTracking()
-            .Where(f => f.FranchiseId == franchiseId && f.Status == "ACTIVE")
+        var franchise = await _db.Franchises
+            .AsNoTracking()
+            .Where(f => f.FranchiseId == franchiseId && f.Status == OrganizationStatus.Active)
             .Select(f => new { f.FranchiseId, f.Name })
             .FirstOrDefaultAsync(ct);
 
@@ -105,28 +115,30 @@ public class ManagerDashboardService : IManagerDashboardService
 
     private async Task<List<int>> GetScopeFranchiseIdsAsync(CancellationToken ct)
     {
-        if (_current.IsInRole(RoleNames.Admin))
+        if (_current.IsInRole(RoleNames.Admin) || _current.IsInRole(RoleNames.Manager))
         {
-            return await _db.Franchises.AsNoTracking()
-                .Where(f => f.Status == "ACTIVE")
+            return await _db.Franchises
+                .AsNoTracking()
+                .Where(f => f.Status == OrganizationStatus.Active)
                 .Select(f => f.FranchiseId)
                 .ToListAsync(ct);
         }
 
-        // Manager: from user_franchises, and only ACTIVE franchises
-        return await _db.UserFranchises.AsNoTracking()
-            .Where(uf => uf.UserId == _current.UserId)
-            .Join(_db.Franchises.AsNoTracking().Where(f => f.Status == "ACTIVE"),
-                uf => uf.FranchiseId,
-                f => f.FranchiseId,
-                (uf, f) => f.FranchiseId)
-            .Distinct()
-            .ToListAsync(ct);
+        return new List<int>();
     }
-
-    private async Task<(DateOnly fromDate, DateOnly toDate, int tzOffsetMinutes, int limit, DateTime fromUtc, DateTime toUtcExclusive, DateOnly todayLocal)>
-        NormalizeQueryAsync(ManagerDashboardOverviewQuery query, CancellationToken ct)
+    private async Task<(
+        DateOnly fromDate,
+        DateOnly toDate,
+        int tzOffsetMinutes,
+        int limit,
+        DateTime fromUtc,
+        DateTime toUtcExclusive,
+        DateOnly todayLocal)> NormalizeQueryAsync(
+        ManagerDashboardOverviewQuery query,
+        CancellationToken ct)
     {
+        await Task.CompletedTask;
+
         var tz = query.TimezoneOffsetMinutes ?? 0;
         if (tz is < -720 or > 840)
             throw new ArgumentException("timezoneOffsetMinutes must be between -720 and 840.");
@@ -136,7 +148,7 @@ public class ManagerDashboardService : IManagerDashboardService
         var todayLocal = DateOnly.FromDateTime(nowLocal);
 
         var toDate = query.ToDate ?? todayLocal;
-        var fromDate = query.FromDate ?? toDate.AddDays(-6); // default last 7 days
+        var fromDate = query.FromDate ?? toDate.AddDays(-6);
 
         if (fromDate > toDate)
             throw new ArgumentException("fromDate must be <= toDate.");
@@ -148,8 +160,9 @@ public class ManagerDashboardService : IManagerDashboardService
         var limit = query.Limit <= 0 ? 20 : query.Limit;
         if (limit > 200) limit = 200;
 
-        // Convert local day boundaries to UTC boundaries
-        var fromUtc = new DateTime(fromDate.Year, fromDate.Month, fromDate.Day, 0, 0, 0, DateTimeKind.Utc).AddMinutes(-tz);
+        var fromUtc = new DateTime(fromDate.Year, fromDate.Month, fromDate.Day, 0, 0, 0, DateTimeKind.Utc)
+            .AddMinutes(-tz);
+
         var toUtcExclusive = new DateTime(toDate.Year, toDate.Month, toDate.Day, 0, 0, 0, DateTimeKind.Utc)
             .AddDays(1)
             .AddMinutes(-tz);
@@ -157,10 +170,15 @@ public class ManagerDashboardService : IManagerDashboardService
         return (fromDate, toDate, tz, limit, fromUtc, toUtcExclusive, todayLocal);
     }
 
-    private async Task FillOrderSummaryAsync(ManagerDashboardOverviewResponse resp, List<int> franchiseIds, DateTime fromUtc, DateTime toUtcExclusive, CancellationToken ct)
+    private async Task FillOrderSummaryAsync(
+        ManagerDashboardOverviewResponse resp,
+        List<int> franchiseIds,
+        DateTime fromUtc,
+        DateTime toUtcExclusive,
+        CancellationToken ct)
     {
-        // StoreOrder has only CreatedAt + Status. Use CreatedAt filter.
-        var data = await _db.StoreOrders.AsNoTracking()
+        var data = await _db.StoreOrders
+            .AsNoTracking()
             .Where(o => franchiseIds.Contains(o.FranchiseId))
             .Where(o => o.CreatedAt >= fromUtc && o.CreatedAt < toUtcExclusive)
             .GroupBy(o => o.Status)
@@ -173,11 +191,17 @@ public class ManagerDashboardService : IManagerDashboardService
             .ToDictionary(x => x.Status ?? "UNKNOWN", x => x.Count, StringComparer.OrdinalIgnoreCase);
     }
 
-    private async Task FillDeliverySummaryAsync(ManagerDashboardOverviewResponse resp, List<int> franchiseIds, DateTime fromUtc, DateTime toUtcExclusive, CancellationToken ct)
+    private async Task FillDeliverySummaryAsync(
+        ManagerDashboardOverviewResponse resp,
+        List<int> franchiseIds,
+        DateTime fromUtc,
+        DateTime toUtcExclusive,
+        CancellationToken ct)
     {
-        // DeliveryPlan.FranchiseId is treated as destination store franchise.
-        var data = await _db.Deliveries.AsNoTracking()
-            .Where(d => franchiseIds.Contains(d.DeliveryPlan.FranchiseId))
+        var data = await _db.DeliveryPlans
+            .AsNoTracking()
+            .Where(p => franchiseIds.Contains(p.FranchiseId))
+            .SelectMany(p => p.Deliveries)
             .Where(d => d.CreatedAt >= fromUtc && d.CreatedAt < toUtcExclusive)
             .GroupBy(d => d.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
@@ -188,7 +212,6 @@ public class ManagerDashboardService : IManagerDashboardService
             .OrderByDescending(x => x.Count)
             .ToDictionary(x => x.Status ?? "UNKNOWN", x => x.Count, StringComparer.OrdinalIgnoreCase);
 
-        // heuristic pending/delivered buckets
         var deliveredStatuses = new[] { DeliveryStatus.Delivered, "COMPLETED" };
         var pendingStatuses = new[] { DeliveryStatus.Created, DeliveryStatus.Confirmed, "PLANNED", "IN_PROGRESS", "SHIPPING" };
 
@@ -209,13 +232,11 @@ public class ManagerDashboardService : IManagerDashboardService
         int tzOffsetMinutes,
         CancellationToken ct)
     {
-        // Service-level approximation available today:
-        // On-time delivery rate: DeliveredAt(local date) <= PlannedDate for deliveries planned in range.
-        // If planned date is outside the range, exclude.
         var fromLocal = DateOnly.FromDateTime(fromUtc.AddMinutes(tzOffsetMinutes));
         var toLocal = DateOnly.FromDateTime(toUtcExclusive.AddMinutes(tzOffsetMinutes).AddDays(-1));
 
-        var plannedQuery = _db.DeliveryPlans.AsNoTracking()
+        var plannedQuery = _db.DeliveryPlans
+            .AsNoTracking()
             .Where(p => franchiseIds.Contains(p.FranchiseId))
             .Where(p => p.PlannedDate >= fromLocal && p.PlannedDate <= toLocal);
 
@@ -242,7 +263,7 @@ public class ManagerDashboardService : IManagerDashboardService
             }))
             .ToListAsync(ct);
 
-        bool IsDelivered(string? status)
+        static bool IsDelivered(string? status)
         {
             var s = (status ?? string.Empty).Trim().ToUpperInvariant();
             return s is DeliveryStatus.Delivered or "COMPLETED";
@@ -250,21 +271,15 @@ public class ManagerDashboardService : IManagerDashboardService
 
         var delivered = deliveries.Where(x => IsDelivered(x.Status)).ToList();
 
-        int OnTimeCount()
+        var onTimeCount = 0;
+        foreach (var d in delivered)
         {
-            var count = 0;
-            foreach (var d in delivered)
-            {
-                // DeliveredAt stored as DateTime; interpret with timezone offset
-                var deliveredLocalDate = DateOnly.FromDateTime(d.DeliveredAt.AddMinutes(tzOffsetMinutes));
-                if (deliveredLocalDate <= d.PlannedDate)
-                    count++;
-            }
-            return count;
+            var deliveredLocalDate = DateOnly.FromDateTime(d.DeliveredAt.AddMinutes(tzOffsetMinutes));
+            if (deliveredLocalDate <= d.PlannedDate)
+                onTimeCount++;
         }
 
         var deliveredCount = delivered.Count;
-        var onTimeCount = OnTimeCount();
 
         resp.ServiceLevelSummary.TotalDeliveriesPlannedInRange = totalPlannedDeliveries;
         resp.ServiceLevelSummary.TotalDeliveriesDeliveredInRange = deliveredCount;
@@ -274,24 +289,43 @@ public class ManagerDashboardService : IManagerDashboardService
             : Math.Round((decimal)onTimeCount / totalPlannedDeliveries, 4);
     }
 
-    private async Task FillLowStockAlertsAsync(ManagerDashboardOverviewResponse resp, List<int> franchiseIds, int limit, CancellationToken ct)
+    private async Task FillLowStockAlertsAsync(
+        ManagerDashboardOverviewResponse resp,
+        List<int> franchiseIds,
+        int limit,
+        CancellationToken ct)
     {
-        // Compute on-hand per (franchise, ingredient) = sum(quantity) across batches (only ingredient ACTIVE)
-        // Then compare with ingredient.SafetyStock (global per ingredient).
-        var lowStocks = await _db.IngredientBatches.AsNoTracking()
-            .Where(b => franchiseIds.Contains(b.FranchiseId))
+        var lowStocks = await _db.IngredientBatches
+            .AsNoTracking()
+            .Where(b =>
+                b.Type == InventoryOwnerType.Franchise &&
+                b.FranchiseId.HasValue &&
+                franchiseIds.Contains(b.FranchiseId.Value))
             .Where(b => b.Ingredient.Status == IngredientStatus.Active)
-            .GroupBy(b => new { b.FranchiseId, b.IngredientId })
+            .GroupBy(b => new
+            {
+                FranchiseId = b.FranchiseId!.Value,
+                b.IngredientId
+            })
             .Select(g => new
             {
                 g.Key.FranchiseId,
                 g.Key.IngredientId,
                 OnHand = g.Sum(x => x.Quantity)
             })
-            .Join(_db.Ingredients.AsNoTracking().Where(i => i.Status == IngredientStatus.Active),
+            .Join(
+                _db.Ingredients.AsNoTracking().Where(i => i.Status == IngredientStatus.Active),
                 x => x.IngredientId,
                 i => i.IngredientId,
-                (x, i) => new { x.FranchiseId, x.IngredientId, x.OnHand, i.SafetyStock, i.Name, i.Unit })
+                (x, i) => new
+                {
+                    x.FranchiseId,
+                    x.IngredientId,
+                    x.OnHand,
+                    i.SafetyStock,
+                    i.Name,
+                    i.Unit
+                })
             .Where(x => x.OnHand < x.SafetyStock)
             .OrderBy(x => x.OnHand / (x.SafetyStock == 0 ? 1 : x.SafetyStock))
             .Take(limit)
@@ -299,23 +333,33 @@ public class ManagerDashboardService : IManagerDashboardService
 
         if (lowStocks.Count == 0) return;
 
-        var franchiseNames = await _db.Franchises.AsNoTracking()
+        var franchiseNames = await _db.Franchises
+            .AsNoTracking()
             .Where(f => franchiseIds.Contains(f.FranchiseId))
             .ToDictionaryAsync(f => f.FranchiseId, f => f.Name, ct);
 
-        resp.LowStockAlerts = lowStocks.Select(x => new LowStockAlertItem
-        {
-            FranchiseId = x.FranchiseId,
-            FranchiseName = franchiseNames.GetValueOrDefault(x.FranchiseId, $"Franchise #{x.FranchiseId}"),
-            IngredientId = x.IngredientId,
-            IngredientName = x.Name,
-            Unit = x.Unit,
-            OnHandQuantity = x.OnHand,
-            SafetyStock = x.SafetyStock
-        }).ToList();
+        resp.LowStockAlerts = lowStocks
+            .Select(x => new LowStockAlertItem
+            {
+                FranchiseId = x.FranchiseId,
+                FranchiseName = franchiseNames.TryGetValue(x.FranchiseId, out var name)
+                    ? name
+                    : $"Franchise #{x.FranchiseId}",
+                IngredientId = x.IngredientId,
+                IngredientName = x.Name,
+                Unit = x.Unit,
+                OnHandQuantity = x.OnHand,
+                SafetyStock = x.SafetyStock
+            })
+            .ToList();
     }
 
-    private async Task FillNearExpiryAlertsAsync(ManagerDashboardOverviewResponse resp, List<int> franchiseIds, int limit, DateOnly todayLocal, CancellationToken ct)
+    private async Task FillNearExpiryAlertsAsync(
+        ManagerDashboardOverviewResponse resp,
+        List<int> franchiseIds,
+        int limit,
+        DateOnly todayLocal,
+        CancellationToken ct)
     {
         var nearExpiryDays = await GetNearExpiryDaysAsync(ct);
         if (nearExpiryDays <= 0)
@@ -326,8 +370,12 @@ public class ManagerDashboardService : IManagerDashboardService
 
         var cutoff = todayLocal.AddDays(nearExpiryDays);
 
-        var batches = await _db.IngredientBatches.AsNoTracking()
-            .Where(b => franchiseIds.Contains(b.FranchiseId))
+        var batches = await _db.IngredientBatches
+            .AsNoTracking()
+            .Where(b =>
+                b.Type == InventoryOwnerType.Franchise &&
+                b.FranchiseId.HasValue &&
+                franchiseIds.Contains(b.FranchiseId.Value))
             .Where(b => b.Ingredient.Status == IngredientStatus.Active)
             .Where(b => b.ExpiredAt != null && b.ExpiredAt <= cutoff)
             .OrderBy(b => b.ExpiredAt)
@@ -335,7 +383,7 @@ public class ManagerDashboardService : IManagerDashboardService
             .Take(limit)
             .Select(b => new
             {
-                b.FranchiseId,
+                FranchiseId = b.FranchiseId!.Value,
                 b.IngredientId,
                 IngredientName = b.Ingredient.Name,
                 b.Ingredient.Unit,
@@ -348,43 +396,59 @@ public class ManagerDashboardService : IManagerDashboardService
 
         if (batches.Count == 0) return;
 
-        var franchiseNames = await _db.Franchises.AsNoTracking()
+        var franchiseNames = await _db.Franchises
+            .AsNoTracking()
             .Where(f => franchiseIds.Contains(f.FranchiseId))
             .ToDictionaryAsync(f => f.FranchiseId, f => f.Name, ct);
 
-        resp.NearExpiryAlerts = batches.Select(b =>
-        {
-            int? daysToExpire = null;
-            if (b.ExpiredAt != null)
-                daysToExpire = b.ExpiredAt.Value.DayNumber - todayLocal.DayNumber;
-
-            return new NearExpiryAlertItem
+        resp.NearExpiryAlerts = batches
+            .Select(b =>
             {
-                FranchiseId = b.FranchiseId,
-                FranchiseName = franchiseNames.GetValueOrDefault(b.FranchiseId, $"Franchise #{b.FranchiseId}"),
-                IngredientId = b.IngredientId,
-                IngredientName = b.IngredientName,
-                Unit = b.Unit,
-                BatchId = b.BatchId,
-                BatchCode = b.BatchCode,
-                Quantity = b.Quantity,
-                ExpiredAt = b.ExpiredAt,
-                DaysToExpire = daysToExpire
-            };
-        }).ToList();
+                int? daysToExpire = null;
+                if (b.ExpiredAt != null)
+                    daysToExpire = b.ExpiredAt.Value.DayNumber - todayLocal.DayNumber;
+
+                return new NearExpiryAlertItem
+                {
+                    FranchiseId = b.FranchiseId,
+                    FranchiseName = franchiseNames.TryGetValue(b.FranchiseId, out var name)
+                        ? name
+                        : $"Franchise #{b.FranchiseId}",
+                    IngredientId = b.IngredientId,
+                    IngredientName = b.IngredientName,
+                    Unit = b.Unit,
+                    BatchId = b.BatchId,
+                    BatchCode = b.BatchCode,
+                    Quantity = b.Quantity,
+                    ExpiredAt = b.ExpiredAt,
+                    DaysToExpire = daysToExpire
+                };
+            })
+            .ToList();
     }
 
-    private async Task FillWasteAlertsAsync(ManagerDashboardOverviewResponse resp, List<int> franchiseIds, DateTime fromUtc, DateTime toUtcExclusive, int limit, CancellationToken ct)
+    private async Task FillWasteAlertsAsync(
+        ManagerDashboardOverviewResponse resp,
+        List<int> franchiseIds,
+        DateTime fromUtc,
+        DateTime toUtcExclusive,
+        int limit,
+        CancellationToken ct)
     {
-        // Waste report based on InventoryMovement:
-        // - waste quantity = sum(Type=WASTE)
-        // - issued quantity = sum(Type=OUT)
-        // WasteRate = waste / (waste + issued)
-        var movements = await _db.InventoryMovements.AsNoTracking()
+        var movements = await _db.InventoryMovements
+            .AsNoTracking()
             .Where(m => m.CreatedAt >= fromUtc && m.CreatedAt < toUtcExclusive)
-            .Where(m => m.Batch != null && franchiseIds.Contains(m.Batch.FranchiseId))
+            .Where(m =>
+                m.Batch != null &&
+                m.Batch.Type == InventoryOwnerType.Franchise &&
+                m.Batch.FranchiseId.HasValue &&
+                franchiseIds.Contains(m.Batch.FranchiseId.Value))
             .Where(m => m.Type == MovementType.Waste || m.Type == MovementType.Out)
-            .GroupBy(m => new { m.Batch.FranchiseId, m.Batch.IngredientId })
+            .GroupBy(m => new
+            {
+                FranchiseId = m.Batch!.FranchiseId!.Value,
+                m.Batch.IngredientId
+            })
             .Select(g => new
             {
                 g.Key.FranchiseId,
@@ -400,12 +464,20 @@ public class ManagerDashboardService : IManagerDashboardService
             return;
         }
 
-        var ingredientMap = await _db.Ingredients.AsNoTracking()
+        var ingredientMap = await _db.Ingredients
+            .AsNoTracking()
             .Where(i => i.Status == IngredientStatus.Active)
-            .Select(i => new { i.IngredientId, i.Name, i.Unit, i.WasteThreshold })
+            .Select(i => new
+            {
+                i.IngredientId,
+                i.Name,
+                i.Unit,
+                i.WasteThreshold
+            })
             .ToDictionaryAsync(i => i.IngredientId, i => i, ct);
 
-        var franchiseNames = await _db.Franchises.AsNoTracking()
+        var franchiseNames = await _db.Franchises
+            .AsNoTracking()
             .Where(f => franchiseIds.Contains(f.FranchiseId))
             .ToDictionaryAsync(f => f.FranchiseId, f => f.Name, ct);
 
@@ -413,7 +485,8 @@ public class ManagerDashboardService : IManagerDashboardService
 
         foreach (var x in movements)
         {
-            if (!ingredientMap.TryGetValue(x.IngredientId, out var ing)) continue;
+            if (!ingredientMap.TryGetValue(x.IngredientId, out var ing))
+                continue;
 
             var denom = x.Waste + x.Out;
             decimal? rate = denom <= 0 ? null : Math.Round(x.Waste / denom, 6);
@@ -424,7 +497,9 @@ public class ManagerDashboardService : IManagerDashboardService
             alerts.Add(new WasteAlertItem
             {
                 FranchiseId = x.FranchiseId,
-                FranchiseName = franchiseNames.GetValueOrDefault(x.FranchiseId, $"Franchise #{x.FranchiseId}"),
+                FranchiseName = franchiseNames.TryGetValue(x.FranchiseId, out var name)
+                    ? name
+                    : $"Franchise #{x.FranchiseId}",
                 IngredientId = x.IngredientId,
                 IngredientName = ing.Name,
                 Unit = ing.Unit,
@@ -436,7 +511,6 @@ public class ManagerDashboardService : IManagerDashboardService
             });
         }
 
-        // Prioritize exceedances, then highest waste quantity
         resp.WasteAlerts = alerts
             .OrderByDescending(x => x.IsExceedThreshold)
             .ThenByDescending(x => x.WasteRate ?? 0)
@@ -447,7 +521,8 @@ public class ManagerDashboardService : IManagerDashboardService
 
     private async Task<int> GetNearExpiryDaysAsync(CancellationToken ct)
     {
-        var raw = await _db.SystemSettings.AsNoTracking()
+        var raw = await _db.SystemSettings
+            .AsNoTracking()
             .Where(s => s.Key == SettingKeys.NearExpiryDays)
             .Select(s => s.Value)
             .FirstOrDefaultAsync(ct);

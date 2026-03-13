@@ -57,13 +57,13 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 .AnyAsync(u => u.Username.ToLower() == dto.Username.ToLower());
 
             if (usernameExists)
-                throw new Exception("Tên đăng nhập đã tồn tại");
+                throw new InvalidOperationException("Tên đăng nhập đã tồn tại");
 
             var emailExists = await _context.Users
                 .AnyAsync(u => u.Email.ToLower() == dto.Email.ToLower());
 
             if (emailExists)
-                throw new Exception("Email đã tồn tại");
+                throw new InvalidOperationException("Email đã tồn tại");
 
             var role = await _context.Roles
                 .FirstOrDefaultAsync(r => r.RoleId == dto.RoleId && r.Status == "ACTIVE");

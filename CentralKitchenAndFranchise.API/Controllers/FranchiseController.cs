@@ -18,13 +18,11 @@ namespace CentralKitchenAndFranchise.API.Controllers
             _service = service;
         }
 
-        // Manager được phép xem list
         [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
         [HttpGet]
         public async Task<ActionResult<ApiResponse<List<FranchiseDto>>>> GetAll()
             => Ok(ApiResponse<List<FranchiseDto>>.Ok(await _service.GetAllAsync()));
 
-        // Manager được phép xem detail (service sẽ auto filter theo scope)
         [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
         [HttpGet("{id:int}")]
         public async Task<ActionResult<ApiResponse<FranchiseDto>>> GetById(int id)
@@ -34,8 +32,6 @@ namespace CentralKitchenAndFranchise.API.Controllers
                 ? NotFound(ApiResponse.Fail($"Franchise {id} not found.", errorCode: "NOT_FOUND"))
                 : Ok(ApiResponse<FranchiseDto>.Ok(result));
         }
-
-        // ❗ Admin-only
         [Authorize(Roles = RoleNames.Admin)]
         [HttpPost]
         public async Task<IActionResult> Create(FranchiseCreateDto dto)
@@ -44,7 +40,6 @@ namespace CentralKitchenAndFranchise.API.Controllers
             return CreatedAtAction(nameof(GetById), new { id }, null);
         }
 
-        // ❗ Admin-only
         [Authorize(Roles = RoleNames.Admin)]
         [HttpPut("{id:int}")]
         public async Task<IActionResult> Update(int id, FranchiseCreateDto dto)

@@ -2,13 +2,9 @@
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Responses;
+using CentralKitchenAndFranchise.DTO.Constants;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 {
@@ -62,7 +58,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             var batch = new IngredientBatch
             {
                 IngredientId = request.IngredientId,
+                Type = InventoryOwnerType.Franchise,
                 FranchiseId = franchiseId,
+                CentralKitchenId = null,
                 BatchCode = request.BatchCode.Trim(),
                 ExpiredAt = request.ExpiredAt,
                 Quantity = request.Quantity
@@ -135,18 +133,20 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         }
 
         public async Task<IssueIngredientsByProductionPlanResponse> IssueIngredientsByProductionPlanAsync(
-        int franchiseId,
-        int productionPlanId,
-        IssueIngredientsByProductionPlanDto request,
-        CancellationToken ct = default)
+    int centralKitchenId,
+    int productionPlanId,
+    IssueIngredientsByProductionPlanDto request,
+    CancellationToken ct = default)
         {
-            await _access.EnsureCanAccessAsync(franchiseId, ct);
+            await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
             var plan = await _db.ProductionPlans
-                .AsNoTracking()
-                .Include(p => p.Items)
-                .FirstOrDefaultAsync(p => p.ProductionPlanId == productionPlanId && p.FranchiseId == franchiseId, ct);
-
+                     .AsNoTracking()
+                     .Include(p => p.Items)
+                     .FirstOrDefaultAsync(
+                         p => p.ProductionPlanId == productionPlanId
+                           && p.CentralKitchenId == centralKitchenId,
+                         ct);
             if (plan is null)
                 throw new KeyNotFoundException($"ProductionPlan {productionPlanId} not found.");
 
@@ -218,7 +218,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             var response = new IssueIngredientsByProductionPlanResponse
             {
                 ProductionPlanId = productionPlanId,
-                FranchiseId = franchiseId,
+                CentralKitchenId = centralKitchenId,
                 PlanDate = plan.PlanDate,
                 IssuedAt = now
             };
@@ -227,11 +227,15 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             {
                 // load batches with tracking for update
                 var batches = await _db.IngredientBatches
-                    .Where(b => b.FranchiseId == franchiseId && b.IngredientId == ingredientId && b.Quantity > 0)
-                    .OrderBy(b => b.ExpiredAt == null) // null last (BR-18 ideally not null)
-                    .ThenBy(b => b.ExpiredAt)
-                    .ThenBy(b => b.BatchId)
-                    .ToListAsync(ct);
+                            .Where(b =>
+                                b.Type == InventoryOwnerType.CentralKitchen &&
+                                b.CentralKitchenId == centralKitchenId &&
+                                b.IngredientId == ingredientId &&
+                                b.Quantity > 0)
+                            .OrderBy(b => b.ExpiredAt == null)
+                            .ThenBy(b => b.ExpiredAt)
+                            .ThenBy(b => b.BatchId)
+                            .ToListAsync(ct);
 
                 var available = batches.Sum(b => b.Quantity);
                 if (available < requiredQty)
@@ -291,7 +295,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             _db.AuditLogs.Add(new AuditLog
             {
                 UserId = _current.UserId,
-                FranchiseId = franchiseId,
+                CentralKitchenId = centralKitchenId,
                 Action = "INGREDIENT_ISSUE_BY_PRODUCTION_PLAN",
                 EntityName = "ProductionPlan",
                 EntityId = productionPlanId,
@@ -342,8 +346,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             // track batch for update
             var batch = await _db.IngredientBatches
-                .FirstOrDefaultAsync(b => b.BatchId == request.BatchId && b.FranchiseId == franchiseId, ct);
-
+                        .FirstOrDefaultAsync(b =>
+                        b.BatchId == request.BatchId &&
+                        b.Type == InventoryOwnerType.Franchise &&
+                        b.FranchiseId == franchiseId, ct);
             if (batch is null)
                 throw new KeyNotFoundException($"IngredientBatch {request.BatchId} not found.");
 
@@ -374,7 +380,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             _db.InventoryMovements.Add(mv);
             await _db.SaveChangesAsync(ct);
 
-            // audit log (BR-22 “Audit bắt buộc”)
             _db.AuditLogs.Add(new AuditLog
             {
                 UserId = _current.UserId,

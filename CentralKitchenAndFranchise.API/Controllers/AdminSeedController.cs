@@ -186,9 +186,19 @@ END $$;";
         resp.UserIds.Add(storeB.UserId);
 
         // Assign store staff to OU (IMPORTANT: unique index on UserId => upsert by UserId)
-        await EnsureUserFranchiseAsync(storeA.UserId, franchiseAId, ct);
-        await EnsureUserFranchiseAsync(storeB.UserId, franchiseBId, ct);
+        await EnsureUserWorkAssignmentAsync(
+    storeA.UserId,
+    WorkAssignmentTypes.Franchise,
+    franchiseAId,
+    null,
+    ct);
 
+        await EnsureUserWorkAssignmentAsync(
+            storeB.UserId,
+            WorkAssignmentTypes.Franchise,
+            franchiseBId,
+            null,
+            ct);
         // 3) Suppliers
         var (supplierAlphaId, createdSup1) = await EnsureSupplierAsync(
             name: "Supplier Alpha",
@@ -387,16 +397,24 @@ END $$;";
         return (user, true);
     }
 
-    private async Task EnsureUserFranchiseAsync(int userId, int franchiseId, CancellationToken ct)
+    private async Task EnsureUserWorkAssignmentAsync(
+    int userId,
+    string assignmentType,
+    int? franchiseId,
+    int? centralKitchenId,
+    CancellationToken ct)
     {
-        // IMPORTANT: your DB has UNIQUE index on UserId (1 franchise per user)
-        var existing = await _db.UserFranchises.FirstOrDefaultAsync(x => x.UserId == userId, ct);
+        var existing = await _db.UserWorkAssignments
+            .FirstOrDefaultAsync(x => x.UserId == userId, ct);
+
         if (existing is null)
         {
-            await _db.UserFranchises.AddAsync(new UserFranchise
+            await _db.UserWorkAssignments.AddAsync(new UserWorkAssignment
             {
                 UserId = userId,
+                AssignmentType = assignmentType,
                 FranchiseId = franchiseId,
+                CentralKitchenId = centralKitchenId,
                 AssignedAt = DateTime.UtcNow
             }, ct);
 
@@ -404,12 +422,19 @@ END $$;";
             return;
         }
 
-        if (existing.FranchiseId != franchiseId)
-        {
-            existing.FranchiseId = franchiseId;
-            existing.AssignedAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
-        }
+        var changed =
+            !string.Equals(existing.AssignmentType, assignmentType, StringComparison.OrdinalIgnoreCase) ||
+            existing.FranchiseId != franchiseId ||
+            existing.CentralKitchenId != centralKitchenId;
+
+        if (!changed) return;
+
+        existing.AssignmentType = assignmentType;
+        existing.FranchiseId = franchiseId;
+        existing.CentralKitchenId = centralKitchenId;
+        existing.AssignedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
     }
 
     private async Task<(int supplierId, bool created)> EnsureSupplierAsync(string name, string contactInfo, CancellationToken ct)

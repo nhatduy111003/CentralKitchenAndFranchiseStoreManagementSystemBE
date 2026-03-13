@@ -9,22 +9,18 @@ public class Franchise
     public string? Address { get; set; }
     public string? Location { get; set; }
     public double? Latitude { get; set; }
-
     public double? Longitude { get; set; }
+
+    public int CentralKitchenId { get; set; }
+    public CentralKitchen CentralKitchen { get; set; } = default!;
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
-    public ICollection<UserFranchise> UserFranchises { get; set; } = new List<UserFranchise>();
-
+    public ICollection<UserWorkAssignment> WorkAssignments { get; set; } = new List<UserWorkAssignment>();
     public ICollection<StoreCatalog> StoreCatalogs { get; set; } = new List<StoreCatalog>();
     public ICollection<StoreOrder> StoreOrders { get; set; } = new List<StoreOrder>();
     public ICollection<IngredientBatch> IngredientBatches { get; set; } = new List<IngredientBatch>();
-    public ICollection<ProductBatch> ProductBatches { get; set; } = new List<ProductBatch>();
 
-    public ICollection<ProductionPlan> ProductionPlans { get; set; } = new List<ProductionPlan>();
-
-    public ICollection<DeliveryPlan> DeliveryPlans { get; set; } = new List<DeliveryPlan>();
     public ICollection<SalesRecord> SalesRecords { get; set; } = new List<SalesRecord>();
-
-    public ICollection<AllocationItem> AllocationItems { get; set; } = new List<AllocationItem>();
 }

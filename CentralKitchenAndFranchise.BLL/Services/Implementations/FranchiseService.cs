@@ -53,7 +53,9 @@ public class FranchiseService : IFranchiseService
             Location = string.IsNullOrWhiteSpace(dto.Location) ? null : dto.Location.Trim(),
             Latitude = dto.Latitude,
             Longitude = dto.Longitude,
-            CreatedAt = DateTime.UtcNow
+            CentralKitchenId = dto.CentralKitchenId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
         };
 
         await _db.Franchises.AddAsync(entity);
@@ -121,7 +123,7 @@ public class FranchiseService : IFranchiseService
     public async Task<bool> DeleteAsync(int id)
     {
         RequireAdminOnly();
-        var hasUsers = await _db.UserFranchises
+        var hasUsers = await _db.UserWorkAssignments
     .AnyAsync(x => x.FranchiseId == id);
 
         if (hasUsers)
