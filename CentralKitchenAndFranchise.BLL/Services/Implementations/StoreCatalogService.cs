@@ -25,7 +25,6 @@ public class StoreCatalogService : IStoreCatalogService
 
     public async Task<PagedResult<StoreCatalogResponse>> SearchAsync(StoreCatalogListQuery query, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
         query ??= new StoreCatalogListQuery();
 
         if (query.FranchiseId <= 0)
@@ -107,8 +106,6 @@ public class StoreCatalogService : IStoreCatalogService
 
     public async Task<StoreCatalogResponse> GetByKeyAsync(int franchiseId, int productId, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
-
         if (franchiseId <= 0) throw new ArgumentException("franchiseId must be a positive integer.");
         if (productId <= 0) throw new ArgumentException("productId must be a positive integer.");
 
@@ -240,7 +237,6 @@ public class StoreCatalogService : IStoreCatalogService
 
     public async Task<StoreCatalogResponse> ChangeStatusAsync(int franchiseId, int productId, ChangeStoreCatalogStatusRequest request, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
 
         if (franchiseId <= 0) throw new ArgumentException("franchiseId must be a positive integer.");
         if (productId <= 0) throw new ArgumentException("productId must be a positive integer.");
@@ -282,6 +278,8 @@ public class StoreCatalogService : IStoreCatalogService
 
     public async Task DeleteAsync(int franchiseId, int productId, CancellationToken ct = default)
     {
+        RequireAdminOrManager();
+
         await ChangeStatusAsync(franchiseId, productId, new ChangeStoreCatalogStatusRequest
         {
             Status = StoreCatalogStatus.Inactive,

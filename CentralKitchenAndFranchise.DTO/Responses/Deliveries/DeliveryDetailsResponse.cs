@@ -5,8 +5,8 @@ public class DeliveryDetailsResponse
     public int DeliveryId { get; set; }
     public int DeliveryPlanId { get; set; }
 
-    public int FromFranchiseId { get; set; }
-    public string FromFranchiseName { get; set; } = default!;
+    public int FromCentralKitchenId { get; set; }
+    public string FromCentralKitchenName { get; set; } = default!;
 
     public int ToFranchiseId { get; set; }
     public string ToFranchiseName { get; set; } = default!;

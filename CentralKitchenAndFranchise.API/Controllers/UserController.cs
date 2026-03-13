@@ -9,7 +9,7 @@ namespace CentralKitchenAndFranchise.API.Controllers;
 
 [ApiController]
 [Route("/api/admin/users")]
-[Authorize]
+[Authorize] 
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
@@ -29,7 +29,6 @@ public class UsersController : ControllerBase
         => Ok(await _userService.GetAllAsync());
 
     [Authorize(Roles = RoleNames.Admin)]
-    [AllowAnonymous]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateUserRequestDto dto)
         => Ok(await _userService.CreateAsync(dto));

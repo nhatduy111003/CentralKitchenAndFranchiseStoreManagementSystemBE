@@ -22,7 +22,7 @@ public class StoreCatalogController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
     public async Task<ActionResult<ApiResponse<PagedResult<StoreCatalogResponse>>>> GetCatalog(
         int franchiseId,
         [FromQuery] FranchiseCatalogListQuery query,
@@ -78,7 +78,7 @@ public class StoreCatalogController : ControllerBase
     }
 
     [HttpPatch("{productId:int}/status")]
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
     public async Task<ActionResult<ApiResponse<StoreCatalogResponse>>> ChangeStatus(
         int franchiseId,
         int productId,
