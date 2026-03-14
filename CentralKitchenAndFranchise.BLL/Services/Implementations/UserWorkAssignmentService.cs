@@ -4,7 +4,6 @@ using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Responses.WorkAssignment;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations
@@ -23,84 +22,70 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         public async Task AssignAsync(AssignUserWorkAssignmentDto dto)
         {
             RequireAdminOrManager();
+            ArgumentNullException.ThrowIfNull(dto);
 
-            var userExists = await _context.Users
-                .AnyAsync(x => x.UserId == dto.UserId);
+            var assignmentType = NormalizeAssignmentType(dto.AssignmentType);
+            var roleName = await GetUserRoleNameAsync(dto.UserId);
 
-            if (!userExists)
-                throw new Exception("User not found");
+            ValidateRoleAssignmentRule(roleName, assignmentType);
+            await ValidateAssignmentTargetAsync(assignmentType, dto.FranchiseId, dto.CentralKitchenId);
 
-            if (dto.AssignmentType == WorkAssignmentTypes.Franchise)
-            {
-                if (!dto.FranchiseId.HasValue)
-                    throw new Exception("FranchiseId is required for FRANCHISE assignment");
+            var now = DateTime.UtcNow;
+            var existingAssignments = await _context.UserWorkAssignments
+                .Where(x => x.UserId == dto.UserId)
+                .OrderByDescending(x => x.AssignedAt)
+                .ThenByDescending(x => x.UserWorkAssignmentId)
+                .ToListAsync();
 
-                var franchiseExists = await _context.Franchises
-                    .AnyAsync(x => x.FranchiseId == dto.FranchiseId.Value);
-
-                if (!franchiseExists)
-                    throw new Exception("Franchise not found");
-            }
-            else if (dto.AssignmentType == WorkAssignmentTypes.CentralKitchen)
-            {
-                if (!dto.CentralKitchenId.HasValue)
-                    throw new Exception("CentralKitchenId is required for CENTRAL_KITCHEN assignment");
-
-                var centralKitchenExists = await _context.CentralKitchens
-                    .AnyAsync(x => x.CentralKitchenId == dto.CentralKitchenId.Value);
-
-                if (!centralKitchenExists)
-                    throw new Exception("Central kitchen not found");
-            }
-            else
-            {
-                throw new Exception("Type must be FRANCHISE or CENTRAL_KITCHEN");
-            }
-
-            var existingAssignment = await _context.UserWorkAssignments
-                .FirstOrDefaultAsync(x => x.UserId == dto.UserId);
+            var existingAssignment = existingAssignments.FirstOrDefault();
 
             if (existingAssignment != null)
             {
-                existingAssignment.AssignmentType = dto.AssignmentType;
-                existingAssignment.FranchiseId = dto.AssignmentType == WorkAssignmentTypes.Franchise
+                existingAssignment.AssignmentType = assignmentType;
+                existingAssignment.FranchiseId = assignmentType == WorkAssignmentTypes.Franchise
                     ? dto.FranchiseId
                     : null;
-                existingAssignment.CentralKitchenId = dto.AssignmentType == WorkAssignmentTypes.CentralKitchen
+                existingAssignment.CentralKitchenId = assignmentType == WorkAssignmentTypes.CentralKitchen
                     ? dto.CentralKitchenId
                     : null;
-                existingAssignment.AssignedAt = DateTime.UtcNow;
+                existingAssignment.AssignedAt = now;
+
+                if (existingAssignments.Count > 1)
+                {
+                    _context.UserWorkAssignments.RemoveRange(existingAssignments.Skip(1));
+                }
             }
             else
             {
-                _context.UserWorkAssignments.Add(new UserWorkAssignment
+                await _context.UserWorkAssignments.AddAsync(new UserWorkAssignment
                 {
                     UserId = dto.UserId,
-                    AssignmentType = dto.AssignmentType,
-                    FranchiseId = dto.AssignmentType == WorkAssignmentTypes.Franchise
+                    AssignmentType = assignmentType,
+                    FranchiseId = assignmentType == WorkAssignmentTypes.Franchise
                         ? dto.FranchiseId
                         : null,
-                    CentralKitchenId = dto.AssignmentType == WorkAssignmentTypes.CentralKitchen
+                    CentralKitchenId = assignmentType == WorkAssignmentTypes.CentralKitchen
                         ? dto.CentralKitchenId
                         : null,
-                    AssignedAt = DateTime.UtcNow
+                    AssignedAt = now
                 });
             }
 
             await _context.SaveChangesAsync();
         }
-        
+
         public async Task RemoveAsync(int userId)
         {
             RequireAdminOrManager();
 
-            var entity = await _context.UserWorkAssignments
-                .FirstOrDefaultAsync(x => x.UserId == userId);
+            var entities = await _context.UserWorkAssignments
+                .Where(x => x.UserId == userId)
+                .ToListAsync();
 
-            if (entity == null)
-                throw new Exception("Assignment not found");
+            if (entities.Count == 0)
+                throw new InvalidOperationException("Assignment not found.");
 
-            _context.UserWorkAssignments.Remove(entity);
+            _context.UserWorkAssignments.RemoveRange(entities);
             await _context.SaveChangesAsync();
         }
 
@@ -109,7 +94,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             RequireAdminOrManager();
 
             return await _context.UserWorkAssignments
+                .AsNoTracking()
                 .Where(x => x.UserId == userId)
+                .OrderByDescending(x => x.AssignedAt)
+                .ThenByDescending(x => x.UserWorkAssignmentId)
                 .Select(x => new UserWorkAssignmentResponse
                 {
                     UserId = x.UserId,
@@ -128,7 +116,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         {
             RequireAdminOrManager();
 
+            assignmentType = NormalizeAssignmentType(assignmentType);
+
             var query = _context.UserWorkAssignments
+                .AsNoTracking()
                 .Include(x => x.User)
                     .ThenInclude(u => u.Role)
                 .AsQueryable();
@@ -136,27 +127,23 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (assignmentType == WorkAssignmentTypes.Franchise)
             {
                 if (!franchiseId.HasValue)
-                    throw new Exception("FranchiseId is required for FRANCHISE assignment");
+                    throw new ArgumentException("FranchiseId is required for FRANCHISE assignment.");
 
                 query = query.Where(x =>
                     x.AssignmentType == WorkAssignmentTypes.Franchise &&
                     x.FranchiseId == franchiseId.Value);
             }
-            else if (assignmentType == WorkAssignmentTypes.CentralKitchen)
+            else
             {
                 if (!centralKitchenId.HasValue)
-                    throw new Exception("CentralKitchenId is required for CENTRAL_KITCHEN assignment");
+                    throw new ArgumentException("CentralKitchenId is required for CENTRAL_KITCHEN assignment.");
 
                 query = query.Where(x =>
                     x.AssignmentType == WorkAssignmentTypes.CentralKitchen &&
                     x.CentralKitchenId == centralKitchenId.Value);
             }
-            else
-            {
-                throw new Exception("Invalid assignment type");
-            }
 
-            return await query
+            var rows = await query
                 .Select(x => new UserInWorkAssignmentDto
                 {
                     UserId = x.UserId,
@@ -168,7 +155,109 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     CentralKitchenId = x.CentralKitchenId,
                     AssignedAt = x.AssignedAt
                 })
+                .OrderByDescending(x => x.AssignedAt)
+                .ThenBy(x => x.UserId)
                 .ToListAsync();
+
+            return rows
+                .GroupBy(x => x.UserId)
+                .Select(g => g.First())
+                .ToList();
+        }
+
+        private async Task<string> GetUserRoleNameAsync(int userId)
+        {
+            var roleName = await _context.Users
+                .AsNoTracking()
+                .Where(x => x.UserId == userId)
+                .Select(x => x.Role.Name)
+                .FirstOrDefaultAsync();
+
+            if (string.IsNullOrWhiteSpace(roleName))
+                throw new InvalidOperationException("User not found.");
+
+            return roleName;
+        }
+
+        private async Task ValidateAssignmentTargetAsync(
+            string assignmentType,
+            int? franchiseId,
+            int? centralKitchenId)
+        {
+            if (assignmentType == WorkAssignmentTypes.Franchise)
+            {
+                if (!franchiseId.HasValue)
+                    throw new ArgumentException("FranchiseId is required for FRANCHISE assignment.");
+
+                var franchiseExists = await _context.Franchises
+                    .AsNoTracking()
+                    .AnyAsync(x => x.FranchiseId == franchiseId.Value);
+
+                if (!franchiseExists)
+                    throw new InvalidOperationException("Franchise not found.");
+
+                return;
+            }
+
+            if (!centralKitchenId.HasValue)
+                throw new ArgumentException("CentralKitchenId is required for CENTRAL_KITCHEN assignment.");
+
+            var centralKitchenExists = await _context.CentralKitchens
+                .AsNoTracking()
+                .AnyAsync(x => x.CentralKitchenId == centralKitchenId.Value);
+
+            if (!centralKitchenExists)
+                throw new InvalidOperationException("Central kitchen not found.");
+        }
+
+        private static string NormalizeAssignmentType(string assignmentType)
+        {
+            if (string.IsNullOrWhiteSpace(assignmentType))
+                throw new ArgumentException("AssignmentType is required.");
+
+            var normalized = assignmentType.Trim().ToUpperInvariant();
+
+            return normalized switch
+            {
+                WorkAssignmentTypes.Franchise => WorkAssignmentTypes.Franchise,
+                WorkAssignmentTypes.CentralKitchen => WorkAssignmentTypes.CentralKitchen,
+                _ => throw new ArgumentException("AssignmentType must be FRANCHISE or CENTRAL_KITCHEN.")
+            };
+        }
+
+        private static void ValidateRoleAssignmentRule(string roleName, string assignmentType)
+        {
+            if (string.Equals(roleName, RoleNames.Admin, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(roleName, RoleNames.Manager, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"{roleName} is a global role and cannot have a work assignment.");
+            }
+
+            if (string.Equals(roleName, RoleNames.StoreStaff, StringComparison.OrdinalIgnoreCase))
+            {
+                if (assignmentType != WorkAssignmentTypes.Franchise)
+                    throw new InvalidOperationException("StoreStaff must be assigned to a FRANCHISE.");
+
+                return;
+            }
+
+            if (string.Equals(roleName, RoleNames.KitchenStaff, StringComparison.OrdinalIgnoreCase))
+            {
+                if (assignmentType != WorkAssignmentTypes.CentralKitchen)
+                    throw new InvalidOperationException("KitchenStaff must be assigned to a CENTRAL_KITCHEN.");
+
+                return;
+            }
+
+            if (string.Equals(roleName, RoleNames.SupplyCoordinator, StringComparison.OrdinalIgnoreCase))
+            {
+                if (assignmentType != WorkAssignmentTypes.CentralKitchen)
+                    throw new InvalidOperationException("SupplyCoordinator must be assigned to a CENTRAL_KITCHEN.");
+
+                return;
+            }
+
+            throw new InvalidOperationException($"Unsupported role for work assignment: {roleName}.");
         }
 
         private void RequireAdminOrManager()

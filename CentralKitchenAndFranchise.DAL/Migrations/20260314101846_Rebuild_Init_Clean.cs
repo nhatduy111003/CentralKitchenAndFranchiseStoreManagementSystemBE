@@ -33,20 +33,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "demand_aggregations",
-                columns: table => new
-                {
-                    DemandAggregationId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    PlanDate = table.Column<DateOnly>(type: "date", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_demand_aggregations", x => x.DemandAggregationId);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "permissions",
                 columns: table => new
                 {
@@ -147,6 +133,27 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "demand_aggregations",
+                columns: table => new
+                {
+                    DemandAggregationId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    PlanDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    CentralKitchenId = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_demand_aggregations", x => x.DemandAggregationId);
+                    table.ForeignKey(
+                        name: "FK_demand_aggregations_central_kitchens_CentralKitchenId",
+                        column: x => x.CentralKitchenId,
+                        principalTable: "central_kitchens",
+                        principalColumn: "CentralKitchenId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "franchises",
                 columns: table => new
                 {
@@ -198,26 +205,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "allocations",
-                columns: table => new
-                {
-                    AllocationId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    DemandAggregationId = table.Column<int>(type: "integer", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_allocations", x => x.AllocationId);
-                    table.ForeignKey(
-                        name: "FK_allocations_demand_aggregations_DemandAggregationId",
-                        column: x => x.DemandAggregationId,
-                        principalTable: "demand_aggregations",
-                        principalColumn: "DemandAggregationId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "boms",
                 columns: table => new
                 {
@@ -234,33 +221,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     table.PrimaryKey("PK_boms", x => x.BomId);
                     table.ForeignKey(
                         name: "FK_boms_products_ProductId",
-                        column: x => x.ProductId,
-                        principalTable: "products",
-                        principalColumn: "ProductId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "demand_items",
-                columns: table => new
-                {
-                    DemandItemId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    DemandAggregationId = table.Column<int>(type: "integer", nullable: false),
-                    ProductId = table.Column<int>(type: "integer", nullable: false),
-                    Quantity = table.Column<decimal>(type: "numeric", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_demand_items", x => x.DemandItemId);
-                    table.ForeignKey(
-                        name: "FK_demand_items_demand_aggregations_DemandAggregationId",
-                        column: x => x.DemandAggregationId,
-                        principalTable: "demand_aggregations",
-                        principalColumn: "DemandAggregationId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_demand_items_products_ProductId",
                         column: x => x.ProductId,
                         principalTable: "products",
                         principalColumn: "ProductId",
@@ -366,6 +326,53 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         principalTable: "suppliers",
                         principalColumn: "SupplierId",
                         onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "allocations",
+                columns: table => new
+                {
+                    AllocationId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    DemandAggregationId = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_allocations", x => x.AllocationId);
+                    table.ForeignKey(
+                        name: "FK_allocations_demand_aggregations_DemandAggregationId",
+                        column: x => x.DemandAggregationId,
+                        principalTable: "demand_aggregations",
+                        principalColumn: "DemandAggregationId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "demand_items",
+                columns: table => new
+                {
+                    DemandItemId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    DemandAggregationId = table.Column<int>(type: "integer", nullable: false),
+                    ProductId = table.Column<int>(type: "integer", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_demand_items", x => x.DemandItemId);
+                    table.ForeignKey(
+                        name: "FK_demand_items_demand_aggregations_DemandAggregationId",
+                        column: x => x.DemandAggregationId,
+                        principalTable: "demand_aggregations",
+                        principalColumn: "DemandAggregationId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_demand_items_products_ProductId",
+                        column: x => x.ProductId,
+                        principalTable: "products",
+                        principalColumn: "ProductId",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -538,46 +545,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "allocation_items",
-                columns: table => new
-                {
-                    AllocationItemId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    AllocationId = table.Column<int>(type: "integer", nullable: false),
-                    FranchiseId = table.Column<int>(type: "integer", nullable: false),
-                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true),
-                    ProductId = table.Column<int>(type: "integer", nullable: false),
-                    Quantity = table.Column<decimal>(type: "numeric", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_allocation_items", x => x.AllocationItemId);
-                    table.ForeignKey(
-                        name: "FK_allocation_items_allocations_AllocationId",
-                        column: x => x.AllocationId,
-                        principalTable: "allocations",
-                        principalColumn: "AllocationId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_allocation_items_central_kitchens_CentralKitchenId",
-                        column: x => x.CentralKitchenId,
-                        principalTable: "central_kitchens",
-                        principalColumn: "CentralKitchenId");
-                    table.ForeignKey(
-                        name: "FK_allocation_items_franchises_FranchiseId",
-                        column: x => x.FranchiseId,
-                        principalTable: "franchises",
-                        principalColumn: "FranchiseId",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_allocation_items_products_ProductId",
-                        column: x => x.ProductId,
-                        principalTable: "products",
-                        principalColumn: "ProductId",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "audit_logs",
                 columns: table => new
                 {
@@ -735,6 +702,47 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         principalTable: "ingredients",
                         principalColumn: "IngredientId",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "allocation_items",
+                columns: table => new
+                {
+                    AllocationItemId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    AllocationId = table.Column<int>(type: "integer", nullable: false),
+                    FranchiseId = table.Column<int>(type: "integer", nullable: false),
+                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true),
+                    ProductId = table.Column<int>(type: "integer", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_allocation_items", x => x.AllocationItemId);
+                    table.ForeignKey(
+                        name: "FK_allocation_items_allocations_AllocationId",
+                        column: x => x.AllocationId,
+                        principalTable: "allocations",
+                        principalColumn: "AllocationId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_allocation_items_central_kitchens_CentralKitchenId",
+                        column: x => x.CentralKitchenId,
+                        principalTable: "central_kitchens",
+                        principalColumn: "CentralKitchenId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_allocation_items_franchises_FranchiseId",
+                        column: x => x.FranchiseId,
+                        principalTable: "franchises",
+                        principalColumn: "FranchiseId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_allocation_items_products_ProductId",
+                        column: x => x.ProductId,
+                        principalTable: "products",
+                        principalColumn: "ProductId",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -1056,6 +1064,12 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 name: "IX_delivery_product_items_ProductId",
                 table: "delivery_product_items",
                 column: "ProductId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_demand_aggregations_CentralKitchenId_PlanDate",
+                table: "demand_aggregations",
+                columns: new[] { "CentralKitchenId", "PlanDate" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_demand_items_DemandAggregationId",

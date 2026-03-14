@@ -10,9 +10,12 @@ namespace CentralKitchenAndFranchise.DAL.Entities
     {
         public int DemandAggregationId { get; set; }
         public DateOnly PlanDate { get; set; }
+        public int CentralKitchenId { get; set; }
         public DateTime CreatedAt { get; set; }
 
+        public CentralKitchen CentralKitchen { get; set; } = null!;
         public ICollection<DemandItem> DemandItems { get; set; } = new List<DemandItem>();
+        public ICollection<Allocation> Allocations { get; set; } = new List<Allocation>();
     }
 
 

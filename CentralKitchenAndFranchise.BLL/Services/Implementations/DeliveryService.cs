@@ -32,13 +32,26 @@ public class DeliveryService : IDeliveryService
         if (request.ToFranchiseId <= 0)
             throw new ArgumentException("ToFranchiseId is required.");
 
-        var exists = await _db.Franchises.AnyAsync(x => x.FranchiseId == request.ToFranchiseId, ct);
-        if (!exists)
+        var franchise = await _db.Franchises
+            .AsNoTracking()
+            .Where(x => x.FranchiseId == request.ToFranchiseId)
+            .Select(x => new
+            {
+                x.FranchiseId,
+                x.CentralKitchenId
+            })
+            .FirstOrDefaultAsync(ct);
+
+        if (franchise is null)
             throw new KeyNotFoundException($"Franchise {request.ToFranchiseId} not found.");
+
+        await _franchiseAccess.EnsureCanAccessAsync(franchise.FranchiseId, ct);
+        await _franchiseAccess.EnsureCanAccessCentralKitchenAsync(franchise.CentralKitchenId, ct);
 
         var plan = new DeliveryPlan
         {
-            FranchiseId = request.ToFranchiseId,
+            FranchiseId = franchise.FranchiseId,
+            CentralKitchenId = franchise.CentralKitchenId,
             PlannedDate = request.PlannedDate
         };
 
@@ -73,6 +86,15 @@ public class DeliveryService : IDeliveryService
 
         if (plan is null)
             throw new KeyNotFoundException($"DeliveryPlan {request.DeliveryPlanId} not found.");
+
+        var planCentralKitchenId = await EnsurePlanScopeAsync(plan, ct, persistResolvedCentralKitchenId: true);
+
+        if (request.FromCentralKitchenId != planCentralKitchenId)
+            throw new InvalidOperationException(
+                $"Delivery source central kitchen must match the plan scope. expected={planCentralKitchenId}, actual={request.FromCentralKitchenId}");
+
+        await _franchiseAccess.EnsureCanAccessCentralKitchenAsync(request.FromCentralKitchenId, ct);
+        await _franchiseAccess.EnsureCanAccessAsync(plan.FranchiseId, ct);
 
         var fromExists = await _db.CentralKitchens
             .AnyAsync(x => x.CentralKitchenId == request.FromCentralKitchenId, ct);
@@ -109,8 +131,6 @@ public class DeliveryService : IDeliveryService
 
     public async Task<DeliveryDetailsResponse> GetByIdAsync(int deliveryId, CancellationToken ct = default)
     {
-        _ = _current.UserId;
-
         var delivery = await _db.Deliveries
             .Include(d => d.DeliveryPlan)
                 .ThenInclude(p => p.Franchise)
@@ -123,6 +143,8 @@ public class DeliveryService : IDeliveryService
 
         if (delivery is null)
             throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
+
+        await EnsureDeliveryScopeAsync(delivery, ct);
 
         return new DeliveryDetailsResponse
         {
@@ -160,9 +182,14 @@ public class DeliveryService : IDeliveryService
         if (items is null || items.Count == 0)
             throw new ArgumentException("Items is required.");
 
-        var delivery = await _db.Deliveries.FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
+        var delivery = await _db.Deliveries
+            .Include(d => d.DeliveryPlan)
+            .FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
+
         if (delivery is null)
             throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
+
+        await EnsureDeliveryScopeAsync(delivery, ct);
 
         if (delivery.Status != DeliveryStatus.Created)
             throw new InvalidOperationException("Can only edit items when delivery is CREATED.");
@@ -211,9 +238,14 @@ public class DeliveryService : IDeliveryService
         if (items is null || items.Count == 0)
             throw new ArgumentException("Items is required.");
 
-        var delivery = await _db.Deliveries.FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
+        var delivery = await _db.Deliveries
+            .Include(d => d.DeliveryPlan)
+            .FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
+
         if (delivery is null)
             throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
+
+        await EnsureDeliveryScopeAsync(delivery, ct);
 
         if (delivery.Status != DeliveryStatus.Created)
             throw new InvalidOperationException("Can only edit items when delivery is CREATED.");
@@ -257,7 +289,7 @@ public class DeliveryService : IDeliveryService
 
     public async Task ConfirmAsync(int deliveryId, CancellationToken ct = default)
     {
-        RequireOneOf(RoleNames.Admin, RoleNames.Manager,RoleNames.SupplyCoordinator);
+        RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
 
         var delivery = await _db.Deliveries
             .Include(d => d.DeliveryPlan)
@@ -268,14 +300,13 @@ public class DeliveryService : IDeliveryService
         if (delivery is null)
             throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
 
+        await EnsureDeliveryScopeAsync(delivery, ct);
+
         if (delivery.Status != DeliveryStatus.Created)
             throw new InvalidOperationException("Delivery is not in CREATED status.");
 
         var fromCentralKitchenId = delivery.FromCentralKitchenId;
         var toFranchiseId = delivery.DeliveryPlan.FranchiseId;
-
-        await _franchiseAccess.EnsureCanAccessCentralKitchenAsync(fromCentralKitchenId, ct);
-        await _franchiseAccess.EnsureCanAccessAsync(toFranchiseId, ct);
 
         if (delivery.ProductItems.Count == 0 && delivery.IngredientItems.Count == 0)
             throw new ArgumentException("Delivery has no items.");
@@ -546,6 +577,51 @@ public class DeliveryService : IDeliveryService
 
             remain -= take;
         }
+    }
+
+    private async Task EnsureDeliveryScopeAsync(Delivery delivery, CancellationToken ct)
+    {
+        var planCentralKitchenId = await EnsurePlanScopeAsync(delivery.DeliveryPlan, ct);
+
+        if (delivery.FromCentralKitchenId != planCentralKitchenId)
+        {
+            throw new InvalidOperationException(
+                $"Delivery {delivery.DeliveryId} has inconsistent source central kitchen. planCentralKitchenId={planCentralKitchenId}, fromCentralKitchenId={delivery.FromCentralKitchenId}");
+        }
+
+        await _franchiseAccess.EnsureCanAccessCentralKitchenAsync(delivery.FromCentralKitchenId, ct);
+        await _franchiseAccess.EnsureCanAccessAsync(delivery.DeliveryPlan.FranchiseId, ct);
+    }
+
+    private async Task<int> EnsurePlanScopeAsync(
+        DeliveryPlan plan,
+        CancellationToken ct,
+        bool persistResolvedCentralKitchenId = false)
+    {
+        var franchiseCentralKitchenId = await _db.Franchises
+            .AsNoTracking()
+            .Where(x => x.FranchiseId == plan.FranchiseId)
+            .Select(x => (int?)x.CentralKitchenId)
+            .FirstOrDefaultAsync(ct);
+
+        if (!franchiseCentralKitchenId.HasValue)
+            throw new KeyNotFoundException($"Franchise {plan.FranchiseId} not found.");
+
+        var resolvedCentralKitchenId = plan.CentralKitchenId ?? franchiseCentralKitchenId.Value;
+
+        if (resolvedCentralKitchenId != franchiseCentralKitchenId.Value)
+        {
+            throw new InvalidOperationException(
+                $"DeliveryPlan {plan.DeliveryPlanId} has inconsistent scope. planCentralKitchenId={plan.CentralKitchenId}, franchiseCentralKitchenId={franchiseCentralKitchenId.Value}");
+        }
+
+        if (!plan.CentralKitchenId.HasValue && persistResolvedCentralKitchenId)
+        {
+            plan.CentralKitchenId = resolvedCentralKitchenId;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        return resolvedCentralKitchenId;
     }
 
     private void RequireOneOf(params string[] roles)

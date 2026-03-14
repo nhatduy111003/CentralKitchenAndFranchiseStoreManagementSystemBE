@@ -410,7 +410,13 @@ public static class DbSeeder
         int? centralKitchenId,
         DateTime now)
     {
-        var existing = db.UserWorkAssignments.FirstOrDefault(x => x.UserId == userId);
+        var assignments = db.UserWorkAssignments
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.AssignedAt)
+            .ThenByDescending(x => x.UserWorkAssignmentId)
+            .ToList();
+
+        var existing = assignments.FirstOrDefault();
 
         if (existing == null)
         {
@@ -423,6 +429,11 @@ public static class DbSeeder
                 AssignedAt = now
             });
             return;
+        }
+
+        if (assignments.Count > 1)
+        {
+            db.UserWorkAssignments.RemoveRange(assignments.Skip(1));
         }
 
         var changed =
@@ -1355,24 +1366,32 @@ public static class DbSeeder
     // ==================================================
     private static void SeedDemandAggregations(AppDbContext db, DateTime now)
     {
-        var targetDates = db.StoreOrders
-            .Where(x => x.Status == StoreOrderStatus.Submitted)
-            .Select(x => x.OrderDate)
-            .Distinct()
+        var demandGroups = db.StoreOrderItems
+            .Where(i => i.StoreOrder.Status == StoreOrderStatus.Submitted)
+            .Select(i => new
+            {
+                i.StoreOrder.OrderDate,
+                i.StoreOrder.Franchise.CentralKitchenId,
+                i.ProductId,
+                i.Quantity
+            })
+            .ToList()
+            .GroupBy(x => new { x.OrderDate, x.CentralKitchenId })
+            .Select(g => new
+            {
+                g.Key.OrderDate,
+                g.Key.CentralKitchenId,
+                Items = g.GroupBy(x => x.ProductId)
+                    .Select(p => new DemandAggregationSeedItem(
+                        p.Key,
+                        p.Sum(x => x.Quantity)))
+                    .ToList()
+            })
             .ToList();
 
-        foreach (var planDate in targetDates)
+        foreach (var group in demandGroups)
         {
-            var demandByProduct = db.StoreOrderItems
-                .Where(i => i.StoreOrder.Status == StoreOrderStatus.Submitted &&
-                            i.StoreOrder.OrderDate == planDate)
-                .GroupBy(i => i.ProductId)
-                .Select(g => new DemandAggregationSeedItem(
-                    g.Key,
-                    g.Sum(x => x.Quantity)))
-                .ToList();
-
-            EnsureDemandAggregation(db, planDate, now, demandByProduct);
+            EnsureDemandAggregation(db, group.OrderDate, group.CentralKitchenId, now, group.Items);
         }
 
         db.SaveChanges();
@@ -1381,18 +1400,20 @@ public static class DbSeeder
     private static void EnsureDemandAggregation(
         AppDbContext db,
         DateOnly planDate,
+        int centralKitchenId,
         DateTime now,
         IReadOnlyCollection<DemandAggregationSeedItem> demandItems)
     {
         var aggregation = db.DemandAggregations
             .Include(x => x.DemandItems)
-            .FirstOrDefault(x => x.PlanDate == planDate);
+            .FirstOrDefault(x => x.PlanDate == planDate && x.CentralKitchenId == centralKitchenId);
 
         if (aggregation == null)
         {
             aggregation = new DemandAggregation
             {
                 PlanDate = planDate,
+                CentralKitchenId = centralKitchenId,
                 CreatedAt = now
             };
 
@@ -1436,16 +1457,15 @@ public static class DbSeeder
     // ==================================================
     private static void SeedProductionPlansAndRuns(AppDbContext db, DateTime now)
     {
-        var ck = db.CentralKitchens.First(x => x.Name == CentralKitchenName);
-
         var aggregations = db.DemandAggregations
             .Include(x => x.DemandItems)
-            .OrderBy(x => x.PlanDate)
+            .OrderBy(x => x.CentralKitchenId)
+            .ThenBy(x => x.PlanDate)
             .ToList();
 
         foreach (var aggregation in aggregations)
         {
-            var plan = EnsureProductionPlan(db, ck.CentralKitchenId, aggregation.PlanDate, now);
+            var plan = EnsureProductionPlan(db, aggregation.CentralKitchenId, aggregation.PlanDate, now);
 
             foreach (var demand in aggregation.DemandItems)
             {
@@ -1461,8 +1481,8 @@ public static class DbSeeder
             EnsureProductionRun(
                 db,
                 productionPlanId: plan.ProductionPlanId,
-                centralKitchenId: ck.CentralKitchenId,
-                runCode: $"RUN-{aggregation.PlanDate:yyyyMMdd}-001",
+                centralKitchenId: aggregation.CentralKitchenId,
+                runCode: $"RUN-CK{aggregation.CentralKitchenId}-{aggregation.PlanDate:yyyyMMdd}-001",
                 productionDate: aggregation.PlanDate,
                 quantity: totalQty,
                 status: ProductionRunStatuses.Completed,

@@ -199,11 +199,33 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             modelBuilder.Entity<StoreOrder>(e => { e.ToTable("store_orders"); e.HasKey(x => x.StoreOrderId); });
             modelBuilder.Entity<StoreOrderItem>(e => { e.ToTable("store_order_items"); e.HasKey(x => x.StoreOrderItemId); });
 
-            // demand / allocation
-            modelBuilder.Entity<DemandAggregation>(e => { e.ToTable("demand_aggregations"); e.HasKey(x => x.DemandAggregationId); });
+            // demand 
+            modelBuilder.Entity<DemandAggregation>(e =>
+            {
+                e.ToTable("demand_aggregations");
+                e.HasKey(x => x.DemandAggregationId);
+
+                e.HasIndex(x => new { x.CentralKitchenId, x.PlanDate })
+                    .IsUnique();
+
+                e.HasOne(x => x.CentralKitchen)
+                    .WithMany()
+                    .HasForeignKey(x => x.CentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
             modelBuilder.Entity<DemandItem>(e => { e.ToTable("demand_items"); e.HasKey(x => x.DemandItemId); });
 
-            modelBuilder.Entity<Allocation>(e => { e.ToTable("allocations"); e.HasKey(x => x.AllocationId); });
+            // allocation
+            modelBuilder.Entity<Allocation>(e =>
+            {
+                e.ToTable("allocations");
+                e.HasKey(x => x.AllocationId);
+
+                e.HasOne(x => x.DemandAggregation)
+                    .WithMany(x => x.Allocations)
+                    .HasForeignKey(x => x.DemandAggregationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
             modelBuilder.Entity<AllocationItem>(e =>
             {
                 e.ToTable("allocation_items");
@@ -217,6 +239,11 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.HasOne(x => x.Franchise)
                     .WithMany()
                     .HasForeignKey(x => x.FranchiseId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.CentralKitchen)
+                    .WithMany(x => x.AllocationItems)
+                    .HasForeignKey(x => x.CentralKitchenId)
                     .OnDelete(DeleteBehavior.Restrict);
 
                 e.HasOne(x => x.Product)

@@ -2,14 +2,8 @@
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
-using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Requests.Demands;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 {
@@ -17,18 +11,28 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
     {
         private readonly AppDbContext _db;
         private readonly ICurrentUserService _current;
-        public DemandService(AppDbContext db,ICurrentUserService current)
+        private readonly IFranchiseAccessService _access;
+
+        public DemandService(
+            AppDbContext db,
+            ICurrentUserService current,
+            IFranchiseAccessService access)
         {
             _db = db;
             _current = current;
+            _access = access;
         }
 
         public async Task<int> CreateAsync(CreateDemandDto dto)
         {
             RequireSupplyRoles();
+
+            var centralKitchenId = await ResolveTargetCentralKitchenIdAsync(dto);
+
             var demand = new DemandAggregation
             {
                 PlanDate = dto.PlanDate,
+                CentralKitchenId = centralKitchenId,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -40,6 +44,23 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         public async Task AddItemAsync(int demandId, AddDemandItemDto dto)
         {
             RequireSupplyRoles();
+
+            if (dto.Quantity <= 0)
+                throw new Exception("Số lượng phải lớn hơn 0");
+
+            var demand = await _db.DemandAggregations
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.DemandAggregationId == demandId)
+                ?? throw new Exception("Demand aggregation not found");
+
+            await _access.EnsureCanAccessCentralKitchenAsync(demand.CentralKitchenId);
+
+            var productExists = await _db.Products
+                .AsNoTracking()
+                .AnyAsync(x => x.ProductId == dto.ProductId);
+
+            if (!productExists)
+                throw new Exception("Product không tồn tại");
 
             var item = new DemandItem
             {
@@ -56,30 +77,76 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         {
             RequireSupplyRoles();
 
-            return await _db.DemandAggregations
+            var demand = await _db.DemandAggregations
                 .Include(x => x.DemandItems)
                 .ThenInclude(x => x.Product)
                 .FirstOrDefaultAsync(x => x.DemandAggregationId == id);
+
+            if (demand == null)
+                return null;
+
+            await _access.EnsureCanAccessCentralKitchenAsync(demand.CentralKitchenId);
+            return demand;
         }
 
         public async Task<List<DemandAggregation>> GetAllAsync()
         {
             RequireSupplyRoles();
 
-            return await _db.DemandAggregations
+            IQueryable<DemandAggregation> query = _db.DemandAggregations
                 .Include(x => x.DemandItems)
+                .ThenInclude(x => x.Product);
+
+            if (_current.IsInRole(RoleNames.SupplyCoordinator))
+            {
+                var assignedCentralKitchenId = await _access.GetCurrentAssignedCentralKitchenIdAsync();
+                query = query.Where(x => x.CentralKitchenId == assignedCentralKitchenId);
+            }
+
+            return await query
+                .OrderByDescending(x => x.PlanDate)
+                .ThenByDescending(x => x.DemandAggregationId)
                 .ToListAsync();
+        }
+
+        private async Task<int> ResolveTargetCentralKitchenIdAsync(CreateDemandDto dto)
+        {
+            int centralKitchenId;
+
+            if (_current.IsInRole(RoleNames.SupplyCoordinator))
+            {
+                centralKitchenId = await _access.GetCurrentAssignedCentralKitchenIdAsync();
+
+                if (dto.CentralKitchenId.HasValue && dto.CentralKitchenId.Value != centralKitchenId)
+                    throw new ForbiddenAccessException("You do not have access to the requested central kitchen.");
+            }
+            else
+            {
+                if (!dto.CentralKitchenId.HasValue || dto.CentralKitchenId.Value <= 0)
+                    throw new Exception("CentralKitchenId is required.");
+
+                centralKitchenId = dto.CentralKitchenId.Value;
+            }
+
+            var centralKitchenExists = await _db.CentralKitchens
+                .AsNoTracking()
+                .AnyAsync(x => x.CentralKitchenId == centralKitchenId);
+
+            if (!centralKitchenExists)
+                throw new Exception("Central kitchen không tồn tại");
+
+            await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId);
+            return centralKitchenId;
         }
 
         private void RequireSupplyRoles()
         {
-            // Admin/Manager allowed for testing and supervision.
             if (_current.IsInRole(RoleNames.Admin)) return;
             if (_current.IsInRole(RoleNames.Manager)) return;
             if (_current.IsInRole(RoleNames.SupplyCoordinator)) return;
+            if (_current.IsInRole(RoleNames.KitchenStaff)) return;
 
-            throw new ForbiddenAccessException("You do not have permission to access store ordering.");
+            throw new ForbiddenAccessException("You do not have permission to access demand aggregation.");
         }
     }
-
 }

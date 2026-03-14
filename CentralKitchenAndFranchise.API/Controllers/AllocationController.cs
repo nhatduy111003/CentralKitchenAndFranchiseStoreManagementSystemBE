@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CentralKitchenAndFranchise.API.Controllers
 {
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator},{RoleNames.StoreStaff},{RoleNames.KitchenStaff}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator},{RoleNames.KitchenStaff}")]
     [ApiController]
     [Route("api/supply/allocations")]
     public class AllocationController : ControllerBase

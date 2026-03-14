@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CentralKitchenAndFranchise.DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260313124822_Rebuild_Init_Clean")]
+    [Migration("20260314101846_Rebuild_Init_Clean")]
     partial class Rebuild_Init_Clean
     {
         /// <inheritdoc />
@@ -350,6 +350,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("DemandAggregationId"));
 
+                    b.Property<int>("CentralKitchenId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -357,6 +360,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .HasColumnType("date");
 
                     b.HasKey("DemandAggregationId");
+
+                    b.HasIndex("CentralKitchenId", "PlanDate")
+                        .IsUnique();
 
                     b.ToTable("demand_aggregations", (string)null);
                 });
@@ -1246,7 +1252,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.Allocation", b =>
                 {
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.DemandAggregation", "DemandAggregation")
-                        .WithMany()
+                        .WithMany("Allocations")
                         .HasForeignKey("DemandAggregationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1264,7 +1270,8 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.CentralKitchen", "CentralKitchen")
                         .WithMany("AllocationItems")
-                        .HasForeignKey("CentralKitchenId");
+                        .HasForeignKey("CentralKitchenId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.Franchise", "Franchise")
                         .WithMany()
@@ -1409,6 +1416,17 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     b.Navigation("Delivery");
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DemandAggregation", b =>
+                {
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.CentralKitchen", "CentralKitchen")
+                        .WithMany()
+                        .HasForeignKey("CentralKitchenId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CentralKitchen");
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DemandItem", b =>
@@ -1778,6 +1796,8 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.DemandAggregation", b =>
                 {
+                    b.Navigation("Allocations");
+
                     b.Navigation("DemandItems");
                 });
 
