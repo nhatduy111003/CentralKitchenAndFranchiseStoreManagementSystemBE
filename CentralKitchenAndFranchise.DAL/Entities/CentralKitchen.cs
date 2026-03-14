@@ -33,4 +33,10 @@ public class CentralKitchen
 
     public ICollection<AllocationItem> AllocationItems { get; set; }
         = new List<AllocationItem>();
+
+    public ICollection<UserWorkAssignment> WorkAssignments { get; set; }
+    = new List<UserWorkAssignment>();
+
+    public ICollection<ProductionRun> ProductionRuns { get; set; } = new List<ProductionRun>();
+
 }

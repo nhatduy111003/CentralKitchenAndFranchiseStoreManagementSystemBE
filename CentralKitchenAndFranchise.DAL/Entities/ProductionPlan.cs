@@ -14,5 +14,5 @@ public class ProductionPlan
 
     public CentralKitchen CentralKitchen { get; set; } = default!;
     public ICollection<ProductionPlanItem> Items { get; set; } = new List<ProductionPlanItem>();
-    public ICollection<ProductionBatch> ProductionBatches { get; set; } = new List<ProductionBatch>();
+    public ICollection<ProductionRun> ProductionRuns { get; set; } = new List<ProductionRun>();
 }

@@ -7,10 +7,14 @@ public class Ingredient
     public string Unit { get; set; } = default!;
     public string Status { get; set; } = "ACTIVE";
 
-    public decimal Price { get; set; } = 0;       
-
+    public decimal Price { get; set; } = 0;
     public decimal SafetyStock { get; set; } = 0;
     public decimal WasteThreshold { get; set; } = 0;
+
+    public int? SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
+
+    public int ShelfLifeDays { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

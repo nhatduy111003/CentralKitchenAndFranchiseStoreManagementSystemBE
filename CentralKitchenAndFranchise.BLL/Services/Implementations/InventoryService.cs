@@ -8,6 +8,8 @@ using CentralKitchenAndFranchise.DTO.Responses.Common;
 using CentralKitchenAndFranchise.DTO.Responses.Inventory;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Extensions;
+using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 {
@@ -24,8 +26,12 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             _access = access;
         }
 
-        // BR-18: bắt buộc batchCode + expiredAt + qty>0
-        // BR-21: unique batchCode theo (ingredientId, batchCode, franchiseId) đã có unique index
+        // =========================================================
+        // INGREDIENT INBOUND
+        // =========================================================
+        // Logic quan trọng:
+        // - ExpiredAt được derive từ CreatedAt + Ingredient.ShelfLifeDays
+        // - BatchCode unique theo (IngredientId, BatchCode, FranchiseId)
         public async Task<IngredientInboundResponse> InboundIngredientAsync(
             int franchiseId,
             CreateIngredientInboundDto request,
@@ -39,15 +45,11 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (string.IsNullOrWhiteSpace(request.BatchCode))
                 throw new ArgumentException("BatchCode is required.");
 
-            // DateOnly default = 0001-01-01 => coi như thiếu
-            if (request.ExpiredAt == default)
-                throw new ArgumentException("ExpiredAt is required.");
-
             if (request.Quantity <= 0)
                 throw new ArgumentException("Quantity must be > 0.");
 
-            // ensure ingredient exists & active (tuỳ bạn có Status)
-            var ingredient = await _db.Ingredients.AsNoTracking()
+            var ingredient = await _db.Ingredients
+                .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.IngredientId == request.IngredientId, ct);
 
             if (ingredient is null)
@@ -57,7 +59,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-            // create batch
             var batch = new IngredientBatch
             {
                 IngredientId = request.IngredientId,
@@ -65,8 +66,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 FranchiseId = franchiseId,
                 CentralKitchenId = null,
                 BatchCode = request.BatchCode.Trim(),
-                ExpiredAt = request.ExpiredAt,
-                Quantity = request.Quantity
+                Quantity = request.Quantity,
+                CreatedAt = now
             };
 
             _db.IngredientBatches.Add(batch);
@@ -77,11 +78,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             }
             catch (DbUpdateException)
             {
-                // unique index hit => BR-21
                 throw new InvalidOperationException("BatchCode already exists for this ingredient in this franchise.");
             }
 
-            // create movement IN (ngày nhập = movement.CreatedAt)
             var mv = new InventoryMovement
             {
                 BatchId = batch.BatchId,
@@ -95,7 +94,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             _db.InventoryMovements.Add(mv);
             await _db.SaveChangesAsync(ct);
 
-            // audit log (không bắt buộc trong BR-18, nhưng rất nên để truy vết)
+            // Gắn ingredient vào batch để dùng helper CalculateExpiredAt()
+            batch.Ingredient = ingredient;
+            var expiredAt = batch.CalculateExpiredAt();
+
             _db.AuditLogs.Add(new AuditLog
             {
                 UserId = _current.UserId,
@@ -110,16 +112,23 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     batch.IngredientId,
                     batch.FranchiseId,
                     batch.BatchCode,
-                    batch.ExpiredAt,
+                    batch.CreatedAt,
+                    ExpiredAt = expiredAt,
                     batch.Quantity,
-                    Movement = new { mv.MovementId, mv.Type, mv.Quantity, mv.CreatedAt, mv.Reason }
+                    Movement = new
+                    {
+                        mv.MovementId,
+                        mv.Type,
+                        mv.Quantity,
+                        mv.CreatedAt,
+                        mv.Reason
+                    }
                 }),
                 Reason = mv.Reason,
                 CreatedAt = now
             });
 
             await _db.SaveChangesAsync(ct);
-
             await tx.CommitAsync(ct);
 
             return new IngredientInboundResponse
@@ -128,65 +137,81 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 FranchiseId = franchiseId,
                 IngredientId = batch.IngredientId,
                 BatchCode = batch.BatchCode,
-                ExpiredAt = batch.ExpiredAt ?? request.ExpiredAt, // safety
+                ExpiredAt = expiredAt,
                 Quantity = batch.Quantity,
                 CreatedMovementId = mv.MovementId,
                 CreatedAt = mv.CreatedAt
             };
         }
 
+        // =========================================================
+        // ISSUE INGREDIENTS FOR PRODUCTION PLAN
+        // =========================================================
+        // Logic quan trọng:
+        // - Chỉ issue từ tồn kho CentralKitchen
+        // - Tính nhu cầu từ ProductionPlan + BOM ACTIVE version mới nhất
+        // - FEFO dùng ExpiredAt derived, không dùng cột DB
+        // - Vì ExpiredAt là derived nên phải Include Ingredient rồi sort in-memory
         public async Task<IssueIngredientsByProductionPlanResponse> IssueIngredientsByProductionPlanAsync(
-    int centralKitchenId,
-    int productionPlanId,
-    IssueIngredientsByProductionPlanDto request,
-    CancellationToken ct = default)
+            int centralKitchenId,
+            int productionPlanId,
+            IssueIngredientsByProductionPlanDto request,
+            CancellationToken ct = default)
         {
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
             var plan = await _db.ProductionPlans
-                     .AsNoTracking()
-                     .Include(p => p.Items)
-                     .FirstOrDefaultAsync(
-                         p => p.ProductionPlanId == productionPlanId
-                           && p.CentralKitchenId == centralKitchenId,
-                         ct);
+                .AsNoTracking()
+                .Include(p => p.Items)
+                .FirstOrDefaultAsync(
+                    p => p.ProductionPlanId == productionPlanId &&
+                         p.CentralKitchenId == centralKitchenId,
+                    ct);
+
             if (plan is null)
                 throw new KeyNotFoundException($"ProductionPlan {productionPlanId} not found.");
 
             if (plan.Items.Count == 0)
                 throw new InvalidOperationException("Production plan has no items.");
 
-            // 1) Get BOM for each product (latest ACTIVE by Version)
+            // 1) Lấy ACTIVE BOM version mới nhất cho từng product trong plan
             var productIds = plan.Items.Select(i => i.ProductId).Distinct().ToList();
 
-            var boms = await _db.Boms.AsNoTracking()
+            var boms = await _db.Boms
+                .AsNoTracking()
                 .Where(b => productIds.Contains(b.ProductId) && b.Status == "ACTIVE")
                 .ToListAsync(ct);
 
-            // group by product -> pick max version
             var bomByProduct = boms
                 .GroupBy(b => b.ProductId)
                 .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.Version).First());
 
-            var missingBomProducts = productIds.Where(pid => !bomByProduct.ContainsKey(pid)).ToList();
+            var missingBomProducts = productIds
+                .Where(pid => !bomByProduct.ContainsKey(pid))
+                .ToList();
+
             if (missingBomProducts.Count > 0)
-                throw new InvalidOperationException($"Missing ACTIVE BOM for products: {string.Join(",", missingBomProducts)}");
+                throw new InvalidOperationException(
+                    $"Missing ACTIVE BOM for products: {string.Join(",", missingBomProducts)}");
 
             var bomIds = bomByProduct.Values.Select(b => b.BomId).Distinct().ToList();
 
-            var bomItems = await _db.BomItems.AsNoTracking()
+            var bomItems = await _db.BomItems
+                .AsNoTracking()
                 .Where(x => bomIds.Contains(x.BomId))
                 .ToListAsync(ct);
 
-            // 2) Compute required ingredients: sum(planQty * bomItemQty)
-            // map bomId -> items
-            var bomItemMap = bomItems.GroupBy(x => x.BomId).ToDictionary(g => g.Key, g => g.ToList());
+            // 2) Tính tổng nguyên liệu cần dùng
+            var bomItemMap = bomItems
+                .GroupBy(x => x.BomId)
+                .ToDictionary(g => g.Key, g => g.ToList());
 
             var required = new Dictionary<int, decimal>(); // IngredientId -> Qty
 
             foreach (var pi in plan.Items)
             {
                 var bom = bomByProduct[pi.ProductId];
+
                 if (!bomItemMap.TryGetValue(bom.BomId, out var items) || items.Count == 0)
                     throw new InvalidOperationException($"BOM {bom.BomId} has no items.");
 
@@ -203,9 +228,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (required.Count == 0)
                 throw new InvalidOperationException("No ingredient requirements computed (check BOM quantities).");
 
-            // preload ingredient names (for response)
             var ingIds = required.Keys.ToList();
-            var ingNameMap = await _db.Ingredients.AsNoTracking()
+
+            var ingNameMap = await _db.Ingredients
+                .AsNoTracking()
                 .Where(i => ingIds.Contains(i.IngredientId))
                 .Select(i => new { i.IngredientId, i.Name })
                 .ToDictionaryAsync(x => x.IngredientId, x => x.Name, ct);
@@ -217,7 +243,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-            // 3) For each ingredient: check total available + FEFO pick
             var response = new IssueIngredientsByProductionPlanResponse
             {
                 ProductionPlanId = productionPlanId,
@@ -228,21 +253,31 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             foreach (var (ingredientId, requiredQty) in required.OrderBy(x => x.Key))
             {
-                // load batches with tracking for update
+                // Load tracking batches + Include Ingredient để derive ExpiredAt
                 var batches = await _db.IngredientBatches
-                            .Where(b =>
-                                b.Type == InventoryOwnerType.CentralKitchen &&
-                                b.CentralKitchenId == centralKitchenId &&
-                                b.IngredientId == ingredientId &&
-                                b.Quantity > 0)
-                            .OrderBy(b => b.ExpiredAt == null)
-                            .ThenBy(b => b.ExpiredAt)
-                            .ThenBy(b => b.BatchId)
-                            .ToListAsync(ct);
+                    .Include(b => b.Ingredient)
+                    .Where(b =>
+                        b.Type == InventoryOwnerType.CentralKitchen &&
+                        b.CentralKitchenId == centralKitchenId &&
+                        b.IngredientId == ingredientId &&
+                        b.Quantity > 0)
+                    .ToListAsync(ct);
+
+                // FEFO theo expiry derived.
+                // Nếu ExpiredAt null thì đẩy xuống cuối.
+                batches = batches
+                    .OrderBy(b => b.CalculateExpiredAt() == null)
+                    .ThenBy(b => b.CalculateExpiredAt())
+                    .ThenBy(b => b.CreatedAt)
+                    .ThenBy(b => b.BatchId)
+                    .ToList();
 
                 var available = batches.Sum(b => b.Quantity);
                 if (available < requiredQty)
-                    throw new InvalidOperationException($"Insufficient inventory for IngredientId={ingredientId}. Required={requiredQty}, Available={available}.");
+                {
+                    throw new InvalidOperationException(
+                        $"Insufficient inventory for IngredientId={ingredientId}. Required={requiredQty}, Available={available}.");
+                }
 
                 var line = new IssuedIngredientLine
                 {
@@ -260,10 +295,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     var take = batch.Quantity >= remaining ? remaining : batch.Quantity;
                     if (take <= 0) continue;
 
-                    // deduct
                     batch.Quantity -= take;
 
-                    // movement OUT
                     var mv = new InventoryMovement
                     {
                         BatchId = batch.BatchId,
@@ -275,13 +308,13 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     };
 
                     _db.InventoryMovements.Add(mv);
-                    await _db.SaveChangesAsync(ct); // to get MovementId
+                    await _db.SaveChangesAsync(ct); // cần MovementId cho response
 
                     line.Batches.Add(new IssuedBatchLine
                     {
                         BatchId = batch.BatchId,
                         BatchCode = batch.BatchCode,
-                        ExpiredAt = batch.ExpiredAt,
+                        ExpiredAt = batch.CalculateExpiredAt(),
                         IssuedQuantity = take,
                         MovementId = mv.MovementId
                     });
@@ -294,7 +327,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             await _db.SaveChangesAsync(ct);
 
-            // 4) Audit log for the whole issue transaction
             _db.AuditLogs.Add(new AuditLog
             {
                 UserId = _current.UserId,
@@ -313,7 +345,14 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     {
                         l.IngredientId,
                         l.RequiredQuantity,
-                        Batches = l.Batches.Select(b => new { b.BatchId, b.BatchCode, b.ExpiredAt, b.IssuedQuantity, b.MovementId })
+                        Batches = l.Batches.Select(b => new
+                        {
+                            b.BatchId,
+                            b.BatchCode,
+                            b.ExpiredAt,
+                            b.IssuedQuantity,
+                            b.MovementId
+                        })
                     })
                 }),
                 Reason = reason,
@@ -321,16 +360,21 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             });
 
             await _db.SaveChangesAsync(ct);
-
             await tx.CommitAsync(ct);
 
             return response;
         }
 
+        // =========================================================
+        // ADJUST / WASTE INGREDIENT INVENTORY
+        // =========================================================
+        // Logic quan trọng:
+        // - Chỉ adjust batch ingredient thuộc franchise hiện tại
+        // - Phải Include Ingredient vì response/audit cần ExpiredAt derived
         public async Task<AdjustIngredientInventoryResponse> AdjustIngredientAsync(
-        int franchiseId,
-        AdjustIngredientInventoryDto request,
-        CancellationToken ct = default)
+            int franchiseId,
+            AdjustIngredientInventoryDto request,
+            CancellationToken ct = default)
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
@@ -338,21 +382,26 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 throw new ArgumentException("BatchId must be positive.");
 
             if (string.IsNullOrWhiteSpace(request.Reason))
-                throw new ArgumentException("Reason is required."); // BR-22
+                throw new ArgumentException("Reason is required.");
 
             if (request.DeltaQuantity == 0)
-                throw new ArgumentException("DeltaQuantity cannot be 0.");
+                throw new ArgumentException("DeltaQuantity must not be 0.");
 
-            var type = (request.Type ?? "ADJUST").Trim().ToUpperInvariant();
+            var type = (request.Type ?? "").Trim().ToUpperInvariant();
             if (type is not ("ADJUST" or "WASTE"))
                 throw new ArgumentException("Type must be ADJUST or WASTE.");
 
-            // track batch for update
+            if (type == "WASTE" && request.DeltaQuantity >= 0)
+                throw new ArgumentException("WASTE requires DeltaQuantity < 0.");
+
             var batch = await _db.IngredientBatches
-                        .FirstOrDefaultAsync(b =>
-                        b.BatchId == request.BatchId &&
-                        b.Type == InventoryOwnerType.Franchise &&
-                        b.FranchiseId == franchiseId, ct);
+                .Include(b => b.Ingredient)
+                .FirstOrDefaultAsync(b =>
+                    b.BatchId == request.BatchId &&
+                    b.Type == InventoryOwnerType.Franchise &&
+                    b.FranchiseId == franchiseId,
+                    ct);
+
             if (batch is null)
                 throw new KeyNotFoundException($"IngredientBatch {request.BatchId} not found.");
 
@@ -360,22 +409,22 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             var after = before + request.DeltaQuantity;
 
             if (after < 0)
-                throw new InvalidOperationException("Adjustment would make inventory negative."); // safety
+                throw new InvalidOperationException("Adjustment would make inventory negative.");
 
             var now = DateTime.UtcNow;
+            var expiredAt = batch.CalculateExpiredAt();
 
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
             batch.Quantity = after;
             await _db.SaveChangesAsync(ct);
 
-            // movement record
             var mv = new InventoryMovement
             {
                 BatchId = batch.BatchId,
-                Type = type, // ADJUST / WASTE
-                Quantity = Math.Abs(request.DeltaQuantity), // store magnitude
-                CreatedByUserId = _current.UserId,          // BR-22
+                Type = type,
+                Quantity = Math.Abs(request.DeltaQuantity),
+                CreatedByUserId = _current.UserId,
                 Reason = BuildReason(request.Reason, request.Reference),
                 CreatedAt = now
             };
@@ -395,7 +444,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     batch.BatchId,
                     batch.IngredientId,
                     batch.BatchCode,
-                    batch.ExpiredAt,
+                    batch.CreatedAt,
+                    ExpiredAt = expiredAt,
                     Quantity = before
                 }),
                 NewDataJson = JsonSerializer.Serialize(new
@@ -403,7 +453,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     batch.BatchId,
                     batch.IngredientId,
                     batch.BatchCode,
-                    batch.ExpiredAt,
+                    batch.CreatedAt,
+                    ExpiredAt = expiredAt,
                     Quantity = after,
                     Movement = new
                     {
@@ -429,7 +480,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 FranchiseId = franchiseId,
                 IngredientId = batch.IngredientId,
                 BatchCode = batch.BatchCode,
-                ExpiredAt = batch.ExpiredAt,
+                ExpiredAt = expiredAt,
                 BeforeQuantity = before,
                 DeltaQuantity = request.DeltaQuantity,
                 AfterQuantity = after,
@@ -446,10 +497,15 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             return $"{reason} (ref: {reference.Trim()})";
         }
 
+        // =========================================================
+        // PRODUCT INBOUND
+        // =========================================================
+        // Phần product vẫn đang dùng ExpiredAt persisted trên ProductBatch,
+        // chưa chuyển sang flow derived như ingredient.
         public async Task<ProductInboundResponse> InboundProductAsync(
-        int franchiseId,
-        CreateProductInboundDto request,
-        CancellationToken ct = default)
+    int franchiseId,
+    CreateProductInboundDto request,
+    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
@@ -462,27 +518,36 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (request.Quantity <= 0)
                 throw new ArgumentException("Quantity must be > 0.");
 
-            // ensure product exists
-            var product = await _db.Products.AsNoTracking()
+            var product = await _db.Products
+                .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.ProductId == request.ProductId, ct);
 
             if (product is null)
                 throw new KeyNotFoundException($"Product {request.ProductId} not found.");
 
+            if (!string.Equals(product.Status, ProductStatus.Active, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Product {request.ProductId} is not ACTIVE.");
+
+            if (product.ShelfLifeDays <= 0)
+                throw new InvalidOperationException(
+                    $"Product {request.ProductId} has invalid ShelfLifeDays={product.ShelfLifeDays}. Product master data must be fixed.");
+
             var now = DateTime.UtcNow;
 
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-            // create product batch
             var batch = new ProductBatch
             {
                 ProductId = request.ProductId,
                 FranchiseId = franchiseId,
+                CentralKitchenId = null,
                 BatchCode = request.BatchCode.Trim(),
-                ExpiredAt = request.ExpiredAt,
                 Quantity = request.Quantity,
                 CreatedAt = now
             };
+
+            // gắn navigation để helper derive expiry hoạt động
+            batch.Product = product;
 
             _db.ProductBatches.Add(batch);
 
@@ -492,15 +557,13 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             }
             catch (DbUpdateException)
             {
-                // you already have unique index: (ProductId, BatchCode, FranchiseId)
                 throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
             }
 
-            // movement IN
             var mv = new ProductMovement
             {
                 BatchId = batch.BatchId,
-                Type = "IN",
+                Type = MovementType.In,
                 Quantity = request.Quantity,
                 CreatedByUserId = _current.UserId,
                 Reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim(),
@@ -511,7 +574,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             _db.ProductMovements.Add(mv);
             await _db.SaveChangesAsync(ct);
 
-            // audit log
+            var expiredAt = batch.CalculateExpiredAt();
+
             _db.AuditLogs.Add(new AuditLog
             {
                 UserId = _current.UserId,
@@ -526,16 +590,23 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     batch.ProductId,
                     batch.FranchiseId,
                     batch.BatchCode,
-                    batch.ExpiredAt,
+                    batch.CreatedAt,
+                    ExpiredAt = expiredAt,
                     batch.Quantity,
-                    Movement = new { mv.MovementId, mv.Type, mv.Quantity, mv.CreatedAt, mv.Reason }
+                    Movement = new
+                    {
+                        mv.MovementId,
+                        mv.Type,
+                        mv.Quantity,
+                        mv.CreatedAt,
+                        mv.Reason
+                    }
                 }),
                 Reason = mv.Reason,
                 CreatedAt = now
             });
 
             await _db.SaveChangesAsync(ct);
-
             await tx.CommitAsync(ct);
 
             return new ProductInboundResponse
@@ -544,7 +615,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 FranchiseId = franchiseId,
                 ProductId = batch.ProductId,
                 BatchCode = batch.BatchCode,
-                ExpiredAt = batch.ExpiredAt,
+                ExpiredAt = expiredAt,
                 Quantity = batch.Quantity,
                 CreatedMovementId = mv.MovementId,
                 CreatedAt = mv.CreatedAt
@@ -1112,4 +1183,3 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         }
     }
 }
-

@@ -25,7 +25,8 @@ public class StoreCatalogService : IStoreCatalogService
 
     public async Task<PagedResult<StoreCatalogResponse>> SearchAsync(StoreCatalogListQuery query, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
+        RequireCatalogRead();
+
         query ??= new StoreCatalogListQuery();
 
         if (query.FranchiseId <= 0)
@@ -107,7 +108,7 @@ public class StoreCatalogService : IStoreCatalogService
 
     public async Task<StoreCatalogResponse> GetByKeyAsync(int franchiseId, int productId, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
+        RequireCatalogRead();
 
         if (franchiseId <= 0) throw new ArgumentException("franchiseId must be a positive integer.");
         if (productId <= 0) throw new ArgumentException("productId must be a positive integer.");
@@ -129,7 +130,8 @@ public class StoreCatalogService : IStoreCatalogService
 
     public async Task<StoreCatalogResponse> AssignAsync(UpsertStoreCatalogRequest request, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
+        RequireCatalogWrite();
+
 
         if (request is null) throw new ArgumentException("Request body is required.");
         if (request.FranchiseId <= 0) throw new ArgumentException("franchiseId must be a positive integer.");
@@ -201,7 +203,7 @@ public class StoreCatalogService : IStoreCatalogService
 
     public async Task<StoreCatalogResponse> UpdateAsync(int franchiseId, int productId, UpdateStoreCatalogRequest request, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
+        RequireCatalogWrite();
 
         if (franchiseId <= 0) throw new ArgumentException("franchiseId must be a positive integer.");
         if (productId <= 0) throw new ArgumentException("productId must be a positive integer.");
@@ -240,7 +242,7 @@ public class StoreCatalogService : IStoreCatalogService
 
     public async Task<StoreCatalogResponse> ChangeStatusAsync(int franchiseId, int productId, ChangeStoreCatalogStatusRequest request, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
+        RequireCatalogWrite();
 
         if (franchiseId <= 0) throw new ArgumentException("franchiseId must be a positive integer.");
         if (productId <= 0) throw new ArgumentException("productId must be a positive integer.");
@@ -282,6 +284,8 @@ public class StoreCatalogService : IStoreCatalogService
 
     public async Task DeleteAsync(int franchiseId, int productId, CancellationToken ct = default)
     {
+        RequireCatalogWrite();
+
         await ChangeStatusAsync(franchiseId, productId, new ChangeStoreCatalogStatusRequest
         {
             Status = StoreCatalogStatus.Inactive,
@@ -289,11 +293,18 @@ public class StoreCatalogService : IStoreCatalogService
         }, ct);
     }
 
-    private void RequireAdminOrManager()
+    private void RequireCatalogWrite()
     {
         var role = _current.Role;
         if (role != RoleNames.Admin && role != RoleNames.Manager)
             throw new UnauthorizedAccessException("Only Admin/Manager can perform this action.");
+    }
+
+    private void RequireCatalogRead()
+    {
+        var role = _current.Role;
+        if (role != RoleNames.KitchenStaff && role != RoleNames.SupplyCoordinator)
+            throw new UnauthorizedAccessException("Only Admin/Manager/StoreStaff can perform this action.");
     }
 
     private async Task EnsureFranchiseExistsAsync(int franchiseId, CancellationToken ct)

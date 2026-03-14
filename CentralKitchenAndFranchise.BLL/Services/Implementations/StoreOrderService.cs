@@ -339,9 +339,6 @@ public class StoreOrderService : IStoreOrderService
 
     public async Task<StoreOrderResponse> LockAsync(int franchiseId, int orderId, CancellationToken ct = default)
     {
-        // Role để ở controller, service không check role
-        await _access.EnsureCanAccessAsync(franchiseId, ct);
-
         var order = await _db.StoreOrders
             .Include(x => x.Items)
             .FirstOrDefaultAsync(x => x.StoreOrderId == orderId && x.FranchiseId == franchiseId, ct);
@@ -428,7 +425,7 @@ public class StoreOrderService : IStoreOrderService
             throw new ArgumentException("OrderDate cannot be in the past.");
 
         if (orderDate > today.AddDays(limitDays))
-            throw new ArgumentException($"OrderDate exceeds future order limit ({limitDays} days) (FR-018).");
+            throw new ArgumentException($"OrderDate exceeds future order limit ({limitDays} days).");
     }
 
     private async Task<int> GetIntSettingAsync(string key, int fallback, CancellationToken ct)

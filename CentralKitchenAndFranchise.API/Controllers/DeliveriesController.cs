@@ -25,7 +25,7 @@ public class DeliveriesController : ControllerBase
     public async Task<ActionResult<ApiResponse<int>>> CreateDelivery([FromBody] CreateDeliveryRequest req, CancellationToken ct)
         => Ok(ApiResponse<int>.Ok(await _service.CreateDeliveryAsync(req, ct)));
 
-    [Authorize]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
     [HttpGet("api/deliveries/{deliveryId:int}")]
     public async Task<ActionResult<ApiResponse<DeliveryDetailsResponse>>> GetById([FromRoute] int deliveryId, CancellationToken ct)
         => Ok(ApiResponse<DeliveryDetailsResponse>.Ok(await _service.GetByIdAsync(deliveryId, ct)));
@@ -46,7 +46,7 @@ public class DeliveriesController : ControllerBase
         return Ok(ApiResponse.Ok("Saved"));
     }
 
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
     [HttpPost("api/deliveries/{deliveryId:int}/confirm")]
     public async Task<ActionResult<ApiResponse>> Confirm([FromRoute] int deliveryId, CancellationToken ct)
     {

@@ -14,7 +14,7 @@ public class IngredientBatch
 
     public string BatchCode { get; set; } = default!;
     public decimal Quantity { get; set; }
-    public DateOnly? ExpiredAt { get; set; }
+    public DateTime CreatedAt { get; set; }
 
     public Ingredient Ingredient { get; set; } = default!;
     public ICollection<InventoryMovement> InventoryMovements { get; set; } = new List<InventoryMovement>();

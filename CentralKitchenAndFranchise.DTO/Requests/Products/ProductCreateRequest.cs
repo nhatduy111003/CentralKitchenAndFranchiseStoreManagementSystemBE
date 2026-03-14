@@ -20,4 +20,8 @@ public class ProductCreateRequest
     [Required]
     [StringLength(30)]
     public string ProductType { get; set; } = default!;
+
+    [Required]
+    [Range(1, int.MaxValue)]
+    public int ShelfLifeDays { get; set; } = default!;
 }

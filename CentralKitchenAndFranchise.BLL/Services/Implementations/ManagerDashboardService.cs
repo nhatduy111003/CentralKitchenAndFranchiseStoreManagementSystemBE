@@ -1,4 +1,5 @@
-﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+﻿using CentralKitchenAndFranchise.BLL.Extensions;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.Enums;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -49,7 +50,7 @@ public class ManagerDashboardService : IManagerDashboardService
 
         if (scopeFranchiseIds.Count == 0)
         {
-            resp.Notes.Add("NO_FRANCHISE_SCOPE: Manager has no assigned franchises in user_franchises.");
+            resp.Notes.Add("There is no franchise exists");
             return resp;
         }
 
@@ -115,7 +116,7 @@ public class ManagerDashboardService : IManagerDashboardService
 
     private async Task<List<int>> GetScopeFranchiseIdsAsync(CancellationToken ct)
     {
-        if (_current.IsInRole(RoleNames.Admin))
+        if (_current.IsInRole(RoleNames.Admin) || _current.IsInRole(RoleNames.Manager))
         {
             return await _db.Franchises
                 .AsNoTracking()
@@ -124,18 +125,8 @@ public class ManagerDashboardService : IManagerDashboardService
                 .ToListAsync(ct);
         }
 
-        return await _db.UserFranchises
-            .AsNoTracking()
-            .Where(uf => uf.UserId == _current.UserId)
-            .Join(
-                _db.Franchises.AsNoTracking().Where(f => f.Status == OrganizationStatus.Active),
-                uf => uf.FranchiseId,
-                f => f.FranchiseId,
-                (uf, f) => f.FranchiseId)
-            .Distinct()
-            .ToListAsync(ct);
+        return new List<int>();
     }
-
     private async Task<(
         DateOnly fromDate,
         DateOnly toDate,
@@ -378,19 +369,25 @@ public class ManagerDashboardService : IManagerDashboardService
             return;
         }
 
+        if (franchiseIds == null || franchiseIds.Count == 0)
+        {
+            resp.NearExpiryAlerts = new List<NearExpiryAlertItem>();
+            return;
+        }
+
         var cutoff = todayLocal.AddDays(nearExpiryDays);
 
         var batches = await _db.IngredientBatches
             .AsNoTracking()
+            .Include(b => b.Ingredient)
             .Where(b =>
                 b.Type == InventoryOwnerType.Franchise &&
                 b.FranchiseId.HasValue &&
-                franchiseIds.Contains(b.FranchiseId.Value))
-            .Where(b => b.Ingredient.Status == IngredientStatus.Active)
-            .Where(b => b.ExpiredAt != null && b.ExpiredAt <= cutoff)
-            .OrderBy(b => b.ExpiredAt)
-            .ThenByDescending(b => b.Quantity)
-            .Take(limit)
+                franchiseIds.Contains(b.FranchiseId.Value) &&
+                b.Quantity > 0)
+            .ToListAsync(ct);
+
+        var nearExpiryBatches = batches
             .Select(b => new
             {
                 FranchiseId = b.FranchiseId!.Value,
@@ -400,18 +397,20 @@ public class ManagerDashboardService : IManagerDashboardService
                 b.BatchId,
                 b.BatchCode,
                 b.Quantity,
-                b.ExpiredAt
+                ExpiredAt = b.CalculateExpiredAt()
             })
-            .ToListAsync(ct);
-
-        if (batches.Count == 0) return;
+            .Where(b => b.ExpiredAt != null && b.ExpiredAt <= cutoff)
+            .OrderBy(b => b.ExpiredAt)
+            .ThenByDescending(b => b.Quantity)
+            .Take(limit)
+            .ToList();
 
         var franchiseNames = await _db.Franchises
             .AsNoTracking()
             .Where(f => franchiseIds.Contains(f.FranchiseId))
             .ToDictionaryAsync(f => f.FranchiseId, f => f.Name, ct);
 
-        resp.NearExpiryAlerts = batches
+        resp.NearExpiryAlerts = nearExpiryBatches
             .Select(b =>
             {
                 int? daysToExpire = null;
@@ -436,7 +435,6 @@ public class ManagerDashboardService : IManagerDashboardService
             })
             .ToList();
     }
-
     private async Task FillWasteAlertsAsync(
         ManagerDashboardOverviewResponse resp,
         List<int> franchiseIds,

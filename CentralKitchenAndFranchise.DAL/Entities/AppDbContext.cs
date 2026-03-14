@@ -77,7 +77,7 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         public DbSet<User> Users => Set<User>();
         public DbSet<Franchise> Franchises => Set<Franchise>();
         public DbSet<CentralKitchen> CentralKitchens => Set<CentralKitchen>();
-        public DbSet<UserFranchise> UserFranchises => Set<UserFranchise>();
+        public DbSet<UserWorkAssignment> UserWorkAssignments => Set<UserWorkAssignment>();
 
         public DbSet<Ingredient> Ingredients => Set<Ingredient>();
         public DbSet<Supplier> Suppliers => Set<Supplier>();
@@ -94,7 +94,7 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 
         public DbSet<ProductionPlan> ProductionPlans => Set<ProductionPlan>();
         public DbSet<ProductionPlanItem> ProductionPlanItems => Set<ProductionPlanItem>();
-        public DbSet<ProductionBatch> ProductionBatches => Set<ProductionBatch>();
+        public DbSet<ProductionRun> ProductionRuns => Set<ProductionRun>();
 
         public DbSet<Recipe> Recipes => Set<Recipe>();
         public DbSet<Bom> Boms => Set<Bom>();
@@ -144,13 +144,48 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
-            modelBuilder.Entity<UserFranchise>(e =>
+            modelBuilder.Entity<UserWorkAssignment>(e =>
             {
-                e.ToTable("user_franchises");
-                e.HasKey(x => new { x.UserId, x.FranchiseId });
+                e.ToTable("user_work_assignments");
+                e.HasKey(x => x.UserWorkAssignmentId);
+
+                e.Property(x => x.AssignmentType)
+                    .HasMaxLength(50);
+
+                e.HasOne(x => x.User)
+                    .WithMany(x => x.WorkAssignments)
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                e.HasOne(x => x.Franchise)
+                    .WithMany(x => x.WorkAssignments)
+                    .HasForeignKey(x => x.FranchiseId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.CentralKitchen)
+                    .WithMany(x => x.WorkAssignments)
+                    .HasForeignKey(x => x.CentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasCheckConstraint("CK_user_work_assignments_owner", @"
+    (
+        (""AssignmentType"" = 'FRANCHISE' AND ""FranchiseId"" IS NOT NULL AND ""CentralKitchenId"" IS NULL)
+        OR
+        (""AssignmentType"" = 'CENTRAL_KITCHEN' AND ""FranchiseId"" IS NULL AND ""CentralKitchenId"" IS NOT NULL)
+    )");
             });
 
-            modelBuilder.Entity<Ingredient>(e => { e.ToTable("ingredients"); e.HasKey(x => x.IngredientId); });
+            modelBuilder.Entity<Ingredient>(e =>
+            {
+                e.ToTable("ingredients");
+                e.HasKey(x => x.IngredientId);
+
+                e.HasOne(x => x.Supplier)
+                    .WithMany(x => x.Ingredients)
+                    .HasForeignKey(x => x.SupplierId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
             modelBuilder.Entity<Supplier>(e => { e.ToTable("suppliers"); e.HasKey(x => x.SupplierId); });
             modelBuilder.Entity<Product>(e => { e.ToTable("products"); e.HasKey(x => x.ProductId); });
 
@@ -169,8 +204,26 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             modelBuilder.Entity<DemandItem>(e => { e.ToTable("demand_items"); e.HasKey(x => x.DemandItemId); });
 
             modelBuilder.Entity<Allocation>(e => { e.ToTable("allocations"); e.HasKey(x => x.AllocationId); });
-            modelBuilder.Entity<AllocationItem>(e => { e.ToTable("allocation_items"); e.HasKey(x => x.AllocationItemId); });
+            modelBuilder.Entity<AllocationItem>(e =>
+            {
+                e.ToTable("allocation_items");
+                e.HasKey(x => x.AllocationItemId);
 
+                e.HasOne(x => x.Allocation)
+                    .WithMany(x => x.AllocationItems)
+                    .HasForeignKey(x => x.AllocationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                e.HasOne(x => x.Franchise)
+                    .WithMany()
+                    .HasForeignKey(x => x.FranchiseId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.Product)
+                    .WithMany(x => x.AllocationItems)
+                    .HasForeignKey(x => x.ProductId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
             // production
             modelBuilder.Entity<ProductionPlan>(e =>
             {
@@ -182,8 +235,31 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .HasForeignKey(x => x.CentralKitchenId)
                     .OnDelete(DeleteBehavior.Restrict);
             }); modelBuilder.Entity<ProductionPlanItem>(e => { e.ToTable("production_plan_items"); e.HasKey(x => x.ProductionPlanItemId); });
-            modelBuilder.Entity<ProductionBatch>(e => { e.ToTable("production_batches"); e.HasKey(x => x.ProductionBatchId); });
 
+            modelBuilder.Entity<ProductionRun>(e =>
+            {
+                e.ToTable("production_runs");
+                e.HasKey(x => x.ProductionRunId);
+
+                e.Property(x => x.RunCode)
+                    .HasMaxLength(50);
+
+                e.Property(x => x.Quantity)
+                    .HasPrecision(18, 2);
+
+                e.Property(x => x.Status)
+                    .HasMaxLength(30);
+
+                e.HasOne(x => x.ProductionPlan)
+                    .WithMany(x => x.ProductionRuns)
+                    .HasForeignKey(x => x.ProductionPlanId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                e.HasOne(x => x.CentralKitchen)
+                    .WithMany(x => x.ProductionRuns)
+                    .HasForeignKey(x => x.CentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
             // recipe / bom
             modelBuilder.Entity<Recipe>(e => { e.ToTable("recipes"); e.HasKey(x => x.RecipeId); });
             modelBuilder.Entity<Bom>(e => { e.ToTable("boms"); e.HasKey(x => x.BomId); });
@@ -228,12 +304,101 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             });
             modelBuilder.Entity<InventoryMovement>(e => { e.ToTable("inventory_movements"); e.HasKey(x => x.MovementId); });
 
-            modelBuilder.Entity<ProductBatch>(e => { e.ToTable("product_batches"); e.HasKey(x => x.BatchId); });
+            modelBuilder.Entity<ProductBatch>(e =>
+            {
+                e.ToTable("product_batches", tb =>
+                {
+                    tb.HasCheckConstraint(
+                        "CK_product_batches_owner",
+                        @"
+            (
+                ""FranchiseId"" IS NOT NULL
+                AND ""CentralKitchenId"" IS NULL
+            )
+            OR
+            (
+                ""FranchiseId"" IS NULL
+                AND ""CentralKitchenId"" IS NOT NULL
+            )");
+                });
+
+                e.HasKey(x => x.BatchId);
+
+                e.Property(x => x.BatchCode)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                e.Property(x => x.Quantity)
+                    .HasColumnType("numeric(18,2)");
+
+                e.HasOne(x => x.Product)
+                    .WithMany(x => x.ProductBatches)
+                    .HasForeignKey(x => x.ProductId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.Franchise)
+                    .WithMany()
+                    .HasForeignKey(x => x.FranchiseId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.CentralKitchen)
+                    .WithMany(x => x.ProductBatches)
+                    .HasForeignKey(x => x.CentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.ProductionRun)
+                    .WithMany(x => x.ProductBatches)
+                    .HasForeignKey(x => x.ProductionRunId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                // Franchise-owned uniqueness
+                e.HasIndex(x => new { x.ProductId, x.FranchiseId, x.BatchCode })
+                    .IsUnique()
+                    .HasDatabaseName("UX_product_batches_product_franchise_batchcode")
+                    .HasFilter(@"""FranchiseId"" IS NOT NULL AND ""CentralKitchenId"" IS NULL");
+
+                // CentralKitchen-owned uniqueness
+                e.HasIndex(x => new { x.ProductId, x.CentralKitchenId, x.BatchCode })
+                    .IsUnique()
+                    .HasDatabaseName("UX_product_batches_product_ck_batchcode")
+                    .HasFilter(@"""CentralKitchenId"" IS NOT NULL AND ""FranchiseId"" IS NULL");
+            });
+
+
             modelBuilder.Entity<ProductMovement>(e => { e.ToTable("product_movements"); e.HasKey(x => x.MovementId); });
 
             // delivery
-            modelBuilder.Entity<DeliveryPlan>(e => { e.ToTable("delivery_plans"); e.HasKey(x => x.DeliveryPlanId); });
-            modelBuilder.Entity<Delivery>(e => { e.ToTable("deliveries"); e.HasKey(x => x.DeliveryId); });
+            modelBuilder.Entity<DeliveryPlan>(e =>
+            {
+                e.ToTable("delivery_plans");
+                e.HasKey(x => x.DeliveryPlanId);
+
+                e.HasOne(x => x.Franchise)
+                    .WithMany()
+                    .HasForeignKey(x => x.FranchiseId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.CentralKitchen)
+                    .WithMany(x => x.DeliveryPlans)
+                    .HasForeignKey(x => x.CentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<Delivery>(e =>
+            {
+                e.ToTable("deliveries");
+                e.HasKey(x => x.DeliveryId);
+
+                e.HasOne(x => x.DeliveryPlan)
+                    .WithMany(x => x.Deliveries)
+                    .HasForeignKey(x => x.DeliveryPlanId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                e.HasOne(x => x.FromCentralKitchen)
+                    .WithMany()
+                    .HasForeignKey(x => x.FromCentralKitchenId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
 
             modelBuilder.Entity<DeliveryProductItem>(e => { e.ToTable("delivery_product_items"); e.HasKey(x => x.DeliveryProductItemId); });
             modelBuilder.Entity<DeliveryIngredientItem>(e => { e.ToTable("delivery_ingredient_items"); e.HasKey(x => x.DeliveryIngredientItemId); });

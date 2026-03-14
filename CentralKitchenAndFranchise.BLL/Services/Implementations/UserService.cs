@@ -77,6 +77,31 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
             var now = DateTime.UtcNow;
 
+
+            if (role is null)
+                throw new KeyNotFoundException($"Role {dto.RoleId} not found.");
+
+            if (string.Equals(role.Name, "ADMIN", StringComparison.OrdinalIgnoreCase))
+            {
+                var adminRoleId = role.RoleId;
+
+                var hasAnotherAdmin = await _context.Users
+                    .AsNoTracking()
+                    .AnyAsync(u => u.RoleId == adminRoleId && u.Status == "ACTIVE");
+
+                if (hasAnotherAdmin)
+                    throw new InvalidOperationException("System already has an active admin. Creating a second admin is not allowed.");
+            }
+
+            var username = dto.Username.Trim();
+            var email = dto.Email.Trim();
+
+            var duplicate = await _context.Users.AsNoTracking()
+                .AnyAsync(u => u.Username == username || u.Email == email);
+
+            if (duplicate)
+                throw new InvalidOperationException("Username or email already exists.");
+
             var user = new User
             {
                 Username = dto.Username,

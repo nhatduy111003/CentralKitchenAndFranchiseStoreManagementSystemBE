@@ -1,7 +1,7 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
-using CentralKitchenAndFranchise.DTO.Requests.Inventory;
+using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
 using CentralKitchenAndFranchise.DTO.Responses;
 using CentralKitchenAndFranchise.DTO.Responses.Common;
 using CentralKitchenAndFranchise.DTO.Responses.Inventory;
@@ -23,7 +23,7 @@ namespace CentralKitchenAndFranchise.API.Controllers
 
         // Franchise nhập kho nguyên liệu
         [HttpPost("ingredients/inbound")]
-        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.KitchenStaff}")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
         public async Task<ActionResult<ApiResponse<IngredientInboundResponse>>> InboundIngredient(
             int franchiseId,
             [FromBody] CreateIngredientInboundDto request,
@@ -35,7 +35,7 @@ namespace CentralKitchenAndFranchise.API.Controllers
 
         // Franchise điều chỉnh tồn kho nguyên liệu
         [HttpPost("ingredients/adjustment")]
-        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.KitchenStaff}")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
         public async Task<ActionResult<ApiResponse<AdjustIngredientInventoryResponse>>> AdjustIngredient(
             int franchiseId,
             [FromBody] AdjustIngredientInventoryDto request,
@@ -47,7 +47,7 @@ namespace CentralKitchenAndFranchise.API.Controllers
 
         // Franchise nhập kho thành phẩm
         [HttpPost("products/inbound")]
-        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.KitchenStaff}")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
         public async Task<ActionResult<ApiResponse<ProductInboundResponse>>> InboundProduct(
             int franchiseId,
             [FromBody] CreateProductInboundDto request,

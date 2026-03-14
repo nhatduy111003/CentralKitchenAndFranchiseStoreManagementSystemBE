@@ -10,10 +10,10 @@ public class User
     public string PasswordHash { get; set; } = default!;
     public string Status { get; set; } = "ACTIVE";
 
-    // NOTE: migration full dùng DateTime (timestamptz)
+    // NOTE: migration full dï¿½ng DateTime (timestamptz)
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
     public Role Role { get; set; } = default!;
-    public ICollection<UserFranchise> UserFranchises { get; set; } = new List<UserFranchise>();
+    public ICollection<UserWorkAssignment> WorkAssignments { get; set; } = new List<UserWorkAssignment>();
 }

@@ -7,7 +7,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CentralKitchenAndFranchise.DAL.Migrations
 {
     /// <inheritdoc />
-    public partial class InitRefactorCentralKitchen : Migration
+    public partial class Rebuild_Init_Clean : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -47,26 +47,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "ingredients",
-                columns: table => new
-                {
-                    IngredientId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    Name = table.Column<string>(type: "text", nullable: false),
-                    Unit = table.Column<string>(type: "text", nullable: false),
-                    Status = table.Column<string>(type: "text", nullable: false),
-                    Price = table.Column<decimal>(type: "numeric", nullable: false),
-                    SafetyStock = table.Column<decimal>(type: "numeric", nullable: false),
-                    WasteThreshold = table.Column<decimal>(type: "numeric", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ingredients", x => x.IngredientId);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "permissions",
                 columns: table => new
                 {
@@ -95,6 +75,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     Sku = table.Column<string>(type: "text", nullable: false),
                     Unit = table.Column<string>(type: "text", nullable: false),
                     Status = table.Column<string>(type: "text", nullable: false),
+                    ShelfLifeDays = table.Column<int>(type: "integer", nullable: false),
                     ProductType = table.Column<string>(type: "text", nullable: false)
                 },
                 constraints: table =>
@@ -360,14 +341,42 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "ingredients",
+                columns: table => new
+                {
+                    IngredientId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Name = table.Column<string>(type: "text", nullable: false),
+                    Unit = table.Column<string>(type: "text", nullable: false),
+                    Status = table.Column<string>(type: "text", nullable: false),
+                    Price = table.Column<decimal>(type: "numeric", nullable: false),
+                    SafetyStock = table.Column<decimal>(type: "numeric", nullable: false),
+                    WasteThreshold = table.Column<decimal>(type: "numeric", nullable: false),
+                    SupplierId = table.Column<int>(type: "integer", nullable: true),
+                    ShelfLifeDays = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ingredients", x => x.IngredientId);
+                    table.ForeignKey(
+                        name: "FK_ingredients_suppliers_SupplierId",
+                        column: x => x.SupplierId,
+                        principalTable: "suppliers",
+                        principalColumn: "SupplierId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "delivery_plans",
                 columns: table => new
                 {
                     DeliveryPlanId = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     FranchiseId = table.Column<int>(type: "integer", nullable: false),
-                    PlannedDate = table.Column<DateOnly>(type: "date", nullable: false),
-                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true)
+                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true),
+                    PlannedDate = table.Column<DateOnly>(type: "date", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -376,87 +385,14 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         name: "FK_delivery_plans_central_kitchens_CentralKitchenId",
                         column: x => x.CentralKitchenId,
                         principalTable: "central_kitchens",
-                        principalColumn: "CentralKitchenId");
+                        principalColumn: "CentralKitchenId",
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_delivery_plans_franchises_FranchiseId",
                         column: x => x.FranchiseId,
                         principalTable: "franchises",
                         principalColumn: "FranchiseId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "ingredient_batches",
-                columns: table => new
-                {
-                    BatchId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    IngredientId = table.Column<int>(type: "integer", nullable: false),
-                    Type = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
-                    FranchiseId = table.Column<int>(type: "integer", nullable: true),
-                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true),
-                    BatchCode = table.Column<string>(type: "text", nullable: false),
-                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
-                    ExpiredAt = table.Column<DateOnly>(type: "date", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ingredient_batches", x => x.BatchId);
-                    table.CheckConstraint("CK_ingredient_batches_type_owner", "\r\n                        (\r\n                            \"Type\" = 'FRANCHISE'\r\n                            AND \"FranchiseId\" IS NOT NULL\r\n                            AND \"CentralKitchenId\" IS NULL\r\n                        )\r\n                        OR\r\n                        (\r\n                            \"Type\" = 'CENTRAL_KITCHEN'\r\n                            AND \"FranchiseId\" IS NULL\r\n                            AND \"CentralKitchenId\" IS NOT NULL\r\n                        )");
-                    table.ForeignKey(
-                        name: "FK_ingredient_batches_central_kitchens_CentralKitchenId",
-                        column: x => x.CentralKitchenId,
-                        principalTable: "central_kitchens",
-                        principalColumn: "CentralKitchenId",
                         onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_ingredient_batches_franchises_FranchiseId",
-                        column: x => x.FranchiseId,
-                        principalTable: "franchises",
-                        principalColumn: "FranchiseId",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_ingredient_batches_ingredients_IngredientId",
-                        column: x => x.IngredientId,
-                        principalTable: "ingredients",
-                        principalColumn: "IngredientId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "product_batches",
-                columns: table => new
-                {
-                    BatchId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    ProductId = table.Column<int>(type: "integer", nullable: false),
-                    FranchiseId = table.Column<int>(type: "integer", nullable: false),
-                    BatchCode = table.Column<string>(type: "text", nullable: false),
-                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
-                    ExpiredAt = table.Column<DateOnly>(type: "date", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_product_batches", x => x.BatchId);
-                    table.ForeignKey(
-                        name: "FK_product_batches_central_kitchens_CentralKitchenId",
-                        column: x => x.CentralKitchenId,
-                        principalTable: "central_kitchens",
-                        principalColumn: "CentralKitchenId");
-                    table.ForeignKey(
-                        name: "FK_product_batches_franchises_FranchiseId",
-                        column: x => x.FranchiseId,
-                        principalTable: "franchises",
-                        principalColumn: "FranchiseId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_product_batches_products_ProductId",
-                        column: x => x.ProductId,
-                        principalTable: "products",
-                        principalColumn: "ProductId",
-                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -543,26 +479,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "production_batches",
-                columns: table => new
-                {
-                    ProductionBatchId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    ProductionPlanId = table.Column<int>(type: "integer", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_production_batches", x => x.ProductionBatchId);
-                    table.ForeignKey(
-                        name: "FK_production_batches_production_plans_ProductionPlanId",
-                        column: x => x.ProductionPlanId,
-                        principalTable: "production_plans",
-                        principalColumn: "ProductionPlanId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "production_plan_items",
                 columns: table => new
                 {
@@ -590,6 +506,38 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "production_runs",
+                columns: table => new
+                {
+                    ProductionRunId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    ProductionPlanId = table.Column<int>(type: "integer", nullable: false),
+                    CentralKitchenId = table.Column<int>(type: "integer", nullable: false),
+                    RunCode = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    ProductionDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
+                    Status = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CompletedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_production_runs", x => x.ProductionRunId);
+                    table.ForeignKey(
+                        name: "FK_production_runs_central_kitchens_CentralKitchenId",
+                        column: x => x.CentralKitchenId,
+                        principalTable: "central_kitchens",
+                        principalColumn: "CentralKitchenId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_production_runs_production_plans_ProductionPlanId",
+                        column: x => x.ProductionPlanId,
+                        principalTable: "production_plans",
+                        principalColumn: "ProductionPlanId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "allocation_items",
                 columns: table => new
                 {
@@ -597,9 +545,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     AllocationId = table.Column<int>(type: "integer", nullable: false),
                     FranchiseId = table.Column<int>(type: "integer", nullable: false),
+                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true),
                     ProductId = table.Column<int>(type: "integer", nullable: false),
-                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
-                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true)
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -620,40 +568,13 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         column: x => x.FranchiseId,
                         principalTable: "franchises",
                         principalColumn: "FranchiseId",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_allocation_items_products_ProductId",
                         column: x => x.ProductId,
                         principalTable: "products",
                         principalColumn: "ProductId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "bom_items",
-                columns: table => new
-                {
-                    BomItemId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    BomId = table.Column<int>(type: "integer", nullable: false),
-                    IngredientId = table.Column<int>(type: "integer", nullable: false),
-                    Quantity = table.Column<decimal>(type: "numeric", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_bom_items", x => x.BomItemId);
-                    table.ForeignKey(
-                        name: "FK_bom_items_boms_BomId",
-                        column: x => x.BomId,
-                        principalTable: "boms",
-                        principalColumn: "BomId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_bom_items_ingredients_IngredientId",
-                        column: x => x.IngredientId,
-                        principalTable: "ingredients",
-                        principalColumn: "IngredientId",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -716,27 +637,103 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "user_franchises",
+                name: "user_work_assignments",
                 columns: table => new
                 {
+                    UserWorkAssignmentId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     UserId = table.Column<int>(type: "integer", nullable: false),
-                    FranchiseId = table.Column<int>(type: "integer", nullable: false),
+                    AssignmentType = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    FranchiseId = table.Column<int>(type: "integer", nullable: true),
+                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true),
                     AssignedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_user_franchises", x => new { x.UserId, x.FranchiseId });
+                    table.PrimaryKey("PK_user_work_assignments", x => x.UserWorkAssignmentId);
+                    table.CheckConstraint("CK_user_work_assignments_owner", "\r\n    (\r\n        (\"AssignmentType\" = 'FRANCHISE' AND \"FranchiseId\" IS NOT NULL AND \"CentralKitchenId\" IS NULL)\r\n        OR\r\n        (\"AssignmentType\" = 'CENTRAL_KITCHEN' AND \"FranchiseId\" IS NULL AND \"CentralKitchenId\" IS NOT NULL)\r\n    )");
                     table.ForeignKey(
-                        name: "FK_user_franchises_franchises_FranchiseId",
+                        name: "FK_user_work_assignments_central_kitchens_CentralKitchenId",
+                        column: x => x.CentralKitchenId,
+                        principalTable: "central_kitchens",
+                        principalColumn: "CentralKitchenId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_user_work_assignments_franchises_FranchiseId",
                         column: x => x.FranchiseId,
                         principalTable: "franchises",
                         principalColumn: "FranchiseId",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_user_franchises_users_UserId",
+                        name: "FK_user_work_assignments_users_UserId",
                         column: x => x.UserId,
                         principalTable: "users",
                         principalColumn: "UserId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "bom_items",
+                columns: table => new
+                {
+                    BomItemId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    BomId = table.Column<int>(type: "integer", nullable: false),
+                    IngredientId = table.Column<int>(type: "integer", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_bom_items", x => x.BomItemId);
+                    table.ForeignKey(
+                        name: "FK_bom_items_boms_BomId",
+                        column: x => x.BomId,
+                        principalTable: "boms",
+                        principalColumn: "BomId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_bom_items_ingredients_IngredientId",
+                        column: x => x.IngredientId,
+                        principalTable: "ingredients",
+                        principalColumn: "IngredientId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ingredient_batches",
+                columns: table => new
+                {
+                    BatchId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    IngredientId = table.Column<int>(type: "integer", nullable: false),
+                    Type = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    FranchiseId = table.Column<int>(type: "integer", nullable: true),
+                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true),
+                    BatchCode = table.Column<string>(type: "text", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ingredient_batches", x => x.BatchId);
+                    table.CheckConstraint("CK_ingredient_batches_type_owner", "\r\n                        (\r\n                            \"Type\" = 'FRANCHISE'\r\n                            AND \"FranchiseId\" IS NOT NULL\r\n                            AND \"CentralKitchenId\" IS NULL\r\n                        )\r\n                        OR\r\n                        (\r\n                            \"Type\" = 'CENTRAL_KITCHEN'\r\n                            AND \"FranchiseId\" IS NULL\r\n                            AND \"CentralKitchenId\" IS NOT NULL\r\n                        )");
+                    table.ForeignKey(
+                        name: "FK_ingredient_batches_central_kitchens_CentralKitchenId",
+                        column: x => x.CentralKitchenId,
+                        principalTable: "central_kitchens",
+                        principalColumn: "CentralKitchenId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ingredient_batches_franchises_FranchiseId",
+                        column: x => x.FranchiseId,
+                        principalTable: "franchises",
+                        principalColumn: "FranchiseId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ingredient_batches_ingredients_IngredientId",
+                        column: x => x.IngredientId,
+                        principalTable: "ingredients",
+                        principalColumn: "IngredientId",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -747,7 +744,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     DeliveryId = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     DeliveryPlanId = table.Column<int>(type: "integer", nullable: false),
-                    FromFranchiseId = table.Column<int>(type: "integer", nullable: false),
+                    FromCentralKitchenId = table.Column<int>(type: "integer", nullable: false),
                     Status = table.Column<string>(type: "text", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     ConfirmedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
@@ -757,66 +754,16 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 {
                     table.PrimaryKey("PK_deliveries", x => x.DeliveryId);
                     table.ForeignKey(
+                        name: "FK_deliveries_central_kitchens_FromCentralKitchenId",
+                        column: x => x.FromCentralKitchenId,
+                        principalTable: "central_kitchens",
+                        principalColumn: "CentralKitchenId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
                         name: "FK_deliveries_delivery_plans_DeliveryPlanId",
                         column: x => x.DeliveryPlanId,
                         principalTable: "delivery_plans",
                         principalColumn: "DeliveryPlanId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_deliveries_franchises_FromFranchiseId",
-                        column: x => x.FromFranchiseId,
-                        principalTable: "franchises",
-                        principalColumn: "FranchiseId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "inventory_movements",
-                columns: table => new
-                {
-                    MovementId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    BatchId = table.Column<int>(type: "integer", nullable: false),
-                    Type = table.Column<string>(type: "text", nullable: false),
-                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
-                    CreatedByUserId = table.Column<int>(type: "integer", nullable: true),
-                    Reason = table.Column<string>(type: "text", nullable: true),
-                    DeliveryId = table.Column<int>(type: "integer", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_inventory_movements", x => x.MovementId);
-                    table.ForeignKey(
-                        name: "FK_inventory_movements_ingredient_batches_BatchId",
-                        column: x => x.BatchId,
-                        principalTable: "ingredient_batches",
-                        principalColumn: "BatchId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "product_movements",
-                columns: table => new
-                {
-                    MovementId = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    BatchId = table.Column<int>(type: "integer", nullable: false),
-                    Type = table.Column<string>(type: "text", nullable: false),
-                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
-                    CreatedByUserId = table.Column<int>(type: "integer", nullable: true),
-                    Reason = table.Column<string>(type: "text", nullable: true),
-                    DeliveryId = table.Column<int>(type: "integer", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_product_movements", x => x.MovementId);
-                    table.ForeignKey(
-                        name: "FK_product_movements_product_batches_BatchId",
-                        column: x => x.BatchId,
-                        principalTable: "product_batches",
-                        principalColumn: "BatchId",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -844,6 +791,75 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         column: x => x.StoreOrderId,
                         principalTable: "store_orders",
                         principalColumn: "StoreOrderId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "product_batches",
+                columns: table => new
+                {
+                    BatchId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    ProductId = table.Column<int>(type: "integer", nullable: false),
+                    ProductionRunId = table.Column<int>(type: "integer", nullable: true),
+                    FranchiseId = table.Column<int>(type: "integer", nullable: true),
+                    CentralKitchenId = table.Column<int>(type: "integer", nullable: true),
+                    BatchCode = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_product_batches", x => x.BatchId);
+                    table.CheckConstraint("CK_product_batches_owner", "\r\n            (\r\n                \"FranchiseId\" IS NOT NULL\r\n                AND \"CentralKitchenId\" IS NULL\r\n            )\r\n            OR\r\n            (\r\n                \"FranchiseId\" IS NULL\r\n                AND \"CentralKitchenId\" IS NOT NULL\r\n            )");
+                    table.ForeignKey(
+                        name: "FK_product_batches_central_kitchens_CentralKitchenId",
+                        column: x => x.CentralKitchenId,
+                        principalTable: "central_kitchens",
+                        principalColumn: "CentralKitchenId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_product_batches_franchises_FranchiseId",
+                        column: x => x.FranchiseId,
+                        principalTable: "franchises",
+                        principalColumn: "FranchiseId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_product_batches_production_runs_ProductionRunId",
+                        column: x => x.ProductionRunId,
+                        principalTable: "production_runs",
+                        principalColumn: "ProductionRunId",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_product_batches_products_ProductId",
+                        column: x => x.ProductId,
+                        principalTable: "products",
+                        principalColumn: "ProductId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "inventory_movements",
+                columns: table => new
+                {
+                    MovementId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    BatchId = table.Column<int>(type: "integer", nullable: false),
+                    Type = table.Column<string>(type: "text", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
+                    CreatedByUserId = table.Column<int>(type: "integer", nullable: true),
+                    Reason = table.Column<string>(type: "text", nullable: true),
+                    DeliveryId = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_inventory_movements", x => x.MovementId);
+                    table.ForeignKey(
+                        name: "FK_inventory_movements_ingredient_batches_BatchId",
+                        column: x => x.BatchId,
+                        principalTable: "ingredient_batches",
+                        principalColumn: "BatchId",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -921,6 +937,31 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "product_movements",
+                columns: table => new
+                {
+                    MovementId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    BatchId = table.Column<int>(type: "integer", nullable: false),
+                    Type = table.Column<string>(type: "text", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric", nullable: false),
+                    CreatedByUserId = table.Column<int>(type: "integer", nullable: true),
+                    Reason = table.Column<string>(type: "text", nullable: true),
+                    DeliveryId = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_product_movements", x => x.MovementId);
+                    table.ForeignKey(
+                        name: "FK_product_movements_product_batches_BatchId",
+                        column: x => x.BatchId,
+                        principalTable: "product_batches",
+                        principalColumn: "BatchId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_allocation_items_AllocationId",
                 table: "allocation_items",
@@ -982,9 +1023,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "DeliveryPlanId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_deliveries_FromFranchiseId",
+                name: "IX_deliveries_FromCentralKitchenId",
                 table: "deliveries",
-                column: "FromFranchiseId");
+                column: "FromCentralKitchenId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_delivery_ingredient_items_DeliveryId",
@@ -1047,6 +1088,11 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "IngredientId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_ingredients_SupplierId",
+                table: "ingredients",
+                column: "SupplierId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_inventory_movements_BatchId",
                 table: "inventory_movements",
                 column: "BatchId");
@@ -1062,19 +1108,28 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "FranchiseId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_product_batches_ProductId",
+                name: "IX_product_batches_ProductionRunId",
                 table: "product_batches",
-                column: "ProductId");
+                column: "ProductionRunId");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_product_batches_product_ck_batchcode",
+                table: "product_batches",
+                columns: new[] { "ProductId", "CentralKitchenId", "BatchCode" },
+                unique: true,
+                filter: "\"CentralKitchenId\" IS NOT NULL AND \"FranchiseId\" IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_product_batches_product_franchise_batchcode",
+                table: "product_batches",
+                columns: new[] { "ProductId", "FranchiseId", "BatchCode" },
+                unique: true,
+                filter: "\"FranchiseId\" IS NOT NULL AND \"CentralKitchenId\" IS NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_product_movements_BatchId",
                 table: "product_movements",
                 column: "BatchId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_production_batches_ProductionPlanId",
-                table: "production_batches",
-                column: "ProductionPlanId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_production_plan_items_ProductId",
@@ -1090,6 +1145,16 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 name: "IX_production_plans_CentralKitchenId",
                 table: "production_plans",
                 column: "CentralKitchenId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_production_runs_CentralKitchenId",
+                table: "production_runs",
+                column: "CentralKitchenId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_production_runs_ProductionPlanId",
+                table: "production_runs",
+                column: "ProductionPlanId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_receiving_reports_DeliveryId",
@@ -1142,9 +1207,19 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 column: "UserId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_user_franchises_FranchiseId",
-                table: "user_franchises",
+                name: "IX_user_work_assignments_CentralKitchenId",
+                table: "user_work_assignments",
+                column: "CentralKitchenId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_user_work_assignments_FranchiseId",
+                table: "user_work_assignments",
                 column: "FranchiseId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_user_work_assignments_UserId",
+                table: "user_work_assignments",
+                column: "UserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_users_RoleId",
@@ -1180,9 +1255,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 name: "product_movements");
 
             migrationBuilder.DropTable(
-                name: "production_batches");
-
-            migrationBuilder.DropTable(
                 name: "production_plan_items");
 
             migrationBuilder.DropTable(
@@ -1207,16 +1279,13 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 name: "store_order_items");
 
             migrationBuilder.DropTable(
-                name: "suppliers");
-
-            migrationBuilder.DropTable(
                 name: "support_requests");
 
             migrationBuilder.DropTable(
                 name: "system_settings");
 
             migrationBuilder.DropTable(
-                name: "user_franchises");
+                name: "user_work_assignments");
 
             migrationBuilder.DropTable(
                 name: "allocations");
@@ -1229,9 +1298,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
             migrationBuilder.DropTable(
                 name: "product_batches");
-
-            migrationBuilder.DropTable(
-                name: "production_plans");
 
             migrationBuilder.DropTable(
                 name: "deliveries");
@@ -1252,6 +1318,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                 name: "ingredients");
 
             migrationBuilder.DropTable(
+                name: "production_runs");
+
+            migrationBuilder.DropTable(
                 name: "products");
 
             migrationBuilder.DropTable(
@@ -1259,6 +1328,12 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
             migrationBuilder.DropTable(
                 name: "roles");
+
+            migrationBuilder.DropTable(
+                name: "suppliers");
+
+            migrationBuilder.DropTable(
+                name: "production_plans");
 
             migrationBuilder.DropTable(
                 name: "franchises");
