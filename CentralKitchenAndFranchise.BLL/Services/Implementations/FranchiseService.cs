@@ -104,8 +104,9 @@ public class FranchiseService : IFranchiseService
             Location = NormalizeNullable(dto.Location),
             Latitude = dto.Latitude,
             Longitude = dto.Longitude,
-            CreatedAt = now,
-            UpdatedAt = now
+            CentralKitchenId = dto.CentralKitchenId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
         };
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -176,6 +177,8 @@ public class FranchiseService : IFranchiseService
     public async Task<bool> DeleteAsync(int id)
     {
         RequireAdminOnly();
+        var hasUsers = await _db.UserWorkAssignments
+    .AnyAsync(x => x.FranchiseId == id);
 
         var entity = await _db.Franchises.FirstOrDefaultAsync(x => x.FranchiseId == id);
         if (entity is null) return false;

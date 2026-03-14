@@ -7,7 +7,7 @@ public class CreateIngredientRequest
     [Required]
     public int? SupplierId { get; set; }
 
-    [Required(ErrorMessage = "Tên nguyên liệu không được để trống")]
+    [Required]
     [StringLength(200, MinimumLength = 2)]
     public string Name { get; set; } = default!;
 
