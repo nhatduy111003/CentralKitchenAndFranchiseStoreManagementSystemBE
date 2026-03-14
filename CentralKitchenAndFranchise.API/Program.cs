@@ -178,6 +178,7 @@ builder.Services.AddScoped<IIngredientService, IngredientService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IFranchiseService, FranchiseService>();
+builder.Services.AddScoped<ICentralKitchenService, CentralKitchenService>();
 builder.Services.AddScoped<IIngredientGuard, IngredientGuard>();
 builder.Services.AddScoped<ISupplierService, SupplierService>();
 builder.Services.AddScoped<IProductService,
@@ -201,12 +202,30 @@ builder.Services.AddScoped<IRecipeService, RecipeService>();
 
 var app = builder.Build();
 
-// Auto migrate + seed
-using (var scope = app.Services.CreateScope())
+//auto migrate in development env
+var migrateOnly = args.Contains("--migrate-only", StringComparer.OrdinalIgnoreCase);
+var autoMigrateOnStartup = app.Configuration.GetValue<bool>("AUTO_MIGRATE_ON_STARTUP");
+var autoSeedOnStartup = app.Configuration.GetValue<bool>("AUTO_SEED_ON_STARTUP");
+
+if (migrateOnly || autoMigrateOnStartup || autoSeedOnStartup)
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
-    DbSeeder.Seed(db);
+
+    if (migrateOnly || autoMigrateOnStartup)
+    {
+        db.Database.Migrate();
+    }
+
+    if (autoSeedOnStartup)
+    {
+        DbSeeder.Seed(db);
+    }
+
+    if (migrateOnly)
+    {
+        return;
+    }
 }
 
 if (app.Environment.IsDevelopment())

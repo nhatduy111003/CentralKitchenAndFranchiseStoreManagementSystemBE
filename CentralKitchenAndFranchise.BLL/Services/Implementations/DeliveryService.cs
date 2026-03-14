@@ -257,7 +257,7 @@ public class DeliveryService : IDeliveryService
 
     public async Task ConfirmAsync(int deliveryId, CancellationToken ct = default)
     {
-        RequireOneOf(RoleNames.Admin, RoleNames.Manager);
+        RequireOneOf(RoleNames.Admin, RoleNames.Manager,RoleNames.SupplyCoordinator);
 
         var delivery = await _db.Deliveries
             .Include(d => d.DeliveryPlan)
@@ -582,5 +582,81 @@ public class DeliveryService : IDeliveryService
         });
 
         await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task ReceiveConfirmAsync(int deliveryId, CancellationToken ct = default)
+    {
+        RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
+
+        var delivery = await _db.Deliveries
+            .Include(d => d.DeliveryPlan)
+            .Include(d => d.ReceivingReports)
+            .FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
+
+        if (delivery is null)
+            throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
+
+        var toFranchiseId = delivery.DeliveryPlan.FranchiseId;
+
+        await _franchiseAccess.EnsureCanAccessAsync(toFranchiseId, ct);
+
+        if (delivery.Status != DeliveryStatus.Confirmed)
+            throw new InvalidOperationException("Only CONFIRMED deliveries can be received.");
+
+        var alreadyReceived = delivery.ReceivingReports.Any();
+        if (alreadyReceived)
+            throw new InvalidOperationException("This delivery has already been received.");
+
+        var now = DateTime.UtcNow;
+
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+        var report = new ReceivingReport
+        {
+            DeliveryId = delivery.DeliveryId,
+            ReceivedAt = now
+        };
+
+        _db.ReceivingReports.Add(report);
+
+        delivery.Status = "DELIVERED";
+        delivery.DeliveredAt = now;
+
+        var storeOrder = await _db.StoreOrders
+            .FirstOrDefaultAsync(x =>
+                x.FranchiseId == toFranchiseId &&
+                x.OrderDate == delivery.DeliveryPlan.PlannedDate &&
+                x.Status == StoreOrderStatus.Locked,
+                ct);
+
+        if (storeOrder != null)
+        {
+            storeOrder.Status = "COMPLETED";
+            storeOrder.UpdatedAt = now;
+        }
+
+        _db.AuditLogs.Add(new AuditLog
+        {
+            UserId = _current.UserId,
+            FranchiseId = toFranchiseId,
+            Action = "DELIVERY_RECEIVE_CONFIRM",
+            EntityName = "Delivery",
+            EntityId = delivery.DeliveryId,
+            OldDataJson = JsonSerializer.Serialize(new
+            {
+                Status = DeliveryStatus.Confirmed
+            }),
+            NewDataJson = JsonSerializer.Serialize(new
+            {
+                delivery.Status,
+                delivery.DeliveredAt,
+                ReceivingReportCreated = true
+            }),
+            Reason = "Store confirmed receiving delivery",
+            CreatedAt = now
+        });
+
+        await _db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
     }
 }

@@ -1,12 +1,15 @@
 ﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Requests.Allocations;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
 namespace CentralKitchenAndFranchise.API.Controllers
 {
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator},{RoleNames.StoreStaff},{RoleNames.KitchenStaff}")]
     [ApiController]
     [Route("api/supply/allocations")]
     public class AllocationController : ControllerBase

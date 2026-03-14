@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CentralKitchenAndFranchise.DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260312121007_Rebuild_Init_After_DerivedExpiry")]
-    partial class Rebuild_Init_After_DerivedExpiry
+    [Migration("20260313124822_Rebuild_Init_Clean")]
+    partial class Rebuild_Init_Clean
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -480,7 +480,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasIndex("SupplierId");
 
-                    b.ToTable("Ingredients");
+                    b.ToTable("ingredients", (string)null);
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.IngredientBatch", b =>
@@ -651,7 +651,8 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.Property<string>("BatchCode")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int?>("CentralKitchenId")
                         .HasColumnType("integer");
@@ -669,7 +670,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .HasColumnType("integer");
 
                     b.Property<decimal>("Quantity")
-                        .HasColumnType("numeric");
+                        .HasColumnType("numeric(18,2)");
 
                     b.HasKey("BatchId");
 
@@ -677,11 +678,22 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasIndex("FranchiseId");
 
-                    b.HasIndex("ProductId");
-
                     b.HasIndex("ProductionRunId");
 
-                    b.ToTable("product_batches", (string)null);
+                    b.HasIndex("ProductId", "CentralKitchenId", "BatchCode")
+                        .IsUnique()
+                        .HasDatabaseName("UX_product_batches_product_ck_batchcode")
+                        .HasFilter("\"CentralKitchenId\" IS NOT NULL AND \"FranchiseId\" IS NULL");
+
+                    b.HasIndex("ProductId", "FranchiseId", "BatchCode")
+                        .IsUnique()
+                        .HasDatabaseName("UX_product_batches_product_franchise_batchcode")
+                        .HasFilter("\"FranchiseId\" IS NOT NULL AND \"CentralKitchenId\" IS NULL");
+
+                    b.ToTable("product_batches", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_product_batches_owner", "\r\n            (\r\n                \"FranchiseId\" IS NOT NULL\r\n                AND \"CentralKitchenId\" IS NULL\r\n            )\r\n            OR\r\n            (\r\n                \"FranchiseId\" IS NULL\r\n                AND \"CentralKitchenId\" IS NOT NULL\r\n            )");
+                        });
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.ProductMovement", b =>
@@ -1495,7 +1507,8 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.ProductionRun", "ProductionRun")
                         .WithMany("ProductBatches")
-                        .HasForeignKey("ProductionRunId");
+                        .HasForeignKey("ProductionRunId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("CentralKitchen");
 

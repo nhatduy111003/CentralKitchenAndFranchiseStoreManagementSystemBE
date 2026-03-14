@@ -78,7 +78,7 @@ public class StoreCatalogController : ControllerBase
     }
 
     [HttpPatch("{productId:int}/status")]
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     public async Task<ActionResult<ApiResponse<StoreCatalogResponse>>> ChangeStatus(
         int franchiseId,
         int productId,

@@ -477,7 +477,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasIndex("SupplierId");
 
-                    b.ToTable("Ingredients");
+                    b.ToTable("ingredients", (string)null);
                 });
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.IngredientBatch", b =>

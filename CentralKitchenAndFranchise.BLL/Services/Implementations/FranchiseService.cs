@@ -3,13 +3,23 @@ using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
-using CentralKitchenAndFranchise.DTO.Responses;
+using CentralKitchenAndFranchise.DTO.Requests.Franchise;
+using CentralKitchenAndFranchise.DTO.Responses.Franchise;
 using Microsoft.EntityFrameworkCore;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
 
 public class FranchiseService : IFranchiseService
 {
+    private const string StatusActive = "ACTIVE";
+    private const string StatusInactive = "INACTIVE";
+
+    private static readonly HashSet<string> AllowedStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        StatusActive,
+        StatusInactive
+    };
+
     private readonly AppDbContext _db;
     private readonly ICurrentUserService _current;
 
@@ -19,38 +29,79 @@ public class FranchiseService : IFranchiseService
         _current = current;
     }
 
-    public async Task<List<FranchiseDto>> GetAllAsync()
+    public async Task<List<FranchiseResponseDto>> GetAllAsync()
     {
         RequireAdminOrManager();
 
-        var items = await _db.Franchises
-            .AsNoTracking()
-            .OrderByDescending(x => x.CreatedAt)
-            .ToListAsync();
-
-        return items.Select(Map).ToList();
+        return await (
+            from f in _db.Franchises.AsNoTracking()
+            join ck in _db.CentralKitchens.AsNoTracking()
+                on f.CentralKitchenId equals ck.CentralKitchenId into ckGroup
+            from ck in ckGroup.DefaultIfEmpty()
+            orderby f.CreatedAt descending
+            select new FranchiseResponseDto
+            {
+                FranchiseId = f.FranchiseId,
+                CentralKitchenId = f.CentralKitchenId,
+                CentralKitchenName = ck != null ? ck.Name : null,
+                Name = f.Name,
+                Type = f.Type,
+                Status = f.Status,
+                Address = f.Address,
+                Location = f.Location,
+                Latitude = f.Latitude,
+                Longitude = f.Longitude,
+                CreatedAt = f.CreatedAt,
+                UpdatedAt = f.UpdatedAt
+            }
+        ).ToListAsync();
     }
 
-    public async Task<FranchiseDto?> GetByIdAsync(int id)
+    public async Task<FranchiseResponseDto?> GetByIdAsync(int id)
     {
         RequireAdminOrManager();
 
-        var entity = await _db.Franchises.AsNoTracking().FirstOrDefaultAsync(x => x.FranchiseId == id);
-        return entity is null ? null : Map(entity);
+        return await (
+            from f in _db.Franchises.AsNoTracking()
+            join ck in _db.CentralKitchens.AsNoTracking()
+                on f.CentralKitchenId equals ck.CentralKitchenId into ckGroup
+            from ck in ckGroup.DefaultIfEmpty()
+            where f.FranchiseId == id
+            select new FranchiseResponseDto
+            {
+                FranchiseId = f.FranchiseId,
+                CentralKitchenId = f.CentralKitchenId,
+                CentralKitchenName = ck != null ? ck.Name : null,
+                Name = f.Name,
+                Type = f.Type,
+                Status = f.Status,
+                Address = f.Address,
+                Location = f.Location,
+                Latitude = f.Latitude,
+                Longitude = f.Longitude,
+                CreatedAt = f.CreatedAt,
+                UpdatedAt = f.UpdatedAt
+            }
+        ).FirstOrDefaultAsync();
     }
 
     public async Task<int> CreateAsync(FranchiseCreateDto dto)
     {
         RequireAdminOnly();
-        dto = dto ?? throw new ArgumentNullException(nameof(dto));
+        ArgumentNullException.ThrowIfNull(dto);
+
+        await EnsureCentralKitchenExistsAsync(dto.CentralKitchenId);
+
+        var now = DateTime.UtcNow;
 
         var entity = new Franchise
         {
-            Name = dto.Name.Trim(),
-            Type = dto.Type.Trim(),
-            Status = (dto.Status ?? "ACTIVE").Trim().ToUpperInvariant(),
-            Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim(),
-            Location = string.IsNullOrWhiteSpace(dto.Location) ? null : dto.Location.Trim(),
+            CentralKitchenId = dto.CentralKitchenId,
+            Name = NormalizeRequired(dto.Name, nameof(dto.Name)),
+            Type = NormalizeRequired(dto.Type, nameof(dto.Type)),
+            Status = NormalizeStatus(dto.Status, StatusActive),
+            Address = NormalizeNullable(dto.Address),
+            Location = NormalizeNullable(dto.Location),
             Latitude = dto.Latitude,
             Longitude = dto.Longitude,
             CentralKitchenId = dto.CentralKitchenId,
@@ -58,60 +109,63 @@ public class FranchiseService : IFranchiseService
             UpdatedAt = DateTime.UtcNow
         };
 
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
         await _db.Franchises.AddAsync(entity);
-
-        await _db.AuditLogs.AddAsync(new AuditLog
-        {
-            UserId = _current.UserId,
-            FranchiseId = null,
-            Action = "CREATE",
-            EntityName = nameof(Franchise),
-            EntityId = null,
-            NewDataJson = JsonSerializer.Serialize(new { entity.Name, entity.Type, entity.Status }),
-            Reason = "Create franchise",
-            CreatedAt = DateTime.UtcNow
-        });
-
         await _db.SaveChangesAsync();
-        return entity.FranchiseId;
-    }
-
-    public async Task<bool> UpdateAsync(int id, FranchiseCreateDto dto)
-    {
-        RequireAdminOnly();
-        dto = dto ?? throw new ArgumentNullException(nameof(dto));
-
-        var entity = await _db.Franchises.FirstOrDefaultAsync(x => x.FranchiseId == id);
-        if (entity is null) return false;
-
-        var old = new
-        {
-            entity.Name,
-            entity.Type,
-            entity.Status,
-            entity.Address,
-            entity.Location,
-            entity.Latitude,
-            entity.Longitude
-        };
-
-        entity.Name = dto.Name.Trim();
-        entity.Type = dto.Type.Trim();
-        entity.Status = (dto.Status ?? entity.Status).Trim().ToUpperInvariant();
-        entity.Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim();
-        entity.Location = string.IsNullOrWhiteSpace(dto.Location) ? null : dto.Location.Trim();
-        entity.Latitude = dto.Latitude;
-        entity.Longitude = dto.Longitude;
 
         await _db.AuditLogs.AddAsync(new AuditLog
         {
             UserId = _current.UserId,
             FranchiseId = entity.FranchiseId,
+            CentralKitchenId = entity.CentralKitchenId,
+            Action = "CREATE",
+            EntityName = nameof(Franchise),
+            EntityId = entity.FranchiseId,
+            OldDataJson = null,
+            NewDataJson = JsonSerializer.Serialize(ToAuditSnapshot(entity)),
+            Reason = "Create franchise",
+            CreatedAt = DateTime.UtcNow
+        });
+
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        return entity.FranchiseId;
+    }
+
+    public async Task<bool> UpdateAsync(int id, FranchiseUpdateDto dto)
+    {
+        RequireAdminOnly();
+        ArgumentNullException.ThrowIfNull(dto);
+
+        await EnsureCentralKitchenExistsAsync(dto.CentralKitchenId);
+
+        var entity = await _db.Franchises.FirstOrDefaultAsync(x => x.FranchiseId == id);
+        if (entity is null) return false;
+
+        var old = ToAuditSnapshot(entity);
+
+        entity.CentralKitchenId = dto.CentralKitchenId;
+        entity.Name = NormalizeRequired(dto.Name, nameof(dto.Name));
+        entity.Type = NormalizeRequired(dto.Type, nameof(dto.Type));
+        entity.Status = NormalizeStatus(dto.Status, entity.Status);
+        entity.Address = NormalizeNullable(dto.Address);
+        entity.Location = NormalizeNullable(dto.Location);
+        entity.Latitude = dto.Latitude;
+        entity.Longitude = dto.Longitude;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        await _db.AuditLogs.AddAsync(new AuditLog
+        {
+            UserId = _current.UserId,
+            FranchiseId = entity.FranchiseId,
+            CentralKitchenId = entity.CentralKitchenId,
             Action = "UPDATE",
             EntityName = nameof(Franchise),
             EntityId = entity.FranchiseId,
             OldDataJson = JsonSerializer.Serialize(old),
-            NewDataJson = JsonSerializer.Serialize(new { entity.Name, entity.Type, entity.Status, entity.Address, entity.Location, entity.Latitude, entity.Longitude }),
+            NewDataJson = JsonSerializer.Serialize(ToAuditSnapshot(entity)),
             Reason = "Update franchise",
             CreatedAt = DateTime.UtcNow
         });
@@ -126,31 +180,30 @@ public class FranchiseService : IFranchiseService
         var hasUsers = await _db.UserWorkAssignments
     .AnyAsync(x => x.FranchiseId == id);
 
-        if (hasUsers)
-            throw new InvalidOperationException("Không thể xóa người dùng đã gán !");
         var entity = await _db.Franchises.FirstOrDefaultAsync(x => x.FranchiseId == id);
         if (entity is null) return false;
 
-        var old = new
-        {
-            entity.FranchiseId,
-            entity.Name,
-            entity.Type,
-            entity.Status
-        };
+        // Recommended:
+        // Franchise là business entity có lịch sử vận hành, nên deactivate thay vì hard delete.
+        if (string.Equals(entity.Status, StatusInactive, StringComparison.OrdinalIgnoreCase))
+            return true;
 
-        _db.Franchises.Remove(entity);
+        var old = ToAuditSnapshot(entity);
+
+        entity.Status = StatusInactive;
+        entity.UpdatedAt = DateTime.UtcNow;
 
         await _db.AuditLogs.AddAsync(new AuditLog
         {
             UserId = _current.UserId,
             FranchiseId = entity.FranchiseId,
-            Action = "DELETE",
+            CentralKitchenId = entity.CentralKitchenId,
+            Action = "DEACTIVATE",
             EntityName = nameof(Franchise),
             EntityId = entity.FranchiseId,
             OldDataJson = JsonSerializer.Serialize(old),
-            NewDataJson = null,
-            Reason = "Hard delete franchise",
+            NewDataJson = JsonSerializer.Serialize(ToAuditSnapshot(entity)),
+            Reason = "Deactivate franchise",
             CreatedAt = DateTime.UtcNow
         });
 
@@ -158,17 +211,57 @@ public class FranchiseService : IFranchiseService
         return true;
     }
 
-    private static FranchiseDto Map(Franchise x) => new()
+    private async Task EnsureCentralKitchenExistsAsync(int centralKitchenId)
     {
-        FranchiseId = x.FranchiseId,
-        Name = x.Name,
-        Type = x.Type,
-        Status = x.Status,
-        Address = x.Address,
-        Location = x.Location,
-        Latitude = x.Latitude,
-        Longitude = x.Longitude
+        if (centralKitchenId <= 0)
+            throw new ArgumentException("CentralKitchenId must be greater than 0.", nameof(centralKitchenId));
+
+        var exists = await _db.CentralKitchens
+            .AsNoTracking()
+            .AnyAsync(x => x.CentralKitchenId == centralKitchenId);
+
+        if (!exists)
+            throw new InvalidOperationException($"Central kitchen {centralKitchenId} does not exist.");
+    }
+
+
+
+    private static object ToAuditSnapshot(Franchise x) => new
+    {
+        x.FranchiseId,
+        x.CentralKitchenId,
+        x.Name,
+        x.Type,
+        x.Status,
+        x.Address,
+        x.Location,
+        x.Latitude,
+        x.Longitude
     };
+
+    private static string NormalizeRequired(string? value, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException($"{fieldName} is required.", fieldName);
+
+        return value.Trim();
+    }
+
+    private static string? NormalizeNullable(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string NormalizeStatus(string? status, string fallback)
+    {
+        var normalized = string.IsNullOrWhiteSpace(status)
+            ? fallback
+            : status.Trim().ToUpperInvariant();
+
+        if (!AllowedStatuses.Contains(normalized))
+            throw new InvalidOperationException(
+                $"Invalid franchise status '{status}'. Allowed values: {string.Join(", ", AllowedStatuses)}.");
+
+        return normalized;
+    }
 
     private void RequireAdminOrManager()
     {

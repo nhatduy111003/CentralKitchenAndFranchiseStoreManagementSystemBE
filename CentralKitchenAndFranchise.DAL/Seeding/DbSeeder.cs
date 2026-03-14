@@ -1,4 +1,6 @@
+using BCrypt.Net;
 using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DAL.Enums;
 using CentralKitchenAndFranchise.DTO.Constants;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
@@ -29,6 +31,7 @@ public static class DbSeeder
         SeedDemandAggregations(db, now);
         SeedProductionPlansAndRuns(db, now);
         SeedCentralKitchenProductInventory(db, now);
+
         db.SaveChanges();
     }
 
@@ -183,7 +186,9 @@ public static class DbSeeder
         double? longitude,
         DateTime now)
     {
-        var existing = db.Franchises.FirstOrDefault(x => x.Name.ToLower() == name.ToLower());
+        var existing = db.Franchises
+            .FirstOrDefault(x => x.Name.ToLower() == name.ToLower());
+
         if (existing != null)
         {
             var changed = false;
@@ -278,11 +283,11 @@ public static class DbSeeder
         var frQ1 = db.Franchises.First(x => x.Name == FranchiseQ1Name);
         var frQ7 = db.Franchises.First(x => x.Name == FranchiseQ7Name);
 
-        // Global roles: Admin / Manager => no work assignment
+        // Global roles
         EnsureNoWorkAssignment(db, admin.UserId);
         EnsureNoWorkAssignment(db, manager.UserId);
 
-        // Central kitchen scoped roles
+        // CK-scoped roles
         EnsureUserWorkAssignment(
             db,
             supply.UserId,
@@ -299,7 +304,7 @@ public static class DbSeeder
             centralKitchenId: centralKitchen.CentralKitchenId,
             now: now);
 
-        // Franchise scoped roles
+        // Franchise-scoped roles
         EnsureUserWorkAssignment(
             db,
             storeQ1.UserId,
@@ -388,7 +393,7 @@ public static class DbSeeder
         };
 
         db.Users.Add(created);
-        db.SaveChanges(); // cần UserId để seed assignment
+        db.SaveChanges();
         return created;
     }
 
@@ -764,7 +769,6 @@ public static class DbSeeder
         Ingredient I(string name) => db.Ingredients.First(x => x.Name == name);
         Product P(string sku) => db.Products.First(x => x.Sku == sku);
 
-        // Semi-finished
         EnsureRecipe(
             db,
             P("SF-BSS-001").ProductId,
@@ -839,7 +843,6 @@ public static class DbSeeder
                 new BomSeedItem(I("Brown Sugar").IngredientId, 300m),
             });
 
-        // Finished
         EnsureRecipe(
             db,
             P("FT-CLMT-500").ProductId,
@@ -1024,7 +1027,6 @@ public static class DbSeeder
             }
         }
 
-        // deterministic seed: remove stale items for this seeded bom version
         var staleItems = bom.Items
             .Where(x => !incomingIds.Contains(x.IngredientId))
             .ToList();
@@ -1223,8 +1225,16 @@ public static class DbSeeder
         int IngredientId,
         decimal Quantity);
 
+    private sealed record StoreOrderSeedItem(
+        int ProductId,
+        decimal Quantity);
+
+    private sealed record DemandAggregationSeedItem(
+        int ProductId,
+        decimal Quantity);
+
     // ==================================================
-    // 9) Store Order (stable part)
+    // 9) Store Order
     // ==================================================
     private static void SeedStoreOrders(AppDbContext db, DateTime now)
     {
@@ -1343,12 +1353,8 @@ public static class DbSeeder
         }
     }
 
-    private sealed record StoreOrderSeedItem(
-        int ProductId,
-        decimal Quantity);
-
     // ==================================================
-    // 10) Seed Demand Aggregations (stable part)
+    // 10) Demand Aggregations
     // ==================================================
     private static void SeedDemandAggregations(AppDbContext db, DateTime now)
     {
@@ -1364,11 +1370,9 @@ public static class DbSeeder
                 .Where(i => i.StoreOrder.Status == StoreOrderStatus.Submitted &&
                             i.StoreOrder.OrderDate == planDate)
                 .GroupBy(i => i.ProductId)
-                .Select(g => new
-                {
-                    ProductId = g.Key,
-                    Quantity = g.Sum(x => x.Quantity)
-                })
+                .Select(g => new DemandAggregationSeedItem(
+                    g.Key,
+                    g.Sum(x => x.Quantity)))
                 .ToList();
 
             EnsureDemandAggregation(db, planDate, now, demandByProduct);
@@ -1381,7 +1385,7 @@ public static class DbSeeder
         AppDbContext db,
         DateOnly planDate,
         DateTime now,
-        IReadOnlyCollection<dynamic> demandItems)
+        IReadOnlyCollection<DemandAggregationSeedItem> demandItems)
     {
         var aggregation = db.DemandAggregations
             .Include(x => x.DemandItems)
@@ -1401,24 +1405,21 @@ public static class DbSeeder
         }
 
         var existingItems = aggregation.DemandItems.ToDictionary(x => x.ProductId, x => x);
-        var incomingIds = demandItems.Select(x => (int)x.ProductId).ToHashSet();
+        var incomingIds = demandItems.Select(x => x.ProductId).ToHashSet();
 
         foreach (var item in demandItems)
         {
-            int productId = item.ProductId;
-            decimal quantity = item.Quantity;
-
-            if (existingItems.TryGetValue(productId, out var existing))
+            if (existingItems.TryGetValue(item.ProductId, out var existing))
             {
-                existing.Quantity = quantity;
+                existing.Quantity = item.Quantity;
             }
             else
             {
                 db.DemandItems.Add(new DemandItem
                 {
                     DemandAggregationId = aggregation.DemandAggregationId,
-                    ProductId = productId,
-                    Quantity = quantity
+                    ProductId = item.ProductId,
+                    Quantity = item.Quantity
                 });
             }
         }
@@ -1434,7 +1435,7 @@ public static class DbSeeder
     }
 
     // ==================================================
-    // 11) Seed Production Plans + Production Runs
+    // 11) Production Plans + Production Runs
     // ==================================================
     private static void SeedProductionPlansAndRuns(AppDbContext db, DateTime now)
     {
@@ -1458,7 +1459,6 @@ public static class DbSeeder
                     quantity: demand.Quantity);
             }
 
-            // Seed 1 completed run per plan date as baseline
             var totalQty = aggregation.DemandItems.Sum(x => x.Quantity);
 
             EnsureProductionRun(
@@ -1488,7 +1488,7 @@ public static class DbSeeder
         {
             if (existing.Status == null)
             {
-                existing.Status = DAL.Enums.ProductionPlanStatus.DRAFT;
+                existing.Status = ProductionPlanStatus.DRAFT;
             }
 
             return existing;
@@ -1498,7 +1498,7 @@ public static class DbSeeder
         {
             CentralKitchenId = centralKitchenId,
             PlanDate = planDate,
-            Status = DAL.Enums.ProductionPlanStatus.DRAFT,
+            Status = ProductionPlanStatus.DRAFT,
             CreatedAt = now,
             UpdateAt = now
         };
@@ -1567,7 +1567,7 @@ public static class DbSeeder
     }
 
     // ==================================================
-    // 12) Seed ProductBatch (derived expiry, CK-owned)
+    // 12) ProductBatch (derived expiry, CK-owned)
     // ==================================================
     private static void SeedCentralKitchenProductInventory(AppDbContext db, DateTime now)
     {
