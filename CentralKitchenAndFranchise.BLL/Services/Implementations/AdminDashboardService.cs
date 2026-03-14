@@ -1,4 +1,5 @@
 ﻿// CentralKitchenAndFranchise.BLL/Services/Implementations/AdminDashboardService.cs
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -79,7 +80,7 @@ public class AdminDashboardService : IAdminDashboardService
     private void RequireAdmin()
     {
         if (!_current.IsInRole(RoleNames.Admin))
-            throw new UnauthorizedAccessException("Admin role required.");
+            throw new ForbiddenAccessException("Admin role required.");
     }
 
     private static (DateOnly fromDate, DateOnly toDate, int tzOffsetMinutes, int top, DateTime fromUtc, DateTime toUtcExclusive)

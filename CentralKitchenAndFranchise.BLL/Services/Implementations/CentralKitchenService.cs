@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -258,7 +259,7 @@ public class CentralKitchenService : ICentralKitchenService
     private void RequireAdminOrManager()
     {
         if (!_current.IsInRole(RoleNames.Admin) && !_current.IsInRole(RoleNames.Manager))
-            throw new UnauthorizedAccessException("Only Admin/Manager can access central kitchens.");
+            throw new ForbiddenAccessException("Only Admin/Manager can access central kitchens.");
     }
 
   

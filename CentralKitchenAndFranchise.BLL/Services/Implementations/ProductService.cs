@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -282,7 +283,7 @@ public class ProductService : IProductService
     {
         var role = _current.Role;
         if (role != RoleNames.Admin && role != RoleNames.Manager)
-            throw new UnauthorizedAccessException("Only Admin/Manager can perform this action.");
+            throw new ForbiddenAccessException("Only Admin/Manager can perform this action.");
     }
 
     private static string NormalizeProductType(string productType)

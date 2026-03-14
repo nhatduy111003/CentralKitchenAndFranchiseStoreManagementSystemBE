@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
@@ -631,7 +632,7 @@ public class DeliveryService : IDeliveryService
         if (roles.Any(r => string.Equals(r, role, StringComparison.OrdinalIgnoreCase)))
             return;
 
-        throw new UnauthorizedAccessException("You do not have permission for this action.");
+        throw new ForbiddenAccessException("You do not have permission for this action.");
     }
 
     private async Task AddAuditAsync(

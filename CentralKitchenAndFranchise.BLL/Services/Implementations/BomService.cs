@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -309,7 +310,7 @@ public class BomService : IBomService
     private void RequireAdminOrManager()
     {
         if (_current.Role is not (RoleNames.Admin or RoleNames.Manager))
-            throw new UnauthorizedAccessException("Forbidden.");
+            throw new ForbiddenAccessException("Only Admin or manager can do this action");
     }
 
     private async Task AddAuditAsync(string action, string entityName, int entityId, object? oldObj, object? newObj, string? reason, CancellationToken ct)

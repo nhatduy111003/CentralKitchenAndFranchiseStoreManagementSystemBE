@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -263,12 +264,12 @@ public class FranchiseService : IFranchiseService
     private void RequireAdminOrManager()
     {
         if (!_current.IsInRole(RoleNames.Admin) && !_current.IsInRole(RoleNames.Manager))
-            throw new UnauthorizedAccessException("Only Admin/Manager can access franchises.");
+            throw new ForbiddenAccessException("Only Admin/Manager can access franchises.");
     }
 
     private void RequireAdminOnly()
     {
         if (!_current.IsInRole(RoleNames.Admin))
-            throw new UnauthorizedAccessException("Only Admin can perform this action.");
+            throw new ForbiddenAccessException("Only Admin can perform this action.");
     }
 }

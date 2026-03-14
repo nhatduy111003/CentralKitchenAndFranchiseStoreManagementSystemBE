@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -297,14 +298,14 @@ public class StoreCatalogService : IStoreCatalogService
     {
         var role = _current.Role;
         if (role != RoleNames.Admin && role != RoleNames.Manager)
-            throw new UnauthorizedAccessException("Only Admin/Manager can perform this action.");
+            throw new ForbiddenAccessException("Only Admin/Manager can perform this action.");
     }
 
     private void RequireCatalogRead()
     {
         var role = _current.Role;
-        if (role != RoleNames.KitchenStaff && role != RoleNames.SupplyCoordinator)
-            throw new UnauthorizedAccessException("Only Admin/Manager/StoreStaff can perform this action.");
+        if (role != RoleNames.Admin && role != RoleNames.Manager && role != RoleNames.StoreStaff)
+            throw new ForbiddenAccessException("Only Admin/Manager/StoreStaff can perform this action.");
     }
 
     private async Task EnsureFranchiseExistsAsync(int franchiseId, CancellationToken ct)

@@ -1,4 +1,5 @@
-﻿using CentralKitchenAndFranchise.BLL.Extensions;
+﻿using CentralKitchenAndFranchise.BLL.Exceptions;
+using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.Enums;
@@ -111,7 +112,7 @@ public class ManagerDashboardService : IManagerDashboardService
     private void RequireAdminOrManager()
     {
         if (!_current.IsInRole(RoleNames.Admin) && !_current.IsInRole(RoleNames.Manager))
-            throw new UnauthorizedAccessException("You do not have permission to access this resource.");
+            throw new ForbiddenAccessException("You do not have permission to access this resource (Only Admin or Manager)");
     }
 
     private async Task<List<int>> GetScopeFranchiseIdsAsync(CancellationToken ct)

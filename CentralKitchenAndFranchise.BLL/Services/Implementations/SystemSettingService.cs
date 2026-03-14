@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -194,6 +195,6 @@ public class SystemSettingService : ISystemSettingService
     private void RequireAdminOnly()
     {
         if (!_current.IsInRole(RoleNames.Admin))
-            throw new UnauthorizedAccessException("Only Admin can manage system settings.");
+            throw new ForbiddenAccessException("Only Admin can manage system settings.");
     }
 }

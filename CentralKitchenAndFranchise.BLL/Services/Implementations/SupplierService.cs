@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.UnitOfWork;
@@ -207,7 +208,7 @@ public class SupplierService : ISupplierService
     {
         var role = _current.Role;
         if (role != RoleNames.Admin && role != RoleNames.Manager)
-            throw new UnauthorizedAccessException("Only Admin/Manager can perform this action.");
+            throw new ForbiddenAccessException("Only Admin/Manager can perform this action.");
     }
 
     private async Task AddAuditAsync(string action, string entityName, int entityId, object? oldObj, object? newObj, string? reason, CancellationToken ct)

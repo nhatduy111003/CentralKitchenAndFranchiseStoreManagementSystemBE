@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -224,7 +225,7 @@ public class RecipeService : IRecipeService
     private void RequireAdminOrManager()
     {
         if (_current.Role is not (RoleNames.Admin or RoleNames.Manager))
-            throw new UnauthorizedAccessException("Forbidden.");
+            throw new ForbiddenAccessException("Only admin or manager can do this action");
     }
 
     private async Task AddAuditAsync(string action, string entityName, int entityId, object? oldObj, object? newObj, string? reason, CancellationToken ct)

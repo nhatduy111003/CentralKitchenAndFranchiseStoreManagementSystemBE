@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -159,6 +160,6 @@ public class AuditLogService : IAuditLogService
     private void RequireAdminOnly()
     {
         if (!_current.IsInRole(RoleNames.Admin))
-            throw new UnauthorizedAccessException("Only Admin can view/export audit logs.");
+            throw new ForbiddenAccessException("Only Admin can view/export audit logs.");
     }
 }
