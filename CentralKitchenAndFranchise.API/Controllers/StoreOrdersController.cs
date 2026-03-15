@@ -21,7 +21,7 @@ public class StoreOrdersController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff},{RoleNames.KitchenStaff}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
     public async Task<ActionResult<ApiResponse<PagedResult<StoreOrderResponse>>>> Search(
         int franchiseId,
         [FromQuery] StoreOrderListQuery query,
@@ -32,7 +32,7 @@ public class StoreOrdersController : ControllerBase
     }
 
     [HttpGet("{orderId:int}")]
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff},{RoleNames.KitchenStaff}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
     public async Task<ActionResult<ApiResponse<StoreOrderResponse>>> GetById(
         int franchiseId,
         int orderId,

@@ -14,5 +14,8 @@ public interface IStoreOrderService
     Task<PagedResult<StoreOrderResponse>> SearchAsync(int franchiseId, StoreOrderListQuery query, CancellationToken ct = default);
     Task<StoreOrderResponse> GetByIdAsync(int franchiseId, int orderId, CancellationToken ct = default);
 
-    Task<StoreOrderResponse> LockAsync(int franchiseId, int orderId, CancellationToken ct= default);
+    Task<PagedResult<IncomingOrderResponse>> SearchIncomingAsync(int centralKitchenId, StoreOrderListQuery query, CancellationToken ct = default);
+    Task<IncomingOrderResponse> GetIncomingByIdAsync(int centralKitchenId, int orderId, CancellationToken ct = default);
+
+    Task<StoreOrderResponse> LockAsync(int franchiseId, int orderId, CancellationToken ct = default);
 }

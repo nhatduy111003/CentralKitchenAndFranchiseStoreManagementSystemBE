@@ -26,7 +26,7 @@ public class StoreOrderService : IStoreOrderService
 
     public async Task<StoreOrderResponse> CreateAsync(int franchiseId, CreateStoreOrderRequest request, CancellationToken ct = default)
     {
-        RequireOrderingRoles();
+        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff); 
         await _access.EnsureCanAccessAsync(franchiseId, ct);
 
         if (request.Items is null || request.Items.Count == 0)
@@ -102,12 +102,12 @@ public class StoreOrderService : IStoreOrderService
             reason: null,
             ct: ct);
 
-        return await GetByIdAsync(franchiseId, order.StoreOrderId, ct);
+        return await GetByIdInternalAsync(franchiseId, order.StoreOrderId, ct);
     }
 
     public async Task<StoreOrderResponse> UpdateAsync(int franchiseId, int orderId, UpdateStoreOrderRequest request, CancellationToken ct = default)
     {
-        RequireOrderingRoles();
+        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff); 
         await _access.EnsureCanAccessAsync(franchiseId, ct);
 
         var order = await _db.StoreOrders
@@ -178,12 +178,12 @@ public class StoreOrderService : IStoreOrderService
             reason: null,
             ct: ct);
 
-        return await GetByIdAsync(franchiseId, order.StoreOrderId, ct);
+        return await GetByIdInternalAsync(franchiseId, order.StoreOrderId, ct);
     }
 
     public async Task<StoreOrderResponse> SubmitAsync(int franchiseId, int orderId, CancellationToken ct = default)
     {
-        RequireOrderingRoles();
+        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
         await _access.EnsureCanAccessAsync(franchiseId, ct);
 
         var order = await _db.StoreOrders
@@ -218,12 +218,12 @@ public class StoreOrderService : IStoreOrderService
             reason: null,
             ct: ct);
 
-        return await GetByIdAsync(franchiseId, order.StoreOrderId, ct);
+        return await GetByIdInternalAsync(franchiseId, order.StoreOrderId, ct);
     }
 
     public async Task<StoreOrderResponse> CancelAsync(int franchiseId, int orderId, string? reason, CancellationToken ct = default)
     {
-        RequireOrderingRoles();
+        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
         await _access.EnsureCanAccessAsync(franchiseId, ct);
 
         var order = await _db.StoreOrders
@@ -257,12 +257,12 @@ public class StoreOrderService : IStoreOrderService
             reason: order.CancelReason,
             ct: ct);
 
-        return await GetByIdAsync(franchiseId, order.StoreOrderId, ct);
+        return await GetByIdInternalAsync(franchiseId, order.StoreOrderId, ct);
     }
 
     public async Task<PagedResult<StoreOrderResponse>> SearchAsync(int franchiseId, StoreOrderListQuery query, CancellationToken ct = default)
     {
-        RequireOrderingRoles();
+        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff); 
         await _access.EnsureCanAccessAsync(franchiseId, ct);
 
         query ??= new StoreOrderListQuery();
@@ -324,47 +324,39 @@ public class StoreOrderService : IStoreOrderService
 
     public async Task<StoreOrderResponse> GetByIdAsync(int franchiseId, int orderId, CancellationToken ct = default)
     {
-        RequireOrderingRoles();
+        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
         await _access.EnsureCanAccessAsync(franchiseId, ct);
 
-        var order = await _db.StoreOrders.AsNoTracking()
-            .Where(x => x.StoreOrderId == orderId && x.FranchiseId == franchiseId)
-            .Include(x => x.Items)
-            .ThenInclude(i => i.Product)
-            .FirstOrDefaultAsync(ct);
-
-        if (order is null) throw new KeyNotFoundException($"StoreOrder {orderId} not found.");
-        return ToDto(order);
+        return await GetByIdInternalAsync(franchiseId, orderId, ct);
     }
 
     public async Task<StoreOrderResponse> LockAsync(int franchiseId, int orderId, CancellationToken ct = default)
     {
+        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.KitchenStaff);
+
         var order = await _db.StoreOrders
+            .Include(x => x.Franchise)
             .Include(x => x.Items)
             .FirstOrDefaultAsync(x => x.StoreOrderId == orderId && x.FranchiseId == franchiseId, ct);
 
         if (order is null)
             throw new KeyNotFoundException($"StoreOrder {orderId} not found.");
 
+        await EnsureCanLockOrderAsync(order, ct);
+
         if (order.Status == StoreOrderStatus.Cancelled)
             throw new InvalidOperationException("Cannot lock a CANCELLED order.");
-
-        // chỉ cho lock khi SUBMITTED (chuẩn nhất)
-        if (order.Status != StoreOrderStatus.Submitted)
-            throw new InvalidOperationException("Only SUBMITTED orders can be locked.");
 
         if (order.Status == StoreOrderStatus.Locked)
             throw new InvalidOperationException("Order is already LOCKED.");
 
-        if (order.Items.Count == 0)
-            throw new InvalidOperationException("Cannot lock an order with no items.");
+        if (order.Status != StoreOrderStatus.Submitted)
+            throw new InvalidOperationException("Only SUBMITTED orders can be locked.");
 
         var now = DateTime.UtcNow;
-
         var old = new { order.Status, order.LockedAt, order.UpdatedAt };
 
         order.Status = StoreOrderStatus.Locked;
-        // business: lock ngay tại thời điểm CK chốt
         order.LockedAt = now;
         order.UpdatedAt = now;
 
@@ -378,23 +370,112 @@ public class StoreOrderService : IStoreOrderService
             oldObj: old,
             newObj: new { order.Status, order.LockedAt, order.UpdatedAt },
             reason: null,
-            ct: ct
-        );
+            ct: ct);
 
-        return await GetByIdAsync(franchiseId, orderId, ct);
+        return await GetByIdInternalAsync(franchiseId, orderId, ct);
     }
 
+    public async Task<PagedResult<IncomingOrderResponse>> SearchIncomingAsync(
+    int centralKitchenId,
+    StoreOrderListQuery query,
+    CancellationToken ct = default)
+    {
+        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.KitchenStaff);
+        await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
+
+        query ??= new StoreOrderListQuery();
+
+        var page = query.Page <= 0 ? 1 : query.Page;
+        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+        if (pageSize > 200) pageSize = 200;
+
+        var status = (query.Status ?? "ALL").Trim().ToUpperInvariant();
+        if (status is not ("ALL" or StoreOrderStatus.Draft or StoreOrderStatus.Submitted or StoreOrderStatus.Locked or StoreOrderStatus.Cancelled))
+            throw new ArgumentException("status must be DRAFT, SUBMITTED, LOCKED, CANCELLED, or ALL.");
+
+        var sortBy = (query.SortBy ?? "id").Trim().ToLowerInvariant();
+        var sortDir = (query.SortDir ?? "desc").Trim().ToLowerInvariant();
+        if (sortDir is not ("asc" or "desc"))
+            throw new ArgumentException("sortDir must be asc or desc.");
+
+        IQueryable<StoreOrder> q = _db.StoreOrders
+            .AsNoTracking()
+            .Where(x => x.Franchise.CentralKitchenId == centralKitchenId);
+
+        if (status != "ALL")
+            q = q.Where(x => x.Status == status);
+
+        if (query.FromDate.HasValue)
+            q = q.Where(x => x.OrderDate >= query.FromDate.Value);
+
+        if (query.ToDate.HasValue)
+            q = q.Where(x => x.OrderDate <= query.ToDate.Value);
+
+        var total = await q.CountAsync(ct);
+
+        q = (sortBy, sortDir) switch
+        {
+            ("date", "asc") => q.OrderBy(x => x.OrderDate),
+            ("date", "desc") => q.OrderByDescending(x => x.OrderDate),
+            ("createdat", "asc") => q.OrderBy(x => x.CreatedAt),
+            ("createdat", "desc") => q.OrderByDescending(x => x.CreatedAt),
+            ("id", "asc") => q.OrderBy(x => x.StoreOrderId),
+            _ => q.OrderByDescending(x => x.StoreOrderId)
+        };
+
+        var ids = await q.Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => x.StoreOrderId)
+            .ToListAsync(ct);
+
+        var orders = await _db.StoreOrders
+            .AsNoTracking()
+            .Where(x => ids.Contains(x.StoreOrderId))
+            .Include(x => x.Franchise)
+            .Include(x => x.Items)
+            .ThenInclude(i => i.Product)
+            .ToListAsync(ct);
+
+        var map = orders.ToDictionary(x => x.StoreOrderId);
+        var result = ids.Where(map.ContainsKey)
+            .Select(id => ToIncomingDto(map[id]))
+            .ToList();
+
+        return PagedResult<IncomingOrderResponse>.Create(result, page, pageSize, total);
+    }
+
+    public async Task<IncomingOrderResponse> GetIncomingByIdAsync(
+        int centralKitchenId,
+        int orderId,
+        CancellationToken ct = default)
+    {
+        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.KitchenStaff);
+        await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
+
+        var order = await _db.StoreOrders
+            .AsNoTracking()
+            .Where(x => x.StoreOrderId == orderId && x.Franchise.CentralKitchenId == centralKitchenId)
+            .Include(x => x.Franchise)
+            .Include(x => x.Items)
+            .ThenInclude(i => i.Product)
+            .FirstOrDefaultAsync(ct);
+
+        if (order is null)
+            throw new KeyNotFoundException($"StoreOrder {orderId} not found.");
+
+        return ToIncomingDto(order);
+    }
     // ----------------- helpers -----------------
 
-    private void RequireOrderingRoles()
+    private void RequireRoles(params string[] allowedRoles)
     {
-        // Admin/Manager allowed for testing and supervision.
-        if (_current.IsInRole(RoleNames.Admin)) return;
-        if (_current.IsInRole(RoleNames.Manager)) return;
-        if (_current.IsInRole(RoleNames.StoreStaff)) return;
-        if (_current.IsInRole(RoleNames.KitchenStaff)) return;
+        foreach (var role in allowedRoles)
+        {
+            if (_current.IsInRole(role))
+                return;
+        }
 
-        throw new ForbiddenAccessException("You do not have permission to access store ordering.");
+        throw new ForbiddenAccessException("You do not have permission to perform this action.");
     }
 
     private async Task EnsureCanEditAsync(StoreOrder order, CancellationToken ct)
@@ -414,6 +495,23 @@ public class StoreOrderService : IStoreOrderService
 
             throw new InvalidOperationException("Order is locked. Edit is not allowed (FR-039).");
         }
+    }
+
+    private async Task EnsureCanLockOrderAsync(StoreOrder order, CancellationToken ct)
+    {
+        if (_current.IsInRole(RoleNames.Admin) || _current.IsInRole(RoleNames.Manager))
+            return;
+
+        if (_current.IsInRole(RoleNames.KitchenStaff))
+        {
+            if (order.Franchise is null)
+                throw new InvalidOperationException("Store order franchise context is missing.");
+
+            await _access.EnsureCanAccessCentralKitchenAsync(order.Franchise.CentralKitchenId, ct);
+            return;
+        }
+
+        throw new ForbiddenAccessException("You do not have permission to lock this store order.");
     }
 
     private async Task EnforceFutureOrderLimitAsync(DateOnly orderDate, CancellationToken ct)
@@ -436,6 +534,21 @@ public class StoreOrderService : IStoreOrderService
             .FirstOrDefaultAsync(ct);
 
         return int.TryParse(raw, out var v) && v > 0 ? v : fallback;
+    }
+
+    private async Task<StoreOrderResponse> GetByIdInternalAsync(int franchiseId, int orderId, CancellationToken ct)
+    {
+        var order = await _db.StoreOrders
+            .AsNoTracking()
+            .Where(x => x.StoreOrderId == orderId && x.FranchiseId == franchiseId)
+            .Include(x => x.Items)
+            .ThenInclude(i => i.Product)
+            .FirstOrDefaultAsync(ct);
+
+        if (order is null)
+            throw new KeyNotFoundException($"StoreOrder {orderId} not found.");
+
+        return ToDto(order);
     }
 
     private static StoreOrderResponse ToDto(StoreOrder order)
@@ -461,6 +574,31 @@ public class StoreOrderService : IStoreOrderService
                 })
                 .ToList()
         };
+
+    private static IncomingOrderResponse ToIncomingDto(StoreOrder order)
+    => new IncomingOrderResponse
+    {
+        StoreOrderId = order.StoreOrderId,
+        FranchiseId = order.FranchiseId,
+        FranchiseName = order.Franchise?.Name ?? "(unknown)",
+        Status = order.Status,
+        OrderDate = order.OrderDate,
+        CreatedAt = order.CreatedAt,
+        UpdatedAt = order.UpdatedAt,
+        SubmittedAt = order.SubmittedAt,
+        LockedAt = order.LockedAt,
+        CancelledAt = order.CancelledAt,
+        CancelReason = order.CancelReason,
+        Items = order.Items
+            .Select(i => new IncomingOrderItemResponse
+            {
+                ProductId = i.ProductId,
+                ProductName = i.Product?.Name ?? "(unknown)",
+                Unit = i.Product?.Unit ?? "",
+                Quantity = i.Quantity
+            })
+            .ToList()
+    };
 
     private async Task AddAuditAsync(string action, int franchiseId, string entityName, int entityId, object? oldObj, object? newObj, string? reason, CancellationToken ct)
     {
