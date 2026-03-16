@@ -198,12 +198,11 @@ public class StoreOrderService : IStoreOrderService
         if (order.Items.Count == 0)
             throw new ArgumentException("Cannot submit an order with no items.");
 
-        var minutes = await GetIntSettingAsync(SettingKeys.OrderEditWindowMinutes, fallback: 30, ct);
         var now = DateTime.UtcNow;
 
         order.Status = StoreOrderStatus.Submitted;
         order.SubmittedAt = now;
-        order.LockedAt = now.AddMinutes(minutes);
+        order.LockedAt = null;
         order.UpdatedAt = now;
 
         await _db.SaveChangesAsync(ct);
@@ -214,7 +213,7 @@ public class StoreOrderService : IStoreOrderService
             entityName: "StoreOrder",
             entityId: order.StoreOrderId,
             oldObj: new { Status = StoreOrderStatus.Draft },
-            newObj: new { order.Status, order.SubmittedAt, order.LockedAt },
+            newObj: new { order.Status, order.SubmittedAt },
             reason: null,
             ct: ct);
 
@@ -235,8 +234,11 @@ public class StoreOrderService : IStoreOrderService
         if (order.Status == StoreOrderStatus.Cancelled)
             throw new InvalidOperationException("Order is already cancelled.");
 
-        if (order.LockedAt.HasValue && DateTime.UtcNow >= order.LockedAt.Value)
+        if (order.Status == StoreOrderStatus.Locked)
             throw new InvalidOperationException("Order is locked. Cancel is not allowed (FR-039).");
+
+        if (await IsSubmittedEditWindowExpiredAsync(order, ct))
+            throw new InvalidOperationException("Order edit window has expired. Cancel is not allowed (FR-039).");
 
         var old = new { order.Status, order.CancelledAt, order.CancelReason };
 
@@ -483,18 +485,21 @@ public class StoreOrderService : IStoreOrderService
         if (order.Status == StoreOrderStatus.Cancelled)
             throw new InvalidOperationException("Cannot edit a CANCELLED order.");
 
-        if (order.LockedAt.HasValue && DateTime.UtcNow >= order.LockedAt.Value)
-        {
-            // once locked, normalize status for tracking
-            if (order.Status == StoreOrderStatus.Submitted)
-            {
-                order.Status = StoreOrderStatus.Locked;
-                order.UpdatedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync(ct);
-            }
-
+        if (order.Status == StoreOrderStatus.Locked)
             throw new InvalidOperationException("Order is locked. Edit is not allowed (FR-039).");
-        }
+
+        if (await IsSubmittedEditWindowExpiredAsync(order, ct))
+            throw new InvalidOperationException("Order edit window has expired. Edit is not allowed (FR-039).");
+    }
+
+    private async Task<bool> IsSubmittedEditWindowExpiredAsync(StoreOrder order, CancellationToken ct)
+    {
+        if (order.Status != StoreOrderStatus.Submitted || !order.SubmittedAt.HasValue)
+            return false;
+
+        var minutes = await GetIntSettingAsync(SettingKeys.OrderEditWindowMinutes, fallback: 30, ct);
+        var editWindowEndsAt = order.SubmittedAt.Value.AddMinutes(minutes);
+        return DateTime.UtcNow >= editWindowEndsAt;
     }
 
     private async Task EnsureCanLockOrderAsync(StoreOrder order, CancellationToken ct)
