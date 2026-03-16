@@ -1,4 +1,5 @@
-﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+﻿using CentralKitchenAndFranchise.BLL.Exceptions;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.ProductionPlans;
 using CentralKitchenAndFranchise.DTO.Responses;
@@ -29,19 +30,44 @@ namespace CentralKitchenAndFranchise.API.Controllers
         [FromBody] CreateProductionPlanDto request,
         CancellationToken ct)
         {
-            var data = await _service.CreateAsync(centralKitchenId, request, ct);
-            return Ok(ApiResponse<ProductionPlanResponse>.Ok(data));
+            try
+            {
+                var data = await _service.CreateAsync(centralKitchenId, request, ct);
+                return Ok(ApiResponse<ProductionPlanResponse>.Ok(data));
+            }
+            catch (ProductionPlanConflictException ex)
+            {
+                return Conflict(new ApiResponse<ProductionPlanConflictData>
+                {
+                    Success = false,
+                    Message = ex.Message,
+                    ErrorCode = "CONFLICT",
+                    Data = ex.Payload,
+                    Errors = new List<string>()
+                });
+            }
         }
 
         [HttpPatch("{productionPlanId:int}/status")]
         [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.KitchenStaff}")]
         public async Task<ActionResult<ApiResponse<ProductionPlanResponse>>> UpdateStatus(
-    int centralKitchenId,
-    int productionPlanId,
-    [FromBody] UpdateProductionPlanStatusDto request,
-    CancellationToken ct)
+        int centralKitchenId,
+        int productionPlanId,
+        [FromBody] UpdateProductionPlanStatusDto request,
+        CancellationToken ct)
         {
             var data = await _service.UpdateStatusAsync(centralKitchenId, productionPlanId, request, ct);
+            return Ok(ApiResponse<ProductionPlanResponse>.Ok(data));
+        }
+
+        [HttpGet("by-date")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.KitchenStaff}")]
+        public async Task<ActionResult<ApiResponse<ProductionPlanResponse>>> GetByDate(
+        int centralKitchenId,
+        [FromQuery] DateOnly planDate,
+        CancellationToken ct)
+        {
+            var data = await _service.GetByDateAsync(centralKitchenId, planDate, ct);
             return Ok(ApiResponse<ProductionPlanResponse>.Ok(data));
         }
 

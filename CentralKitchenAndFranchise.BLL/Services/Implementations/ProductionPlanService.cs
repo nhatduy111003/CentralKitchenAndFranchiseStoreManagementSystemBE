@@ -35,12 +35,30 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
-            var exists = await _db.ProductionPlans
-                .AsNoTracking()
-                .AnyAsync(x => x.CentralKitchenId == centralKitchenId && x.PlanDate == request.PlanDate, ct);
+            var existingActivePlan = await _db.ProductionPlans
+            .AsNoTracking()
+            .Where(x =>
+                x.CentralKitchenId == centralKitchenId &&
+                x.PlanDate == request.PlanDate &&
+                (x.Status == null || x.Status != ProductionPlanStatus.CANCELLED))
+            .OrderByDescending(x => x.CreatedAt)
+            .ThenByDescending(x => x.ProductionPlanId)
+            .Select(x => new
+            {
+                x.ProductionPlanId,
+                Status = x.Status.HasValue ? x.Status.Value.ToString() : "UNKNOWN"
+            })
+            .FirstOrDefaultAsync(ct);
 
-            if (exists)
-                throw new InvalidOperationException("Production plan already exists for this date.");
+            if (existingActivePlan is not null)
+            {
+                throw new ProductionPlanConflictException(
+                    message: "Production plan already exists for this date.",
+                    centralKitchenId: centralKitchenId,
+                    planDate: request.PlanDate,
+                    existingProductionPlanId: existingActivePlan.ProductionPlanId,
+                    existingStatus: existingActivePlan.Status);
+            }
 
             // Lấy các franchise thuộc central kitchen
             var franchiseIds = await _db.Franchises
@@ -203,6 +221,54 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (plan is null)
                 throw new KeyNotFoundException($"ProductionPlan {productionPlanId} not found.");
 
+            return new ProductionPlanResponse
+            {
+                ProductionPlanId = plan.ProductionPlanId,
+                CentralKitchenId = plan.CentralKitchenId,
+                PlanDate = plan.PlanDate,
+                Status = plan.Status?.ToString() ?? "UNKNOWN",
+                CreatedAt = plan.CreatedAt,
+                Items = plan.Items
+                    .OrderBy(i => i.ProductId)
+                    .Select(i => new ProductionPlanItemResponse
+                    {
+                        ProductId = i.ProductId,
+                        ProductName = i.Product?.Name ?? "(unknown)",
+                        Unit = i.Product?.Unit ?? "",
+                        Quantity = i.Quantity
+                    })
+                    .ToList()
+            };
+        }
+
+        public async Task<ProductionPlanResponse> GetByDateAsync(
+            int centralKitchenId,
+            DateOnly planDate,
+            CancellationToken ct = default)
+        {
+            if (planDate == default)
+                throw new ArgumentException("PlanDate is required.");
+
+            await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
+
+            var plan = await _db.ProductionPlans
+                .AsNoTracking()
+                .Where(x => x.CentralKitchenId == centralKitchenId && x.PlanDate == planDate)
+                .OrderBy(x => x.Status == ProductionPlanStatus.CANCELLED ? 1 : 0)
+                .ThenByDescending(x => x.CreatedAt)
+                .ThenByDescending(x => x.ProductionPlanId)
+                .Include(x => x.Items)
+                    .ThenInclude(i => i.Product)
+                .FirstOrDefaultAsync(ct);
+
+            if (plan is null)
+                throw new KeyNotFoundException($"ProductionPlan for {planDate:yyyy-MM-dd} not found.");
+
+            return MapPlan(plan);
+        }
+
+        private static ProductionPlanResponse MapPlan(ProductionPlan plan)
+        {
             return new ProductionPlanResponse
             {
                 ProductionPlanId = plan.ProductionPlanId,
