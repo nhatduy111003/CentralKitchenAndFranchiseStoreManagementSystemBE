@@ -17,35 +17,35 @@ public class SuppliersController : ControllerBase
 
     public SuppliersController(ISupplierService service) => _service = service;
 
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpGet]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
     public async Task<ActionResult<ApiResponse<PagedResult<SupplierResponse>>>> GetList(
         [FromQuery] SupplierListQuery query,
         CancellationToken ct)
         => Ok(ApiResponse<PagedResult<SupplierResponse>>.Ok(await _service.SearchAsync(query, ct)));
 
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpGet("{id:int}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
     public async Task<ActionResult<ApiResponse<SupplierResponse>>> GetById([FromRoute] int id, CancellationToken ct)
         => Ok(ApiResponse<SupplierResponse>.Ok(await _service.GetByIdAsync(id, ct)));
 
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpPost]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
     public async Task<ActionResult<ApiResponse<SupplierResponse>>> Create([FromBody] CreateSupplierRequest req, CancellationToken ct)
         => Ok(ApiResponse<SupplierResponse>.Ok(await _service.CreateAsync(req, ct)));
 
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpPut("{id:int}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
     public async Task<ActionResult<ApiResponse<SupplierResponse>>> Update([FromRoute] int id, [FromBody] UpdateSupplierRequest req, CancellationToken ct)
         => Ok(ApiResponse<SupplierResponse>.Ok(await _service.UpdateAsync(id, req, ct)));
 
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpPatch("{id:int}/status")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
     public async Task<ActionResult<ApiResponse<SupplierResponse>>> ChangeStatus([FromRoute] int id, [FromBody] ChangeSupplierStatusRequest req, CancellationToken ct)
         => Ok(ApiResponse<SupplierResponse>.Ok(await _service.ChangeStatusAsync(id, req, ct)));
 
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
     public async Task<ActionResult<ApiResponse>> Delete([FromRoute] int id, CancellationToken ct)
     {
         await _service.DeleteAsync(id, ct);

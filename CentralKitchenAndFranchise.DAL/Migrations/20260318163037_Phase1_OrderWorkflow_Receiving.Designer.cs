@@ -3,6 +3,7 @@ using System;
 using CentralKitchenAndFranchise.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CentralKitchenAndFranchise.DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260318163037_Phase1_OrderWorkflow_Receiving")]
+    partial class Phase1_OrderWorkflow_Receiving
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -239,7 +242,7 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("DeliveredAt")
+                    b.Property<DateTime>("DeliveredAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("DeliveryPlanId")
@@ -858,7 +861,8 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("Note")
-                        .HasColumnType("text");
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<DateTime>("ReceivedAt")
                         .HasColumnType("timestamp with time zone");
@@ -870,6 +874,8 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasIndex("DeliveryId")
                         .IsUnique();
+
+                    b.HasIndex("ReceivedByUserId");
 
                     b.ToTable("receiving_reports", (string)null);
                 });
@@ -1144,16 +1150,16 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.Property<string>("NewStatus")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("Note")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
                     b.Property<string>("OldStatus")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<DateTime>("PerformedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1166,7 +1172,9 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
                     b.HasKey("StoreOrderHistoryId");
 
-                    b.HasIndex("StoreOrderId");
+                    b.HasIndex("PerformedByUserId");
+
+                    b.HasIndex("StoreOrderId", "PerformedAt");
 
                     b.ToTable("store_order_histories", (string)null);
                 });
@@ -1722,6 +1730,11 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReceivedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Delivery");
                 });
 
@@ -1804,8 +1817,13 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.StoreOrderHistory", b =>
                 {
+                    b.HasOne("CentralKitchenAndFranchise.DAL.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("PerformedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("CentralKitchenAndFranchise.DAL.Entities.StoreOrder", "StoreOrder")
-                        .WithMany("Histories")
+                        .WithMany()
                         .HasForeignKey("StoreOrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -2008,8 +2026,6 @@ namespace CentralKitchenAndFranchise.DAL.Migrations
 
             modelBuilder.Entity("CentralKitchenAndFranchise.DAL.Entities.StoreOrder", b =>
                 {
-                    b.Navigation("Histories");
-
                     b.Navigation("Items");
                 });
 

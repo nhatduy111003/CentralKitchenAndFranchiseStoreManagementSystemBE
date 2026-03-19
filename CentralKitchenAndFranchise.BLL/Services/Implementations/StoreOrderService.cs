@@ -274,8 +274,11 @@ public class StoreOrderService : IStoreOrderService
         if (pageSize > 200) pageSize = 200;
 
         var status = (query.Status ?? "ALL").Trim().ToUpperInvariant();
-        if (status is not ("ALL" or StoreOrderStatus.Draft or StoreOrderStatus.Submitted or StoreOrderStatus.Locked or StoreOrderStatus.Cancelled))
-            throw new ArgumentException("status must be DRAFT, SUBMITTED, LOCKED, CANCELLED, or ALL.");
+        if (!string.Equals(status, "ALL", StringComparison.OrdinalIgnoreCase)
+            && !StoreOrderStatus.IsValid(status))
+        {
+            throw new ArgumentException("Invalid status.");
+        }
 
         var sortBy = (query.SortBy ?? "id").Trim().ToLowerInvariant();
         var sortDir = (query.SortDir ?? "desc").Trim().ToLowerInvariant();

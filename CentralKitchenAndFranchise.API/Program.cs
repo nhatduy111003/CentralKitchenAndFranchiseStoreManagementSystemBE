@@ -162,14 +162,13 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// DAL DI
+// DI
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IIngredientRepository, IngredientRepository>();
 builder.Services.AddScoped<IRevokedTokenRepository, RevokedTokenRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ISupplierRepository, SupplierRepository>();
 builder.Services.AddScoped<IStoreOrderService, StoreOrderService>();
-// BLL DI
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IFranchiseAccessService, FranchiseAccessService>();
 builder.Services.AddScoped<IDeliveryService, DeliveryService>();
@@ -181,8 +180,7 @@ builder.Services.AddScoped<IFranchiseService, FranchiseService>();
 builder.Services.AddScoped<ICentralKitchenService, CentralKitchenService>();
 builder.Services.AddScoped<IIngredientGuard, IngredientGuard>();
 builder.Services.AddScoped<ISupplierService, SupplierService>();
-builder.Services.AddScoped<IProductService,
-    ProductService>();
+builder.Services.AddScoped<IProductService,ProductService>();
 builder.Services.AddScoped<ISystemSettingService, SystemSettingService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IStoreCatalogService, StoreCatalogService>();
@@ -199,6 +197,11 @@ builder.Services.AddScoped<IInventoryService, InventoryService>();
 
 builder.Services.AddScoped<IBomService, BomService>();
 builder.Services.AddScoped<IRecipeService, RecipeService>();
+
+builder.Services.AddScoped<IKitchenOrderService, KitchenOrderService>();
+builder.Services.AddScoped<ISupplyOrderService, SupplyOrderService>();
+builder.Services.AddScoped<IReceivingService, ReceivingService>();
+builder.Services.AddScoped<IInventoryTransferService, InventoryTransferService>();
 
 var app = builder.Build();
 

@@ -12,6 +12,7 @@
   <ItemGroup>
     <Folder Include="Config\" />
     <Folder Include="Enum\" />
+    <Folder Include="Requests\Receivings\" />
   </ItemGroup>
 
 </Project>

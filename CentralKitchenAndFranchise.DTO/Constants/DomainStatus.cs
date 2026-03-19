@@ -9,7 +9,7 @@ public static class IngredientStatus
 public static class DeliveryStatus
 {
     public const string Created = "CREATED";
-    public const string Shipped = "SHIPPED";
+    public const string Shipped = "SHIPPING";
     public const string Delivered = "DELIVERED";
     public const string Confirmed = "CONFIRMED";
     public const string Cancelled = "CANCELLED";

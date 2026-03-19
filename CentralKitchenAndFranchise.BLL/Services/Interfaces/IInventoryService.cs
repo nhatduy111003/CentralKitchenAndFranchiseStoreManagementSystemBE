@@ -1,6 +1,7 @@
 ﻿using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
 using CentralKitchenAndFranchise.DTO.Responses;
+using CentralKitchenAndFranchise.DTO.Responses.Inventory;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
 {
@@ -25,6 +26,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
             int centralKitchenId,
             int productionPlanId,
             IssueIngredientsByProductionPlanDto request,
+            CancellationToken ct = default);
+
+        Task<FranchiseInventorySummaryResponse> GetFranchiseInventorySummaryAsync(
+            int franchiseId,
             CancellationToken ct = default);
     }
 }

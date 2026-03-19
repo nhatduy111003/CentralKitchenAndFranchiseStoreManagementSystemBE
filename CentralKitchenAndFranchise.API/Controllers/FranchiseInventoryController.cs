@@ -1,4 +1,5 @@
-﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+﻿using CentralKitchenAndFranchise.BLL.Services.Implementations;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
@@ -10,6 +11,7 @@ namespace CentralKitchenAndFranchise.API.Controllers
 {
     [ApiController]
     [Route("api/franchises/{franchiseId:int}/inventory")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
     public class FranchiseInventoryController : ControllerBase
     {
         private readonly IInventoryService _service;
@@ -53,6 +55,13 @@ namespace CentralKitchenAndFranchise.API.Controllers
         {
             var data = await _service.InboundProductAsync(franchiseId, request, ct);
             return Ok(ApiResponse<ProductInboundResponse>.Ok(data));
+        }
+
+        [HttpGet("summary")]
+        public async Task<IActionResult> GetSummary(int franchiseId, CancellationToken ct)
+        {
+            var result = await _service.GetFranchiseInventorySummaryAsync(franchiseId, ct);
+            return Ok(result);
         }
     }
 }

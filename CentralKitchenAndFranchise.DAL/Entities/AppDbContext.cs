@@ -86,6 +86,7 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         public DbSet<StoreCatalog> StoreCatalogs => Set<StoreCatalog>();
         public DbSet<StoreOrder> StoreOrders => Set<StoreOrder>();
         public DbSet<StoreOrderItem> StoreOrderItems => Set<StoreOrderItem>();
+        public DbSet<StoreOrderHistory> StoreOrderHistories => Set<StoreOrderHistory>();
 
         public DbSet<DemandAggregation> DemandAggregations => Set<DemandAggregation>();
         public DbSet<DemandItem> DemandItems => Set<DemandItem>();
@@ -196,8 +197,55 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             });
 
             // store orders
-            modelBuilder.Entity<StoreOrder>(e => { e.ToTable("store_orders"); e.HasKey(x => x.StoreOrderId); });
-            modelBuilder.Entity<StoreOrderItem>(e => { e.ToTable("store_order_items"); e.HasKey(x => x.StoreOrderItemId); });
+            // store orders
+            modelBuilder.Entity<StoreOrder>(e =>
+            {
+                e.ToTable("store_orders");
+                e.HasKey(x => x.StoreOrderId);
+
+                e.Property(x => x.Status)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                e.Property(x => x.CancelReason)
+                    .HasMaxLength(500);
+
+                e.HasOne(x => x.Franchise)
+                    .WithMany(x => x.StoreOrders)
+                    .HasForeignKey(x => x.FranchiseId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasIndex(x => new { x.FranchiseId, x.OrderDate });
+                e.HasIndex(x => x.Status);
+            });
+
+            modelBuilder.Entity<StoreOrderItem>(e =>
+            {
+                e.ToTable("store_order_items");
+                e.HasKey(x => x.StoreOrderItemId);
+
+                e.HasOne(x => x.StoreOrder)
+                    .WithMany(x => x.Items)
+                    .HasForeignKey(x => x.StoreOrderId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<StoreOrderHistory>(e =>
+            {
+                e.ToTable("store_order_histories");
+                e.HasKey(x => x.StoreOrderHistoryId);
+
+                e.Property(x => x.ActionType).HasMaxLength(100).IsRequired();
+                e.Property(x => x.ActionLabel).HasMaxLength(255).IsRequired();
+                e.Property(x => x.OldStatus).HasMaxLength(100);
+                e.Property(x => x.NewStatus).HasMaxLength(100);
+                e.Property(x => x.Note).HasMaxLength(2000);
+
+                e.HasOne(x => x.StoreOrder)
+                    .WithMany(x => x.Histories)
+                    .HasForeignKey(x => x.StoreOrderId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
 
             // demand 
             modelBuilder.Entity<DemandAggregation>(e =>
@@ -409,6 +457,16 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .WithMany(x => x.DeliveryPlans)
                     .HasForeignKey(x => x.CentralKitchenId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.StoreOrder)
+                    .WithMany()
+                    .HasForeignKey(x => x.StoreOrderId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                e.HasIndex(x => x.StoreOrderId)
+                    .IsUnique()
+                    .HasDatabaseName("UX_delivery_plans_store_order_id")
+                    .HasFilter(@"""StoreOrderId"" IS NOT NULL");
             });
 
             modelBuilder.Entity<Delivery>(e =>
@@ -425,12 +483,20 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .WithMany()
                     .HasForeignKey(x => x.FromCentralKitchenId)
                     .OnDelete(DeleteBehavior.Restrict);
+
             });
 
             modelBuilder.Entity<DeliveryProductItem>(e => { e.ToTable("delivery_product_items"); e.HasKey(x => x.DeliveryProductItemId); });
             modelBuilder.Entity<DeliveryIngredientItem>(e => { e.ToTable("delivery_ingredient_items"); e.HasKey(x => x.DeliveryIngredientItemId); });
 
-            modelBuilder.Entity<ReceivingReport>(e => { e.ToTable("receiving_reports"); e.HasKey(x => x.ReceivingReportId); });
+            modelBuilder.Entity<ReceivingReport>(e =>
+            {
+                e.ToTable("receiving_reports");
+                e.HasKey(x => x.ReceivingReportId);
+
+                e.HasIndex(x => x.DeliveryId)
+                    .IsUnique();
+            });
 
             // sales / support
             modelBuilder.Entity<SalesRecord>(e => { e.ToTable("sales_records"); e.HasKey(x => x.SalesRecordId); });
@@ -453,6 +519,7 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.Property(x => x.Id).ValueGeneratedOnAdd();
             });
 
+            
             base.OnModelCreating(modelBuilder);
         }
     }

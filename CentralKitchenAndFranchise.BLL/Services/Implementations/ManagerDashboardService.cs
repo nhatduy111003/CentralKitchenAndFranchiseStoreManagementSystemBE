@@ -276,7 +276,7 @@ public class ManagerDashboardService : IManagerDashboardService
         var onTimeCount = 0;
         foreach (var d in delivered)
         {
-            var deliveredLocalDate = DateOnly.FromDateTime(d.DeliveredAt.AddMinutes(tzOffsetMinutes));
+            var deliveredLocalDate = DateOnly.FromDateTime((DateTime)d.DeliveredAt);
             if (deliveredLocalDate <= d.PlannedDate)
                 onTimeCount++;
         }

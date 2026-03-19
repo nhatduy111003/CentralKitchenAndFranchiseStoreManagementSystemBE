@@ -1,19 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace CentralKitchenAndFranchise.DAL.Entities;
 
-namespace CentralKitchenAndFranchise.DAL.Entities
+public class ReceivingReport
 {
-    public class ReceivingReport
-    {
-        public int ReceivingReportId { get; set; }
-        public int DeliveryId { get; set; }
-        public DateTime ReceivedAt { get; set; }
+    public int ReceivingReportId { get; set; }
+    public int DeliveryId { get; set; }
 
-        public Delivery Delivery { get; set; } = null!;
-    }
+    public DateTime ReceivedAt { get; set; }
 
+    public int? ReceivedByUserId { get; set; }
+    public string? Note { get; set; }
 
+    public Delivery Delivery { get; set; } = null!;
 }

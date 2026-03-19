@@ -13,7 +13,9 @@ public class Delivery
 
     public DateTime CreatedAt { get; set; }
     public DateTime? ConfirmedAt { get; set; }
-    public DateTime DeliveredAt { get; set; }
+
+    // sửa từ non-null -> nullable
+    public DateTime? DeliveredAt { get; set; }
 
     public DeliveryPlan DeliveryPlan { get; set; } = default!;
     public CentralKitchen FromCentralKitchen { get; set; } = default!;
