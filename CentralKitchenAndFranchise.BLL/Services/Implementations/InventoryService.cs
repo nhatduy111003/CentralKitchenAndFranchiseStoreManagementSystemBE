@@ -621,74 +621,80 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             }
 
         public async Task<FranchiseInventorySummaryResponse> GetFranchiseInventorySummaryAsync(
-        int franchiseId,
-        CancellationToken ct = default)
-            {
-                var ingredientBatches = await _db.IngredientBatches
-                    .AsNoTracking()
-                    .Include(x => x.Ingredient)
-                    .Where(x => x.FranchiseId == franchiseId && x.Quantity > 0)
-                    .OrderBy(x => x.CalculateExpiredAt())
-                    .ThenBy(x => x.CreatedAt)
-                    .ToListAsync(ct);
+    int franchiseId,
+    CancellationToken ct = default)
+        {
+            var ingredientBatches = await _db.IngredientBatches
+                .AsNoTracking()
+                .Include(x => x.Ingredient)
+                .Where(x => x.FranchiseId == franchiseId && x.Quantity > 0)
+                .ToListAsync(ct);
 
-                var productBatches = await _db.ProductBatches
-                    .AsNoTracking()
-                    .Include(x => x.Product)
-                    .Where(x => x.FranchiseId == franchiseId && x.Quantity > 0)
-                    .OrderBy(x => x.CalculateExpiredAt())
-                    .ThenBy(x => x.CreatedAt)
-                    .ToListAsync(ct);
+            ingredientBatches = ingredientBatches
+                .OrderBy(x => x.CalculateExpiredAt())
+                .ThenBy(x => x.CreatedAt)
+                .ToList();
 
-                var ingredientItems = ingredientBatches
-                    .GroupBy(x => new { x.IngredientId, x.Ingredient.Name, x.Ingredient.Unit, x.Ingredient.SafetyStock })
-                    .Select(g => new FranchiseInventorySummaryItemResponse
-                    {
-                        ItemType = "INGREDIENT",
-                        ItemId = g.Key.IngredientId,
-                        ItemName = g.Key.Name,
-                        Unit = g.Key.Unit,
-                        TotalQuantity = g.Sum(x => x.Quantity),
-                        LowStockThreshold = g.Key.SafetyStock,
-                        IsLowStock = g.Key.SafetyStock > 0 && g.Sum(x => x.Quantity) < g.Key.SafetyStock,
-                        Batches = g.Select(x => new FranchiseInventoryBatchResponse
-                        {
-                            BatchId = x.BatchId,
-                            BatchCode = x.BatchCode,
-                            ExpiredAt = x.CalculateExpiredAt(),
-                            Quantity = x.Quantity
-                        }).ToList()
-                    });
+            var productBatches = await _db.ProductBatches
+                .AsNoTracking()
+                .Include(x => x.Product)
+                .Where(x => x.FranchiseId == franchiseId && x.Quantity > 0)
+                .ToListAsync(ct);
 
-                var productItems = productBatches
-                    .GroupBy(x => new { x.ProductId, x.Product.Name, x.Product.Unit })
-                    .Select(g => new FranchiseInventorySummaryItemResponse
-                    {
-                        ItemType = "PRODUCT",
-                        ItemId = g.Key.ProductId,
-                        ItemName = g.Key.Name,
-                        Unit = g.Key.Unit,
-                        TotalQuantity = g.Sum(x => x.Quantity),
-                        LowStockThreshold = null,
-                        IsLowStock = false,
-                        Batches = g.Select(x => new FranchiseInventoryBatchResponse
-                        {
-                            BatchId = x.BatchId,
-                            BatchCode = x.BatchCode,
-                            ExpiredAt = x.CalculateExpiredAt(),
-                            Quantity = x.Quantity
-                        }).ToList()
-                    });
+            productBatches = productBatches
+                .OrderBy(x => x.CalculateExpiredAt())
+                .ThenBy(x => x.CreatedAt)
+                .ToList();
 
-                return new FranchiseInventorySummaryResponse
+            var ingredientItems = ingredientBatches
+                .GroupBy(x => new { x.IngredientId, x.Ingredient.Name, x.Ingredient.Unit, x.Ingredient.SafetyStock })
+                .Select(g => new FranchiseInventorySummaryItemResponse
                 {
-                    Items = ingredientItems
-                        .Concat(productItems)
-                        .OrderBy(x => x.ItemType)
-                        .ThenBy(x => x.ItemName)
-                        .ToList()
-                };
-            }
+                    ItemType = "INGREDIENT",
+                    ItemId = g.Key.IngredientId,
+                    ItemName = g.Key.Name,
+                    Unit = g.Key.Unit,
+                    TotalQuantity = g.Sum(x => x.Quantity),
+                    LowStockThreshold = g.Key.SafetyStock,
+                    IsLowStock = g.Key.SafetyStock > 0 && g.Sum(x => x.Quantity) < g.Key.SafetyStock,
+                    Batches = g.Select(x => new FranchiseInventoryBatchResponse
+                    {
+                        BatchId = x.BatchId,
+                        BatchCode = x.BatchCode,
+                        ExpiredAt = x.CalculateExpiredAt(),
+                        Quantity = x.Quantity
+                    }).ToList()
+                });
+
+            var productItems = productBatches
+                .GroupBy(x => new { x.ProductId, x.Product.Name, x.Product.Unit })
+                .Select(g => new FranchiseInventorySummaryItemResponse
+                {
+                    ItemType = "PRODUCT",
+                    ItemId = g.Key.ProductId,
+                    ItemName = g.Key.Name,
+                    Unit = g.Key.Unit,
+                    TotalQuantity = g.Sum(x => x.Quantity),
+                    LowStockThreshold = null,
+                    IsLowStock = false,
+                    Batches = g.Select(x => new FranchiseInventoryBatchResponse
+                    {
+                        BatchId = x.BatchId,
+                        BatchCode = x.BatchCode,
+                        ExpiredAt = x.CalculateExpiredAt(),
+                        Quantity = x.Quantity
+                    }).ToList()
+                });
+
+            return new FranchiseInventorySummaryResponse
+            {
+                Items = ingredientItems
+                    .Concat(productItems)
+                    .OrderBy(x => x.ItemType)
+                    .ThenBy(x => x.ItemName)
+                    .ToList()
+            };
+        }
     }
 
 }
