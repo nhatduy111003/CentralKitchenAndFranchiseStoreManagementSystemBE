@@ -203,12 +203,12 @@ public class ReceivingService : IReceivingService
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
         // Transfer tồn kho thật sự chỉ xảy ra ở đây.
-        //await _transferService.TransferDeliveryAsync(
-        //    delivery.DeliveryId,
-        //    delivery.FromCentralKitchenId,
-        //    franchiseId,
-        //    now,
-        //    ct);
+        await _transferService.TransferDeliveryAsync(
+            delivery.DeliveryId,
+            delivery.FromCentralKitchenId,
+            franchiseId,
+            now,
+            ct);
 
         var report = new ReceivingReport
         {

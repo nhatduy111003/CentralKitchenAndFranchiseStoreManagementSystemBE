@@ -1,4 +1,4 @@
-using CentralKitchenAndFranchise.DAL.Entities;
+﻿using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DAL.Enums;
 using CentralKitchenAndFranchise.DTO.Constants;
 using Microsoft.EntityFrameworkCore;
@@ -1632,40 +1632,115 @@ public static class DbSeeder
     // ==================================================
     // 12) ProductBatch (derived expiry, CK-owned)
     // ==================================================
+    // ==================================================
+    // 12) ProductBatch (CK-owned, hard-seeded for transfer testing)
+    // ==================================================
     private static void SeedCentralKitchenProductInventory(AppDbContext db, DateTime now)
     {
-        var completedRuns = db.ProductionRuns
-            .Where(x => x.Status == ProductionRunStatuses.Completed)
-            .OrderBy(x => x.CentralKitchenId)
-            .ThenBy(x => x.ProductionDate)
-            .ToList();
+        var ck = db.CentralKitchens.First(x => x.Name == CentralKitchenName);
 
-        foreach (var run in completedRuns)
-        {
-            var planItems = db.ProductionPlanItems
-                .Where(x => x.ProductionPlanId == run.ProductionPlanId)
-                .ToList();
+        Product P(string sku) => db.Products.First(x => x.Sku == sku);
 
-            foreach (var item in planItems)
-            {
-                var batchCode = $"PB-{run.RunCode}-{item.ProductId}";
-                var createdAt = run.CompletedAt ?? UtcAtStartOfDay(run.ProductionDate).AddHours(8);
+        var today = DateOnly.FromDateTime(now);
 
-                EnsureProductBatch(
-                    db,
-                    productId: item.ProductId,
-                    productionRunId: run.ProductionRunId,
-                    franchiseId: null,
-                    centralKitchenId: run.CentralKitchenId,
-                    batchCode: batchCode,
-                    quantity: item.Quantity,
-                    createdAt: createdAt);
-            }
-        }
+        // =========================
+        // Finished products
+        // =========================
+        EnsureProductBatch(
+            db,
+            productId: P("FT-CLMT-500").ProductId,
+            productionRunId: null,
+            franchiseId: null,
+            centralKitchenId: ck.CentralKitchenId,
+            batchCode: "CK-PROD-CLMT-001",
+            quantity: 60m,
+            createdAt: UtcAtStartOfDay(today.AddDays(-1))); // gần FEFO hơn
+
+        EnsureProductBatch(
+            db,
+            productId: P("FT-CLMT-500").ProductId,
+            productionRunId: null,
+            franchiseId: null,
+            centralKitchenId: ck.CentralKitchenId,
+            batchCode: "CK-PROD-CLMT-002",
+            quantity: 120m,
+            createdAt: UtcAtStartOfDay(today));
+
+        EnsureProductBatch(
+            db,
+            productId: P("FT-BSMT-500").ProductId,
+            productionRunId: null,
+            franchiseId: null,
+            centralKitchenId: ck.CentralKitchenId,
+            batchCode: "CK-PROD-BSMT-001",
+            quantity: 50m,
+            createdAt: UtcAtStartOfDay(today.AddDays(-1)));
+
+        EnsureProductBatch(
+            db,
+            productId: P("FT-BSMT-500").ProductId,
+            productionRunId: null,
+            franchiseId: null,
+            centralKitchenId: ck.CentralKitchenId,
+            batchCode: "CK-PROD-BSMT-002",
+            quantity: 100m,
+            createdAt: UtcAtStartOfDay(today));
+
+        EnsureProductBatch(
+            db,
+            productId: P("FT-TARO-500").ProductId,
+            productionRunId: null,
+            franchiseId: null,
+            centralKitchenId: ck.CentralKitchenId,
+            batchCode: "CK-PROD-TARO-001",
+            quantity: 40m,
+            createdAt: UtcAtStartOfDay(today.AddDays(-1)));
+
+        EnsureProductBatch(
+            db,
+            productId: P("FT-TARO-500").ProductId,
+            productionRunId: null,
+            franchiseId: null,
+            centralKitchenId: ck.CentralKitchenId,
+            batchCode: "CK-PROD-TARO-002",
+            quantity: 90m,
+            createdAt: UtcAtStartOfDay(today));
+
+        // =========================
+        // Semi-finished products
+        // =========================
+        EnsureProductBatch(
+            db,
+            productId: P("SF-BSS-001").ProductId,
+            productionRunId: null,
+            franchiseId: null,
+            centralKitchenId: ck.CentralKitchenId,
+            batchCode: "CK-PROD-BSS-001",
+            quantity: 5000m,
+            createdAt: UtcAtStartOfDay(today));
+
+        EnsureProductBatch(
+            db,
+            productId: P("SF-BT-001").ProductId,
+            productionRunId: null,
+            franchiseId: null,
+            centralKitchenId: ck.CentralKitchenId,
+            batchCode: "CK-PROD-BT-001",
+            quantity: 8000m,
+            createdAt: UtcAtStartOfDay(today));
+
+        EnsureProductBatch(
+            db,
+            productId: P("SF-PEARL-001").ProductId,
+            productionRunId: null,
+            franchiseId: null,
+            centralKitchenId: ck.CentralKitchenId,
+            batchCode: "CK-PROD-PEARL-001",
+            quantity: 6000m,
+            createdAt: UtcAtStartOfDay(today));
 
         db.SaveChanges();
     }
-
 
     private static void EnsureProductBatch(
         AppDbContext db,
