@@ -4,7 +4,6 @@ using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using Microsoft.EntityFrameworkCore;
-using PayOS.Exceptions;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
 
@@ -34,7 +33,7 @@ public class InventoryTransferService : IInventoryTransferService
             .FirstOrDefaultAsync(x => x.DeliveryId == deliveryId, ct);
 
         if (delivery is null)
-            throw new NotFoundException("Delivery not found.");
+            throw new KeyNotFoundException("Delivery not found.");
 
         foreach (var item in delivery.ProductItems)
         {
@@ -75,7 +74,8 @@ public class InventoryTransferService : IInventoryTransferService
 
         var total = sourceBatches.Sum(x => x.Quantity);
         if (total < remaining)
-            throw new BadRequestException($"Insufficient central kitchen product stock for productId={item.ProductId}");
+            throw new InvalidOperationException(
+                $"Insufficient central kitchen product stock for productId={item.ProductId}");
 
         foreach (var src in sourceBatches)
         {
@@ -168,7 +168,8 @@ public class InventoryTransferService : IInventoryTransferService
 
         var total = sourceBatches.Sum(x => x.Quantity);
         if (total < remaining)
-            throw new BadRequestException($"Insufficient central kitchen ingredient stock for ingredientId={item.IngredientId}");
+            throw new InvalidOperationException(
+                $"Insufficient central kitchen ingredient stock for ingredientId={item.IngredientId}");
 
         foreach (var src in sourceBatches)
         {
