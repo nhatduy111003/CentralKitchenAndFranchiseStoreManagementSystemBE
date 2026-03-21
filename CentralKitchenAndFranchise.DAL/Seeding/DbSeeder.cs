@@ -1187,7 +1187,52 @@ public static class DbSeeder
         decimal quantity,
         DateTime createdAt)
     {
-        var existing = db.IngredientBatches.FirstOrDefault(x => x.BatchCode == batchCode);
+        var isFranchiseOwner = ownerType == InventoryOwnerType.Franchise;
+        var isCentralKitchenOwner = ownerType == InventoryOwnerType.CentralKitchen;
+
+        if ((!isFranchiseOwner && !isCentralKitchenOwner) ||
+            (isFranchiseOwner && (!franchiseId.HasValue || centralKitchenId.HasValue)) ||
+            (isCentralKitchenOwner && (franchiseId.HasValue || !centralKitchenId.HasValue)))
+        {
+            throw new InvalidOperationException(
+                "IngredientBatch seed must belong to exactly one valid owner matching InventoryOwnerType.");
+        }
+
+        IngredientBatch? existing;
+
+        if (isCentralKitchenOwner)
+        {
+            existing = db.IngredientBatches.Local.FirstOrDefault(x =>
+                x.IngredientId == ingredientId &&
+                x.Type == InventoryOwnerType.CentralKitchen &&
+                x.CentralKitchenId == centralKitchenId &&
+                x.FranchiseId == null &&
+                x.BatchCode == batchCode);
+
+            existing ??= db.IngredientBatches.FirstOrDefault(x =>
+                x.IngredientId == ingredientId &&
+                x.Type == InventoryOwnerType.CentralKitchen &&
+                x.CentralKitchenId == centralKitchenId &&
+                x.FranchiseId == null &&
+                x.BatchCode == batchCode);
+        }
+        else
+        {
+            existing = db.IngredientBatches.Local.FirstOrDefault(x =>
+                x.IngredientId == ingredientId &&
+                x.Type == InventoryOwnerType.Franchise &&
+                x.FranchiseId == franchiseId &&
+                x.CentralKitchenId == null &&
+                x.BatchCode == batchCode);
+
+            existing ??= db.IngredientBatches.FirstOrDefault(x =>
+                x.IngredientId == ingredientId &&
+                x.Type == InventoryOwnerType.Franchise &&
+                x.FranchiseId == franchiseId &&
+                x.CentralKitchenId == null &&
+                x.BatchCode == batchCode);
+        }
+
         if (existing != null)
         {
             existing.IngredientId = ingredientId;
@@ -1210,6 +1255,7 @@ public static class DbSeeder
             CreatedAt = createdAt
         });
     }
+
 
     // ==================================================
     // Seed DTOs
@@ -1588,11 +1634,10 @@ public static class DbSeeder
     // ==================================================
     private static void SeedCentralKitchenProductInventory(AppDbContext db, DateTime now)
     {
-        var ck = db.CentralKitchens.First(x => x.Name == CentralKitchenName);
-
         var completedRuns = db.ProductionRuns
             .Where(x => x.Status == ProductionRunStatuses.Completed)
-            .OrderBy(x => x.ProductionDate)
+            .OrderBy(x => x.CentralKitchenId)
+            .ThenBy(x => x.ProductionDate)
             .ToList();
 
         foreach (var run in completedRuns)
@@ -1611,7 +1656,7 @@ public static class DbSeeder
                     productId: item.ProductId,
                     productionRunId: run.ProductionRunId,
                     franchiseId: null,
-                    centralKitchenId: ck.CentralKitchenId,
+                    centralKitchenId: run.CentralKitchenId,
                     batchCode: batchCode,
                     quantity: item.Quantity,
                     createdAt: createdAt);
@@ -1620,6 +1665,7 @@ public static class DbSeeder
 
         db.SaveChanges();
     }
+
 
     private static void EnsureProductBatch(
         AppDbContext db,
@@ -1631,13 +1677,47 @@ public static class DbSeeder
         decimal quantity,
         DateTime createdAt)
     {
-        var existing = db.ProductBatches.FirstOrDefault(x => x.BatchCode == batchCode);
+        if ((franchiseId.HasValue && centralKitchenId.HasValue) ||
+            (!franchiseId.HasValue && !centralKitchenId.HasValue))
+        {
+            throw new InvalidOperationException(
+                "ProductBatch seed must belong to exactly one owner: Franchise or CentralKitchen.");
+        }
+
+        ProductBatch? existing;
+
+        if (centralKitchenId.HasValue)
+        {
+            existing = db.ProductBatches.Local.FirstOrDefault(x =>
+                x.ProductId == productId &&
+                x.CentralKitchenId == centralKitchenId &&
+                x.FranchiseId == null &&
+                x.BatchCode == batchCode);
+
+            existing ??= db.ProductBatches.FirstOrDefault(x =>
+                x.ProductId == productId &&
+                x.CentralKitchenId == centralKitchenId &&
+                x.FranchiseId == null &&
+                x.BatchCode == batchCode);
+        }
+        else
+        {
+            existing = db.ProductBatches.Local.FirstOrDefault(x =>
+                x.ProductId == productId &&
+                x.FranchiseId == franchiseId &&
+                x.CentralKitchenId == null &&
+                x.BatchCode == batchCode);
+
+            existing ??= db.ProductBatches.FirstOrDefault(x =>
+                x.ProductId == productId &&
+                x.FranchiseId == franchiseId &&
+                x.CentralKitchenId == null &&
+                x.BatchCode == batchCode);
+        }
+
         if (existing != null)
         {
-            existing.ProductId = productId;
             existing.ProductionRunId = productionRunId;
-            existing.FranchiseId = franchiseId;
-            existing.CentralKitchenId = centralKitchenId;
             existing.Quantity = quantity;
             existing.CreatedAt = createdAt;
             return;
@@ -1654,6 +1734,7 @@ public static class DbSeeder
             CreatedAt = createdAt
         });
     }
+
 
     // ==================================================
     // Helpers

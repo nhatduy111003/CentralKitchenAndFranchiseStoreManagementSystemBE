@@ -1,5 +1,6 @@
 ﻿using CentralKitchenAndFranchise.DAL.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace CentralKitchenAndFranchise.DAL.Entities
 {
@@ -13,17 +14,40 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             return base.SaveChanges();
         }
 
+        public override int SaveChanges(bool acceptAllChangesOnSuccess)
+        {
+            ApplyTimestamps();
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             ApplyTimestamps();
             return base.SaveChangesAsync(cancellationToken);
         }
 
+        public override Task<int> SaveChangesAsync(
+            bool acceptAllChangesOnSuccess,
+            CancellationToken cancellationToken = default)
+        {
+            ApplyTimestamps();
+            return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+
         /// <summary>
         /// Apply timestamps for common columns:
         /// - CreatedAt (DateTime/DateTime?)
         /// - UpdatedAt (DateTime/DateTime?)
-        /// - UpdateAt  (DateTime/DateTime?) // legacy typo (ProductionPlan)
+        /// - UpdateAt  (DateTime/DateTime?) // legacy typo
+        ///
+        /// Rules:
+        /// - Added:
+        ///   + CreatedAt: preserve pre-set value if caller/seeder already provided one;
+        ///                only auto-fill when null/default.
+        ///   + UpdatedAt / UpdateAt: stamp now.
+        /// - Modified:
+        ///   + CreatedAt: never allow overwrite.
+        ///   + UpdatedAt / UpdateAt: stamp now.
         /// </summary>
         private void ApplyTimestamps()
         {
@@ -34,37 +58,64 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 if (entry.State != EntityState.Added && entry.State != EntityState.Modified)
                     continue;
 
-                if (HasDateTimeProperty(entry, "CreatedAt"))
-                {
-                    if (entry.State == EntityState.Added)
-                        SetDateTime(entry, "CreatedAt", now);
-                    else
-                        entry.Property("CreatedAt").IsModified = false;
-                }
-
-                if (HasDateTimeProperty(entry, "UpdatedAt"))
-                    SetDateTime(entry, "UpdatedAt", now);
-
-                if (HasDateTimeProperty(entry, "UpdateAt"))
-                    SetDateTime(entry, "UpdateAt", now);
+                ApplyCreatedAt(entry, now);
+                ApplyUpdatedAt(entry, "UpdatedAt", now);
+                ApplyUpdatedAt(entry, "UpdateAt", now);
             }
         }
 
-        private static bool HasDateTimeProperty(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, string propertyName)
+        private static void ApplyCreatedAt(EntityEntry entry, DateTime now)
         {
-            var prop = entry.Metadata.FindProperty(propertyName);
-            return prop != null && (prop.ClrType == typeof(DateTime) || prop.ClrType == typeof(DateTime?));
-        }
-
-        private static void SetDateTime(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, string propertyName, DateTime value)
-        {
-            var prop = entry.Metadata.FindProperty(propertyName);
-            if (prop == null) return;
-
-            if (prop.ClrType != typeof(DateTime) && prop.ClrType != typeof(DateTime?))
+            if (!HasDateTimeProperty(entry, "CreatedAt"))
                 return;
 
-            entry.Property(propertyName).CurrentValue = value;
+            var prop = entry.Property("CreatedAt");
+
+            if (entry.State == EntityState.Modified)
+            {
+                prop.IsModified = false;
+                return;
+            }
+
+            // Added:
+            // Preserve caller-provided CreatedAt; only set now when empty/default.
+            var clrType = prop.Metadata.ClrType;
+            var current = prop.CurrentValue;
+
+            if (clrType == typeof(DateTime))
+            {
+                if (current is not DateTime dt || dt == default)
+                    prop.CurrentValue = now;
+
+                return;
+            }
+
+            if (clrType == typeof(DateTime?))
+            {
+                if (current is null)
+                {
+                    prop.CurrentValue = now;
+                    return;
+                }
+
+                if (current is DateTime dt && dt == default)
+                    prop.CurrentValue = now;
+            }
+        }
+
+        private static void ApplyUpdatedAt(EntityEntry entry, string propertyName, DateTime now)
+        {
+            if (!HasDateTimeProperty(entry, propertyName))
+                return;
+
+            entry.Property(propertyName).CurrentValue = now;
+        }
+
+        private static bool HasDateTimeProperty(EntityEntry entry, string propertyName)
+        {
+            var prop = entry.Metadata.FindProperty(propertyName);
+            return prop != null &&
+                   (prop.ClrType == typeof(DateTime) || prop.ClrType == typeof(DateTime?));
         }
 
         // ===== DbSets =====
