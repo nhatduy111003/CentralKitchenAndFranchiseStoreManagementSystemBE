@@ -47,12 +47,12 @@ public class InventoryTransferService : IInventoryTransferService
     }
 
     private async Task TransferProductAsync(
-        DeliveryProductItem item,
-        int centralKitchenId,
-        int franchiseId,
-        int deliveryId,
-        DateTime now,
-        CancellationToken ct)
+    DeliveryProductItem item,
+    int centralKitchenId,
+    int franchiseId,
+    int deliveryId,
+    DateTime now,
+    CancellationToken ct)
     {
         var remaining = item.Quantity;
 
@@ -140,12 +140,12 @@ public class InventoryTransferService : IInventoryTransferService
     }
 
     private async Task TransferIngredientAsync(
-        DeliveryIngredientItem item,
-        int centralKitchenId,
-        int franchiseId,
-        int deliveryId,
-        DateTime now,
-        CancellationToken ct)
+    DeliveryIngredientItem item,
+    int centralKitchenId,
+    int franchiseId,
+    int deliveryId,
+    DateTime now,
+    CancellationToken ct)
     {
         var remaining = item.Quantity;
 

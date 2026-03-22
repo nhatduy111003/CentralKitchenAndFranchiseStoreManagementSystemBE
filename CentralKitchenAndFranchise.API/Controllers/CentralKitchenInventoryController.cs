@@ -2,6 +2,7 @@
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Responses;
+using CentralKitchenAndFranchise.DTO.Responses.Inventory;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,6 +17,16 @@ namespace CentralKitchenAndFranchise.API.Controllers
         public CentralKitchenInventoryController(IInventoryService service)
         {
             _service = service;
+        }
+
+        [HttpGet("summary")]
+        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.KitchenStaff},{RoleNames.SupplyCoordinator}")]
+        public async Task<ActionResult<CentralKitchenInventorySummaryResponse>> GetSummary(
+            int centralKitchenId,
+            CancellationToken ct)
+        {
+            var data = await _service.GetCentralKitchenInventorySummaryAsync(centralKitchenId, ct);
+            return Ok(data);
         }
 
         // Central Kitchen issue nguyên liệu theo production plan

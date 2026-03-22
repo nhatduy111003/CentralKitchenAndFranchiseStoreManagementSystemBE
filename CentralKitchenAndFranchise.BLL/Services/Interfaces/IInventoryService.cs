@@ -31,5 +31,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
         Task<FranchiseInventorySummaryResponse> GetFranchiseInventorySummaryAsync(
             int franchiseId,
             CancellationToken ct = default);
+
+        Task<CentralKitchenInventorySummaryResponse> GetCentralKitchenInventorySummaryAsync(
+            int centralKitchenId,
+            CancellationToken ct = default);
     }
 }

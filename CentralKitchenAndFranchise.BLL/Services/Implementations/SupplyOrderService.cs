@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using CentralKitchenAndFranchise.BLL.Exceptions;
+using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -107,9 +108,9 @@ public class SupplyOrderService : ISupplyOrderService
     }
 
     public async Task<OrderWorkflowActionResponse> PrepareDeliveryAsync(
-        int orderId,
-        PrepareDeliveryRequest request,
-        CancellationToken ct = default)
+    int orderId,
+    PrepareDeliveryRequest request,
+    CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
 
@@ -120,6 +121,8 @@ public class SupplyOrderService : ISupplyOrderService
 
         if (!order.Items.Any())
             throw new InvalidOperationException("Cannot prepare delivery for an empty order.");
+
+        await EnsureCentralKitchenHasSufficientProductStockAsync(order, ct);
 
         var now = DateTime.UtcNow;
         var currentUserId = _current.UserId;
@@ -154,11 +157,11 @@ public class SupplyOrderService : ISupplyOrderService
             Action = "STORE_ORDER_PREPARED",
             EntityName = "StoreOrder",
             EntityId = order.StoreOrderId,
-            OldDataJson = JsonSerializer.Serialize(new
+            OldDataJson = System.Text.Json.JsonSerializer.Serialize(new
             {
                 Status = oldStatus
             }),
-            NewDataJson = JsonSerializer.Serialize(new
+            NewDataJson = System.Text.Json.JsonSerializer.Serialize(new
             {
                 order.Status,
                 order.PreparedAt,
@@ -296,6 +299,56 @@ public class SupplyOrderService : ISupplyOrderService
         return order;
     }
 
+    private async Task EnsureCentralKitchenHasSufficientProductStockAsync(StoreOrder order, CancellationToken ct)
+    {
+        var requiredMap = order.Items
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
+
+        var productBatches = await _db.ProductBatches
+            .AsNoTracking()
+            .Include(x => x.Product)
+            .Where(x =>
+                x.CentralKitchenId == order.Franchise.CentralKitchenId &&
+                x.FranchiseId == null &&
+                requiredMap.Keys.Contains(x.ProductId) &&
+                x.Quantity > 0)
+            .ToListAsync(ct);
+
+        var shortages = new List<string>();
+
+        foreach (var entry in requiredMap.OrderBy(x => x.Key))
+        {
+            var productId = entry.Key;
+            var requiredQty = entry.Value;
+
+            var availableQty = productBatches
+                .Where(x => x.ProductId == productId)
+                .OrderBy(x => x.CalculateExpiredAt() == null)
+                .ThenBy(x => x.CalculateExpiredAt())
+                .ThenBy(x => x.CreatedAt)
+                .ThenBy(x => x.BatchId)
+                .Sum(x => x.Quantity);
+
+            if (availableQty >= requiredQty)
+                continue;
+
+            var productName = order.Items
+                .Where(x => x.ProductId == productId)
+                .Select(x => x.Product?.Name)
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                ?? $"ProductId={productId}";
+
+            shortages.Add($"{productName}: required={requiredQty}, available={availableQty}");
+        }
+
+        if (shortages.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Insufficient central kitchen inventory to prepare this delivery. " +
+                string.Join("; ", shortages));
+        }
+    }
     /// <summary>
     /// Phase 1:
     /// - 1 StoreOrder -> 1 DeliveryPlan -> 1 Delivery

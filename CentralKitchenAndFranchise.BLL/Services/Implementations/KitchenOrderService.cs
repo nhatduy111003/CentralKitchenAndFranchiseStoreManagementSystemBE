@@ -1,4 +1,5 @@
 ﻿using CentralKitchenAndFranchise.BLL.Exceptions;
+using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -173,10 +174,10 @@ public class KitchenOrderService : IKitchenOrderService
     }
 
     public async Task<OrderWorkflowActionResponse> ForwardToSupplyAsync(
-        int centralKitchenId,
-        int orderId,
-        ForwardToSupplyRequest request,
-        CancellationToken ct = default)
+    int centralKitchenId,
+    int orderId,
+    ForwardToSupplyRequest request,
+    CancellationToken ct = default)
     {
         await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
@@ -184,6 +185,8 @@ public class KitchenOrderService : IKitchenOrderService
 
         if (!string.Equals(order.Status, StoreOrderStatus.ReceivedByKitchen, StringComparison.OrdinalIgnoreCase))
             throw new BadRequestException("Only orders received by kitchen can be forwarded to supply.");
+
+        await EnsureCentralKitchenHasSufficientProductStockAsync(order, ct);
 
         var now = DateTime.UtcNow;
         var currentUserId = _current.UserId;
@@ -220,7 +223,6 @@ public class KitchenOrderService : IKitchenOrderService
             Message = "Order forwarded to supply successfully."
         };
     }
-
     public async Task<List<StoreOrderHistoryResponse>> GetHistoryAsync(int centralKitchenId, int orderId, CancellationToken ct = default)
     {
         await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
@@ -278,6 +280,63 @@ public class KitchenOrderService : IKitchenOrderService
             throw new NotFoundException("Store order not found.");
 
         return order;
+    }
+
+    private async Task EnsureCentralKitchenHasSufficientProductStockAsync(StoreOrder order, CancellationToken ct)
+    {
+        if (order.Franchise is null)
+            throw new InvalidOperationException("Store order franchise context is missing.");
+
+        if (order.Items is null || order.Items.Count == 0)
+            throw new BadRequestException("Cannot forward an empty order to supply.");
+
+        var requiredMap = order.Items
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
+
+        var productBatches = await _db.ProductBatches
+            .AsNoTracking()
+            .Include(x => x.Product)
+            .Where(x =>
+                x.CentralKitchenId == order.Franchise.CentralKitchenId &&
+                x.FranchiseId == null &&
+                requiredMap.Keys.Contains(x.ProductId) &&
+                x.Quantity > 0)
+            .ToListAsync(ct);
+
+        var shortages = new List<string>();
+
+        foreach (var entry in requiredMap.OrderBy(x => x.Key))
+        {
+            var productId = entry.Key;
+            var requiredQty = entry.Value;
+
+            var availableQty = productBatches
+                .Where(x => x.ProductId == productId)
+                .OrderBy(x => x.CalculateExpiredAt() == null)
+                .ThenBy(x => x.CalculateExpiredAt())
+                .ThenBy(x => x.CreatedAt)
+                .ThenBy(x => x.BatchId)
+                .Sum(x => x.Quantity);
+
+            if (availableQty >= requiredQty)
+                continue;
+
+            var productName = order.Items
+                .Where(x => x.ProductId == productId)
+                .Select(x => x.Product?.Name)
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                ?? $"ProductId={productId}";
+
+            shortages.Add($"{productName}: required={requiredQty}, available={availableQty}");
+        }
+
+        if (shortages.Count > 0)
+        {
+            throw new BadRequestException(
+                "Insufficient central kitchen inventory to forward this order. " +
+                string.Join("; ", shortages));
+        }
     }
 
     private async Task AddHistoryAsync(
@@ -345,4 +404,6 @@ public class KitchenOrderService : IKitchenOrderService
 
     private static string BuildOrderCode(int storeOrderId)
         => $"SO-{storeOrderId:D6}";
+
+
 }

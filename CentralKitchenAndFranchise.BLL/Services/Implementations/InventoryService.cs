@@ -504,126 +504,128 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         int franchiseId,
         CreateProductInboundDto request,
         CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            if (request.ProductId <= 0)
+                throw new ArgumentException("ProductId must be positive.");
+
+            if (string.IsNullOrWhiteSpace(request.BatchCode))
+                throw new ArgumentException("BatchCode is required.");
+
+            if (request.Quantity <= 0)
+                throw new ArgumentException("Quantity must be > 0.");
+
+            var product = await _db.Products
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ProductId == request.ProductId, ct);
+
+            if (product is null)
+                throw new KeyNotFoundException($"Product {request.ProductId} not found.");
+
+            if (!string.Equals(product.Status, ProductStatus.Active, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Product {request.ProductId} is not ACTIVE.");
+
+            if (product.ShelfLifeDays <= 0)
+                throw new InvalidOperationException(
+                    $"Product {request.ProductId} has invalid ShelfLifeDays={product.ShelfLifeDays}. Product master data must be fixed.");
+
+            var now = DateTime.UtcNow;
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            var batch = new ProductBatch
             {
-                await _access.EnsureCanAccessAsync(franchiseId, ct);
+                ProductId = request.ProductId,
+                FranchiseId = franchiseId,
+                CentralKitchenId = null,
+                BatchCode = request.BatchCode.Trim(),
+                Quantity = request.Quantity,
+                CreatedAt = now
+            };
 
-                if (request.ProductId <= 0)
-                    throw new ArgumentException("ProductId must be positive.");
+            // gắn navigation để helper derive expiry hoạt động
+            batch.Product = product;
 
-                if (string.IsNullOrWhiteSpace(request.BatchCode))
-                    throw new ArgumentException("BatchCode is required.");
+            _db.ProductBatches.Add(batch);
 
-                if (request.Quantity <= 0)
-                    throw new ArgumentException("Quantity must be > 0.");
-
-                var product = await _db.Products
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(x => x.ProductId == request.ProductId, ct);
-
-                if (product is null)
-                    throw new KeyNotFoundException($"Product {request.ProductId} not found.");
-
-                if (!string.Equals(product.Status, ProductStatus.Active, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException($"Product {request.ProductId} is not ACTIVE.");
-
-                if (product.ShelfLifeDays <= 0)
-                    throw new InvalidOperationException(
-                        $"Product {request.ProductId} has invalid ShelfLifeDays={product.ShelfLifeDays}. Product master data must be fixed.");
-
-                var now = DateTime.UtcNow;
-
-                await using var tx = await _db.Database.BeginTransactionAsync(ct);
-
-                var batch = new ProductBatch
-                {
-                    ProductId = request.ProductId,
-                    FranchiseId = franchiseId,
-                    CentralKitchenId = null,
-                    BatchCode = request.BatchCode.Trim(),
-                    Quantity = request.Quantity,
-                    CreatedAt = now
-                };
-
-                // gắn navigation để helper derive expiry hoạt động
-                batch.Product = product;
-
-                _db.ProductBatches.Add(batch);
-
-                try
-                {
-                    await _db.SaveChangesAsync(ct);
-                }
-                catch (DbUpdateException)
-                {
-                    throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
-                }
-
-                var mv = new ProductMovement
-                {
-                    BatchId = batch.BatchId,
-                    Type = MovementType.In,
-                    Quantity = request.Quantity,
-                    CreatedByUserId = _current.UserId,
-                    Reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim(),
-                    DeliveryId = null,
-                    CreatedAt = now
-                };
-
-                _db.ProductMovements.Add(mv);
+            try
+            {
                 await _db.SaveChangesAsync(ct);
-
-                var expiredAt = batch.CalculateExpiredAt();
-
-                _db.AuditLogs.Add(new AuditLog
-                {
-                    UserId = _current.UserId,
-                    FranchiseId = franchiseId,
-                    Action = "PRODUCT_INBOUND_CREATE",
-                    EntityName = "ProductBatch",
-                    EntityId = batch.BatchId,
-                    OldDataJson = null,
-                    NewDataJson = JsonSerializer.Serialize(new
-                    {
-                        batch.BatchId,
-                        batch.ProductId,
-                        batch.FranchiseId,
-                        batch.BatchCode,
-                        batch.CreatedAt,
-                        ExpiredAt = expiredAt,
-                        batch.Quantity,
-                        Movement = new
-                        {
-                            mv.MovementId,
-                            mv.Type,
-                            mv.Quantity,
-                            mv.CreatedAt,
-                            mv.Reason
-                        }
-                    }),
-                    Reason = mv.Reason,
-                    CreatedAt = now
-                });
-
-                await _db.SaveChangesAsync(ct);
-                await tx.CommitAsync(ct);
-
-                return new ProductInboundResponse
-                {
-                    BatchId = batch.BatchId,
-                    FranchiseId = franchiseId,
-                    ProductId = batch.ProductId,
-                    BatchCode = batch.BatchCode,
-                    ExpiredAt = expiredAt,
-                    Quantity = batch.Quantity,
-                    CreatedMovementId = mv.MovementId,
-                    CreatedAt = mv.CreatedAt
-                };
+            }
+            catch (DbUpdateException)
+            {
+                throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
             }
 
+            var mv = new ProductMovement
+            {
+                BatchId = batch.BatchId,
+                Type = MovementType.In,
+                Quantity = request.Quantity,
+                CreatedByUserId = _current.UserId,
+                Reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim(),
+                DeliveryId = null,
+                CreatedAt = now
+            };
+
+            _db.ProductMovements.Add(mv);
+            await _db.SaveChangesAsync(ct);
+
+            var expiredAt = batch.CalculateExpiredAt();
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                UserId = _current.UserId,
+                FranchiseId = franchiseId,
+                Action = "PRODUCT_INBOUND_CREATE",
+                EntityName = "ProductBatch",
+                EntityId = batch.BatchId,
+                OldDataJson = null,
+                NewDataJson = JsonSerializer.Serialize(new
+                {
+                    batch.BatchId,
+                    batch.ProductId,
+                    batch.FranchiseId,
+                    batch.BatchCode,
+                    batch.CreatedAt,
+                    ExpiredAt = expiredAt,
+                    batch.Quantity,
+                    Movement = new
+                    {
+                        mv.MovementId,
+                        mv.Type,
+                        mv.Quantity,
+                        mv.CreatedAt,
+                        mv.Reason
+                    }
+                }),
+                Reason = mv.Reason,
+                CreatedAt = now
+            });
+
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
+            return new ProductInboundResponse
+            {
+                BatchId = batch.BatchId,
+                FranchiseId = franchiseId,
+                ProductId = batch.ProductId,
+                BatchCode = batch.BatchCode,
+                ExpiredAt = expiredAt,
+                Quantity = batch.Quantity,
+                CreatedMovementId = mv.MovementId,
+                CreatedAt = mv.CreatedAt
+            };
+        }
+
         public async Task<FranchiseInventorySummaryResponse> GetFranchiseInventorySummaryAsync(
-    int franchiseId,
-    CancellationToken ct = default)
+     int franchiseId,
+     CancellationToken ct = default)
         {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
             var ingredientBatches = await _db.IngredientBatches
                 .AsNoTracking()
                 .Include(x => x.Ingredient)
@@ -695,6 +697,94 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     .ToList()
             };
         }
-    }
 
-}
+        public async Task<CentralKitchenInventorySummaryResponse> GetCentralKitchenInventorySummaryAsync(
+            int centralKitchenId,
+            CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
+
+            var ingredientBatches = await _db.IngredientBatches
+                .AsNoTracking()
+                .Include(x => x.Ingredient)
+                .Where(x =>
+                    x.Type == InventoryOwnerType.CentralKitchen &&
+                    x.CentralKitchenId == centralKitchenId &&
+                    x.FranchiseId == null &&
+                    x.Quantity > 0)
+                .ToListAsync(ct);
+
+            ingredientBatches = ingredientBatches
+                .OrderBy(x => x.CalculateExpiredAt() == null)
+                .ThenBy(x => x.CalculateExpiredAt())
+                .ThenBy(x => x.CreatedAt)
+                .ThenBy(x => x.BatchId)
+                .ToList();
+
+            var productBatches = await _db.ProductBatches
+                .AsNoTracking()
+                .Include(x => x.Product)
+                .Where(x =>
+                    x.CentralKitchenId == centralKitchenId &&
+                    x.FranchiseId == null &&
+                    x.Quantity > 0)
+                .ToListAsync(ct);
+
+            productBatches = productBatches
+                .OrderBy(x => x.CalculateExpiredAt() == null)
+                .ThenBy(x => x.CalculateExpiredAt())
+                .ThenBy(x => x.CreatedAt)
+                .ThenBy(x => x.BatchId)
+                .ToList();
+
+            var ingredientItems = ingredientBatches
+                .GroupBy(x => new { x.IngredientId, x.Ingredient.Name, x.Ingredient.Unit, x.Ingredient.SafetyStock })
+                .Select(g => new CentralKitchenInventorySummaryItemResponse
+                {
+                    ItemType = "INGREDIENT",
+                    ItemId = g.Key.IngredientId,
+                    ItemName = g.Key.Name,
+                    Unit = g.Key.Unit,
+                    TotalQuantity = g.Sum(x => x.Quantity),
+                    LowStockThreshold = g.Key.SafetyStock,
+                    IsLowStock = g.Key.SafetyStock > 0 && g.Sum(x => x.Quantity) < g.Key.SafetyStock,
+                    Batches = g.Select(x => new CentralKitchenInventoryBatchResponse
+                    {
+                        BatchId = x.BatchId,
+                        BatchCode = x.BatchCode,
+                        ExpiredAt = x.CalculateExpiredAt(),
+                        Quantity = x.Quantity
+                    }).ToList()
+                });
+
+            var productItems = productBatches
+                .GroupBy(x => new { x.ProductId, x.Product.Name, x.Product.Unit })
+                .Select(g => new CentralKitchenInventorySummaryItemResponse
+                {
+                    ItemType = "PRODUCT",
+                    ItemId = g.Key.ProductId,
+                    ItemName = g.Key.Name,
+                    Unit = g.Key.Unit,
+                    TotalQuantity = g.Sum(x => x.Quantity),
+                    LowStockThreshold = null,
+                    IsLowStock = false,
+                    Batches = g.Select(x => new CentralKitchenInventoryBatchResponse
+                    {
+                        BatchId = x.BatchId,
+                        BatchCode = x.BatchCode,
+                        ExpiredAt = x.CalculateExpiredAt(),
+                        Quantity = x.Quantity
+                    }).ToList()
+                });
+
+            return new CentralKitchenInventorySummaryResponse
+            {
+                Items = ingredientItems
+                    .Concat(productItems)
+                    .OrderBy(x => x.ItemType)
+                    .ThenBy(x => x.ItemName)
+                    .ToList()
+            };
+        }
+    }
+    }
