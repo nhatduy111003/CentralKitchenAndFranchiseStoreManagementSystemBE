@@ -1,12 +1,13 @@
-﻿using System.Text.Json;
-using CentralKitchenAndFranchise.BLL.Exceptions;
+﻿using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.Deliveries;
 using CentralKitchenAndFranchise.DTO.Responses.Deliveries;
+using CentralKitchenAndFranchise.DTO.Responses.Inventory;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
 
@@ -147,6 +148,50 @@ public class DeliveryService : IDeliveryService
 
         await EnsureDeliveryScopeAsync(delivery, ct);
 
+        var productIds = delivery.ProductItems
+            .Select(x => x.ProductId)
+            .Distinct()
+            .ToList();
+
+        var ingredientIds = delivery.IngredientItems
+            .Select(x => x.IngredientId)
+            .Distinct()
+            .ToList();
+
+        var availableProductBatchMap = await LoadAvailableCentralKitchenProductBatchMapAsync(
+            delivery.FromCentralKitchenId,
+            productIds,
+            ct);
+
+        var availableIngredientBatchMap = await LoadAvailableCentralKitchenIngredientBatchMapAsync(
+            delivery.FromCentralKitchenId,
+            ingredientIds,
+            ct);
+
+        var shippedProductBatchMap = await LoadShippedProductBatchMapAsync(
+            delivery.DeliveryId,
+            delivery.DeliveryPlan.FranchiseId,
+            productIds,
+            ct);
+
+        var shippedIngredientBatchMap = await LoadShippedIngredientBatchMapAsync(
+            delivery.DeliveryId,
+            delivery.DeliveryPlan.FranchiseId,
+            ingredientIds,
+            ct);
+
+        var availableProductQtyMap = availableProductBatchMap
+            .ToDictionary(x => x.Key, x => x.Value.Sum(b => b.Quantity));
+
+        var availableIngredientQtyMap = availableIngredientBatchMap
+            .ToDictionary(x => x.Key, x => x.Value.Sum(b => b.Quantity));
+
+        var shippedProductQtyMap = shippedProductBatchMap
+            .ToDictionary(x => x.Key, x => x.Value.Sum(b => b.Quantity));
+
+        var shippedIngredientQtyMap = shippedIngredientBatchMap
+            .ToDictionary(x => x.Key, x => x.Value.Sum(b => b.Quantity));
+
         return new DeliveryDetailsResponse
         {
             DeliveryId = delivery.DeliveryId,
@@ -165,13 +210,21 @@ public class DeliveryService : IDeliveryService
             {
                 ProductId = x.ProductId,
                 ProductName = x.Product.Name,
-                Quantity = x.Quantity
+                Quantity = x.Quantity,
+                AvailableInCentralKitchenQuantity = GetTotalQuantity(availableProductQtyMap, x.ProductId),
+                AvailableCentralKitchenBatches = GetBatchList(availableProductBatchMap, x.ProductId),
+                ShippedToFranchiseQuantity = GetTotalQuantity(shippedProductQtyMap, x.ProductId),
+                ShippedToFranchiseBatches = GetBatchList(shippedProductBatchMap, x.ProductId)
             }).ToList(),
             IngredientItems = delivery.IngredientItems.Select(x => new DeliveryIngredientItemDto
             {
                 IngredientId = x.IngredientId,
                 IngredientName = x.Ingredient.Name,
-                Quantity = x.Quantity
+                Quantity = x.Quantity,
+                AvailableInCentralKitchenQuantity = GetTotalQuantity(availableIngredientQtyMap, x.IngredientId),
+                AvailableCentralKitchenBatches = GetBatchList(availableIngredientBatchMap, x.IngredientId),
+                ShippedToFranchiseQuantity = GetTotalQuantity(shippedIngredientQtyMap, x.IngredientId),
+                ShippedToFranchiseBatches = GetBatchList(shippedIngredientBatchMap, x.IngredientId)
             }).ToList()
         };
     }
@@ -358,6 +411,188 @@ public class DeliveryService : IDeliveryService
 
         return resolvedCentralKitchenId;
     }
+
+    private async Task<Dictionary<int, List<InventoryBatchQuantityResponse>>> LoadAvailableCentralKitchenProductBatchMapAsync(
+    int centralKitchenId,
+    List<int> productIds,
+    CancellationToken ct)
+    {
+        if (productIds.Count == 0)
+            return new();
+
+        var batches = await _db.ProductBatches
+            .AsNoTracking()
+            .Include(x => x.Product)
+            .Where(x =>
+                x.CentralKitchenId == centralKitchenId &&
+                x.FranchiseId == null &&
+                productIds.Contains(x.ProductId) &&
+                x.Quantity > 0)
+            .ToListAsync(ct);
+
+        return batches
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .OrderBy(x => x.CalculateExpiredAt() == null)
+                    .ThenBy(x => x.CalculateExpiredAt())
+                    .ThenBy(x => x.CreatedAt)
+                    .ThenBy(x => x.BatchId)
+                    .Select(x => new InventoryBatchQuantityResponse
+                    {
+                        BatchId = x.BatchId,
+                        BatchCode = x.BatchCode,
+                        Quantity = x.Quantity,
+                        CreatedAt = x.CreatedAt,
+                        ExpiredAt = x.CalculateExpiredAt()
+                    })
+                    .ToList());
+    }
+
+    private async Task<Dictionary<int, List<InventoryBatchQuantityResponse>>> LoadAvailableCentralKitchenIngredientBatchMapAsync(
+        int centralKitchenId,
+        List<int> ingredientIds,
+        CancellationToken ct)
+    {
+        if (ingredientIds.Count == 0)
+            return new();
+
+        var batches = await _db.IngredientBatches
+            .AsNoTracking()
+            .Include(x => x.Ingredient)
+            .Where(x =>
+                x.Type == InventoryOwnerType.CentralKitchen &&
+                x.CentralKitchenId == centralKitchenId &&
+                x.FranchiseId == null &&
+                ingredientIds.Contains(x.IngredientId) &&
+                x.Quantity > 0)
+            .ToListAsync(ct);
+
+        return batches
+            .GroupBy(x => x.IngredientId)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .OrderBy(x => x.CalculateExpiredAt() == null)
+                    .ThenBy(x => x.CalculateExpiredAt())
+                    .ThenBy(x => x.CreatedAt)
+                    .ThenBy(x => x.BatchId)
+                    .Select(x => new InventoryBatchQuantityResponse
+                    {
+                        BatchId = x.BatchId,
+                        BatchCode = x.BatchCode,
+                        Quantity = x.Quantity,
+                        CreatedAt = x.CreatedAt,
+                        ExpiredAt = x.CalculateExpiredAt()
+                    })
+                    .ToList());
+    }
+
+    private async Task<Dictionary<int, List<InventoryBatchQuantityResponse>>> LoadShippedProductBatchMapAsync(
+        int deliveryId,
+        int franchiseId,
+        List<int> productIds,
+        CancellationToken ct)
+    {
+        if (productIds.Count == 0)
+            return new();
+
+        var movements = await _db.ProductMovements
+            .AsNoTracking()
+            .Include(x => x.Batch)
+                .ThenInclude(x => x.Product)
+            .Where(x =>
+                x.DeliveryId == deliveryId &&
+                x.Type == MovementType.In &&
+                x.Batch.FranchiseId == franchiseId &&
+                x.Batch.CentralKitchenId == null &&
+                productIds.Contains(x.Batch.ProductId))
+            .ToListAsync(ct);
+
+        return movements
+            .GroupBy(x => x.Batch.ProductId)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .GroupBy(x => x.BatchId)
+                    .Select(x =>
+                    {
+                        var batch = x.First().Batch;
+
+                        return new InventoryBatchQuantityResponse
+                        {
+                            BatchId = batch.BatchId,
+                            BatchCode = batch.BatchCode,
+                            Quantity = x.Sum(m => m.Quantity),
+                            CreatedAt = batch.CreatedAt,
+                            ExpiredAt = batch.CalculateExpiredAt()
+                        };
+                    })
+                    .OrderBy(x => x.ExpiredAt == null)
+                    .ThenBy(x => x.ExpiredAt)
+                    .ThenBy(x => x.CreatedAt)
+                    .ThenBy(x => x.BatchId)
+                    .ToList());
+    }
+
+    private async Task<Dictionary<int, List<InventoryBatchQuantityResponse>>> LoadShippedIngredientBatchMapAsync(
+        int deliveryId,
+        int franchiseId,
+        List<int> ingredientIds,
+        CancellationToken ct)
+    {
+        if (ingredientIds.Count == 0)
+            return new();
+
+        var movements = await _db.InventoryMovements
+            .AsNoTracking()
+            .Include(x => x.Batch)
+                .ThenInclude(x => x.Ingredient)
+            .Where(x =>
+                x.DeliveryId == deliveryId &&
+                x.Type == InventoryMovementType.In &&
+                x.Batch.Type == InventoryOwnerType.Franchise &&
+                x.Batch.FranchiseId == franchiseId &&
+                x.Batch.CentralKitchenId == null &&
+                ingredientIds.Contains(x.Batch.IngredientId))
+            .ToListAsync(ct);
+
+        return movements
+            .GroupBy(x => x.Batch.IngredientId)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .GroupBy(x => x.BatchId)
+                    .Select(x =>
+                    {
+                        var batch = x.First().Batch;
+
+                        return new InventoryBatchQuantityResponse
+                        {
+                            BatchId = batch.BatchId,
+                            BatchCode = batch.BatchCode,
+                            Quantity = x.Sum(m => m.Quantity),
+                            CreatedAt = batch.CreatedAt,
+                            ExpiredAt = batch.CalculateExpiredAt()
+                        };
+                    })
+                    .OrderBy(x => x.ExpiredAt == null)
+                    .ThenBy(x => x.ExpiredAt)
+                    .ThenBy(x => x.CreatedAt)
+                    .ThenBy(x => x.BatchId)
+                    .ToList());
+    }
+
+    private static decimal GetTotalQuantity(Dictionary<int, decimal> map, int itemId)
+        => map.TryGetValue(itemId, out var value) ? value : 0m;
+
+    private static List<InventoryBatchQuantityResponse> GetBatchList(
+        Dictionary<int, List<InventoryBatchQuantityResponse>> map,
+        int itemId)
+        => map.TryGetValue(itemId, out var value)
+            ? value
+            : new List<InventoryBatchQuantityResponse>();
 
     private void RequireOneOf(params string[] roles)
     {

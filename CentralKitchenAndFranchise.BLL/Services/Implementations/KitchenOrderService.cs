@@ -4,6 +4,7 @@ using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.StoreOrders;
+using CentralKitchenAndFranchise.DTO.Responses.Inventory;
 using CentralKitchenAndFranchise.DTO.Responses.StoreOrders;
 using Microsoft.EntityFrameworkCore;
 using PayOS.Exceptions;
@@ -41,6 +42,19 @@ public class KitchenOrderService : IKitchenOrderService
         var receivedBy = await ResolveUsernameAsync(order.ReceivedByUserId, ct);
         var forwardedBy = await ResolveUsernameAsync(order.ForwardedByUserId, ct);
 
+        var productIds = order.Items
+            .Select(x => x.ProductId)
+            .Distinct()
+            .ToList();
+
+        var availableBatchMap = await LoadCentralKitchenProductBatchMapAsync(
+            centralKitchenId,
+            productIds,
+            ct);
+
+        var availableQtyMap = availableBatchMap
+            .ToDictionary(x => x.Key, x => x.Value.Sum(b => b.Quantity));
+
         return new IncomingOrderDetailResponse
         {
             StoreOrderId = order.StoreOrderId,
@@ -48,7 +62,7 @@ public class KitchenOrderService : IKitchenOrderService
             Status = order.Status,
             CreatedAt = order.CreatedAt,
             RequestedDeliveryDate = order.OrderDate,
-            StoreNote = order.StoreNote ?? order.StoreNote,
+            StoreNote = order.StoreNote,
             StoreId = order.FranchiseId,
             StoreName = order.Franchise.Name,
             StoreAddress = order.Franchise.Address,
@@ -59,14 +73,25 @@ public class KitchenOrderService : IKitchenOrderService
             ForwardedAt = order.ForwardedAt,
             ForwardedBy = forwardedBy,
             ProcessingNote = order.ProcessingNote,
+            ForwardNote = order.ForwardNote,
             Items = order.Items
                 .OrderBy(i => i.ProductId)
-                .Select(i => new IncomingOrderDetailItemResponse
+                .Select(i =>
                 {
-                    ProductId = i.ProductId,
-                    ProductName = i.Product.Name,
-                    Unit = i.Product.Unit,
-                    Quantity = i.Quantity
+                    var availableQty = GetTotalQuantity(availableQtyMap, i.ProductId);
+
+                    return new IncomingOrderDetailItemResponse
+                    {
+                        ProductId = i.ProductId,
+                        ProductName = i.Product.Name,
+                        Sku = i.Product.Sku,
+                        Unit = i.Product.Unit,
+                        Quantity = i.Quantity,
+                        ProductStatus = i.Product.Status,
+                        AvailableInCentralKitchenQuantity = availableQty,
+                        IsSufficientInCentralKitchen = availableQty >= i.Quantity,
+                        AvailableCentralKitchenBatches = GetBatchList(availableBatchMap, i.ProductId)
+                    };
                 })
                 .ToList()
         };
@@ -223,6 +248,7 @@ public class KitchenOrderService : IKitchenOrderService
             Message = "Order forwarded to supply successfully."
         };
     }
+
     public async Task<List<StoreOrderHistoryResponse>> GetHistoryAsync(int centralKitchenId, int orderId, CancellationToken ct = default)
     {
         await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
@@ -338,6 +364,54 @@ public class KitchenOrderService : IKitchenOrderService
                 string.Join("; ", shortages));
         }
     }
+
+    private async Task<Dictionary<int, List<InventoryBatchQuantityResponse>>> LoadCentralKitchenProductBatchMapAsync(
+    int centralKitchenId,
+    List<int> productIds,
+    CancellationToken ct)
+    {
+        if (productIds.Count == 0)
+            return new();
+
+        var batches = await _db.ProductBatches
+            .AsNoTracking()
+            .Include(x => x.Product)
+            .Where(x =>
+                x.CentralKitchenId == centralKitchenId &&
+                x.FranchiseId == null &&
+                productIds.Contains(x.ProductId) &&
+                x.Quantity > 0)
+            .ToListAsync(ct);
+
+        return batches
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .OrderBy(x => x.CalculateExpiredAt() == null)
+                    .ThenBy(x => x.CalculateExpiredAt())
+                    .ThenBy(x => x.CreatedAt)
+                    .ThenBy(x => x.BatchId)
+                    .Select(x => new InventoryBatchQuantityResponse
+                    {
+                        BatchId = x.BatchId,
+                        BatchCode = x.BatchCode,
+                        Quantity = x.Quantity,
+                        CreatedAt = x.CreatedAt,
+                        ExpiredAt = x.CalculateExpiredAt()
+                    })
+                    .ToList());
+    }
+
+    private static decimal GetTotalQuantity(Dictionary<int, decimal> map, int itemId)
+        => map.TryGetValue(itemId, out var value) ? value : 0m;
+
+    private static List<InventoryBatchQuantityResponse> GetBatchList(
+        Dictionary<int, List<InventoryBatchQuantityResponse>> map,
+        int itemId)
+        => map.TryGetValue(itemId, out var value)
+            ? value
+            : new List<InventoryBatchQuantityResponse>();
 
     private async Task AddHistoryAsync(
         int storeOrderId,

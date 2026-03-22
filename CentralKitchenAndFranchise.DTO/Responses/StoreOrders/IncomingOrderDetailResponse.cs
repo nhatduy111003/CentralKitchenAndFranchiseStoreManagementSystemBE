@@ -1,3 +1,5 @@
+using CentralKitchenAndFranchise.DTO.Responses.Inventory;
+
 namespace CentralKitchenAndFranchise.DTO.Responses.StoreOrders;
 
 public class IncomingOrderDetailResponse
@@ -38,4 +40,9 @@ public class IncomingOrderDetailItemResponse
     public string Unit { get; set; } = default!;
     public decimal Quantity { get; set; }
     public string? ProductStatus { get; set; }
+
+    public decimal AvailableInCentralKitchenQuantity { get; set; }
+    public bool IsSufficientInCentralKitchen { get; set; }
+
+    public List<InventoryBatchQuantityResponse> AvailableCentralKitchenBatches { get; set; } = new();
 }

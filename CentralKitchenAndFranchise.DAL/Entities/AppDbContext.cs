@@ -220,11 +220,11 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .OnDelete(DeleteBehavior.Restrict);
 
                 e.HasCheckConstraint("CK_user_work_assignments_owner", @"
-    (
-        (""AssignmentType"" = 'FRANCHISE' AND ""FranchiseId"" IS NOT NULL AND ""CentralKitchenId"" IS NULL)
-        OR
-        (""AssignmentType"" = 'CENTRAL_KITCHEN' AND ""FranchiseId"" IS NULL AND ""CentralKitchenId"" IS NOT NULL)
-    )");
+                (
+                    (""AssignmentType"" = 'FRANCHISE' AND ""FranchiseId"" IS NOT NULL AND ""CentralKitchenId"" IS NULL)
+                    OR
+                    (""AssignmentType"" = 'CENTRAL_KITCHEN' AND ""FranchiseId"" IS NULL AND ""CentralKitchenId"" IS NOT NULL)
+                )");
             });
 
             modelBuilder.Entity<Ingredient>(e =>
