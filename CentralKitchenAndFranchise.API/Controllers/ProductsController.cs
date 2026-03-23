@@ -21,17 +21,17 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.KitchenStaff},{RoleNames.StoreStaff}")]
     public async Task<ActionResult<ApiResponse<PagedResult<ProductResponse>>>> Search(
-        [FromQuery] ProductListQuery query,
-        CancellationToken ct)
+    [FromQuery] ProductListQuery query,
+    CancellationToken ct)
     {
         var data = await _service.SearchAsync(query, ct);
         return Ok(ApiResponse<PagedResult<ProductResponse>>.Ok(data));
     }
 
     [HttpGet("{id:int}")]
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.KitchenStaff},{RoleNames.StoreStaff}")]
     public async Task<ActionResult<ApiResponse<ProductResponse>>> GetById(int id, CancellationToken ct)
     {
         var data = await _service.GetByIdAsync(id, ct);
