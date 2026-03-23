@@ -4,7 +4,9 @@ public class ReceivingDetailResponse
 {
     public int ReceivingId { get; set; }
     public string DeliveryCode { get; set; } = default!;
+
     public string Status { get; set; } = default!;
+    public bool CanConfirm { get; set; }
 
     public int CentralKitchenId { get; set; }
     public string CentralKitchenName { get; set; } = default!;

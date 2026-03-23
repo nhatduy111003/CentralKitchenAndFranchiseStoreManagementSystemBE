@@ -14,6 +14,8 @@ public class ReceivingListItemResponse
     public DateTime CreatedAt { get; set; }
 
     public string Status { get; set; } = default!;
+    public bool CanConfirm { get; set; }
+
     public int TotalItems { get; set; }
     public decimal TotalQuantity { get; set; }
 

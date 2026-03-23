@@ -29,17 +29,17 @@ public class ReceivingService : IReceivingService
     }
 
     public async Task<List<ReceivingListItemResponse>> GetPendingAsync(
-        int franchiseId,
-        CancellationToken ct = default)
+    int franchiseId,
+    CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
         await _access.EnsureCanAccessAsync(franchiseId, ct);
 
-        // Pending receiving = delivery đã được Supply mark DELIVERED
-        // nhưng Store chưa confirm => chưa có ReceivingReport
+        // Pending receiving = delivery đã DELIVERED nhưng Store chưa confirm
         var deliveries = await _db.Deliveries
             .AsNoTracking()
             .Include(d => d.DeliveryPlan)
+                .ThenInclude(p => p.StoreOrder)
             .Include(d => d.FromCentralKitchen)
             .Include(d => d.ReceivingReports)
             .Include(d => d.ProductItems)
@@ -52,39 +52,43 @@ public class ReceivingService : IReceivingService
             .ThenByDescending(d => d.DeliveryId)
             .ToListAsync(ct);
 
-        return deliveries.Select(d => new ReceivingListItemResponse
+        return deliveries.Select(d =>
         {
-            ReceivingId = d.DeliveryId,
-            DeliveryCode = BuildDeliveryCode(d.DeliveryId),
+            var receivingStatus = ResolveReceivingStatus(d, d.DeliveryPlan.StoreOrder?.Status);
+            var canConfirm = CanConfirmReceiving(d, d.DeliveryPlan.StoreOrder?.Status);
 
-            FranchiseId = d.DeliveryPlan.FranchiseId,
+            return new ReceivingListItemResponse
+            {
+                ReceivingId = d.DeliveryId,
+                DeliveryCode = BuildDeliveryCode(d.DeliveryId),
 
-            // dùng FromCentralKitchenId vì luôn có trên Delivery
-            CentralKitchenId = d.FromCentralKitchenId,
-            CentralKitchenName = d.FromCentralKitchen?.Name ?? "(unknown)",
+                FranchiseId = d.DeliveryPlan.FranchiseId,
+                CentralKitchenId = d.FromCentralKitchenId,
+                CentralKitchenName = d.FromCentralKitchen?.Name ?? "(unknown)",
 
-            PlanDate = d.DeliveryPlan.PlannedDate,
-            DeliveryDate = d.DeliveredAt ?? d.CreatedAt,
-            CreatedAt = d.CreatedAt,
+                PlanDate = d.DeliveryPlan.PlannedDate,
+                DeliveryDate = d.DeliveredAt ?? d.CreatedAt,
+                CreatedAt = d.CreatedAt,
 
-            // đây là pending list nên status trả "PENDING" cho FE dùng trực tiếp
-            Status = "PENDING",
+                // FIX: trả actual lifecycle status thay vì hard-code PENDING
+                Status = receivingStatus,
+                CanConfirm = canConfirm,
 
-            TotalItems = d.ProductItems.Count + d.IngredientItems.Count,
-            TotalQuantity = d.ProductItems.Sum(x => x.Quantity) + d.IngredientItems.Sum(x => x.Quantity),
+                TotalItems = d.ProductItems.Count + d.IngredientItems.Count,
+                TotalQuantity = d.ProductItems.Sum(x => x.Quantity) + d.IngredientItems.Sum(x => x.Quantity),
 
-            // FIX: branch hiện tại đã có link StoreOrderId
-            StoreOrderId = d.DeliveryPlan.StoreOrderId,
-            OrderCode = d.DeliveryPlan.StoreOrderId.HasValue
-                ? BuildOrderCode(d.DeliveryPlan.StoreOrderId.Value)
-                : null
+                StoreOrderId = d.DeliveryPlan.StoreOrderId,
+                OrderCode = d.DeliveryPlan.StoreOrderId.HasValue
+                    ? BuildOrderCode(d.DeliveryPlan.StoreOrderId.Value)
+                    : null
+            };
         }).ToList();
     }
 
     public async Task<ReceivingDetailResponse> GetByIdAsync(
-        int franchiseId,
-        int deliveryId,
-        CancellationToken ct = default)
+    int franchiseId,
+    int deliveryId,
+    CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
         await _access.EnsureCanAccessAsync(franchiseId, ct);
@@ -93,6 +97,8 @@ public class ReceivingService : IReceivingService
             .AsNoTracking()
             .Include(d => d.DeliveryPlan)
                 .ThenInclude(p => p.Franchise)
+            .Include(d => d.DeliveryPlan)
+                .ThenInclude(p => p.StoreOrder)
             .Include(d => d.FromCentralKitchen)
             .Include(d => d.ProductItems)
                 .ThenInclude(x => x.Product)
@@ -107,18 +113,21 @@ public class ReceivingService : IReceivingService
         if (delivery is null)
             throw new KeyNotFoundException($"Receiving/Delivery {deliveryId} not found.");
 
-        var receivingStatus = ResolveReceivingStatus(delivery);
+        var receivingStatus = ResolveReceivingStatus(delivery, delivery.DeliveryPlan.StoreOrder?.Status);
+        var canConfirm = CanConfirmReceiving(delivery, delivery.DeliveryPlan.StoreOrder?.Status);
+
         var latestReport = delivery.ReceivingReports
             .OrderByDescending(x => x.ReceivedAt)
             .FirstOrDefault();
 
-        var isConfirmed = receivingStatus == "RECEIVED";
+        var isConfirmed = string.Equals(receivingStatus, StoreOrderStatus.ReceivedByStore, StringComparison.OrdinalIgnoreCase);
 
         var response = new ReceivingDetailResponse
         {
             ReceivingId = delivery.DeliveryId,
             DeliveryCode = BuildDeliveryCode(delivery.DeliveryId),
             Status = receivingStatus,
+            CanConfirm = canConfirm,
 
             CentralKitchenId = delivery.FromCentralKitchenId,
             CentralKitchenName = delivery.FromCentralKitchen?.Name ?? "(unknown)",
@@ -130,10 +139,8 @@ public class ReceivingService : IReceivingService
             DeliveryDate = delivery.DeliveredAt ?? delivery.CreatedAt,
             CreatedAt = delivery.CreatedAt,
 
-            // FIX: lấy note từ receiving report nếu đã confirm
             Note = latestReport?.Note,
 
-            // FIX: đã có link StoreOrderId trên DeliveryPlan
             StoreOrderId = delivery.DeliveryPlan.StoreOrderId,
             OrderCode = delivery.DeliveryPlan.StoreOrderId.HasValue
                 ? BuildOrderCode(delivery.DeliveryPlan.StoreOrderId.Value)
@@ -150,9 +157,6 @@ public class ReceivingService : IReceivingService
             Unit = x.Product?.Unit ?? "",
             ExpectedQuantity = x.Quantity,
             DeliveredQuantity = x.Quantity,
-
-            // Phase 1 chưa có partial receive line-level
-            // Nếu đã confirm thì assume nhận full
             ReceivedQuantity = isConfirmed ? x.Quantity : null
         }));
 
@@ -171,16 +175,17 @@ public class ReceivingService : IReceivingService
     }
 
     public async Task<ReceivingConfirmResponse> ConfirmAsync(
-        int franchiseId,
-        int deliveryId,
-        ConfirmReceivingRequest request,
-        CancellationToken ct = default)
+    int franchiseId,
+    int deliveryId,
+    ConfirmReceivingRequest request,
+    CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
         await _access.EnsureCanAccessAsync(franchiseId, ct);
 
         var delivery = await _db.Deliveries
             .Include(d => d.DeliveryPlan)
+                .ThenInclude(p => p.StoreOrder)
             .Include(d => d.ReceivingReports)
             .FirstOrDefaultAsync(d =>
                 d.DeliveryId == deliveryId &&
@@ -190,10 +195,13 @@ public class ReceivingService : IReceivingService
         if (delivery is null)
             throw new KeyNotFoundException($"Receiving/Delivery {deliveryId} not found.");
 
-        // Phase 1 đúng nghĩa:
-        // Supply mark DELIVERED -> Store confirm -> delivery thành CONFIRMED
-        if (delivery.Status != DeliveryStatus.Delivered)
-            throw new InvalidOperationException("Only DELIVERED deliveries can be confirmed by store.");
+        var receivingStatus = ResolveReceivingStatus(delivery, delivery.DeliveryPlan.StoreOrder?.Status);
+
+        if (!CanConfirmReceiving(delivery, delivery.DeliveryPlan.StoreOrder?.Status))
+        {
+            throw new InvalidOperationException(
+                $"Only {StoreOrderStatus.Delivered} receivings can be confirmed by store. Current status: {receivingStatus}.");
+        }
 
         if (delivery.ReceivingReports.Any())
             throw new InvalidOperationException("This receiving has already been confirmed.");
@@ -202,7 +210,7 @@ public class ReceivingService : IReceivingService
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-        // Transfer tồn kho thật sự chỉ xảy ra ở đây.
+        // Transfer tồn kho thật sự chỉ xảy ra ở đây
         await _transferService.TransferDeliveryAsync(
             delivery.DeliveryId,
             delivery.FromCentralKitchenId,
@@ -214,8 +222,6 @@ public class ReceivingService : IReceivingService
         {
             DeliveryId = delivery.DeliveryId,
             ReceivedAt = now,
-
-            // FIX: lưu tracking đầy đủ
             ReceivedByUserId = _current.UserId,
             Note = string.IsNullOrWhiteSpace(request?.Note) ? null : request.Note.Trim()
         };
@@ -225,7 +231,6 @@ public class ReceivingService : IReceivingService
         delivery.Status = DeliveryStatus.Confirmed;
         delivery.ConfirmedAt = now;
 
-        // FIX: nếu delivery plan có link order thì chốt order sang RECEIVED_BY_STORE
         if (delivery.DeliveryPlan.StoreOrderId.HasValue)
         {
             var order = await _db.StoreOrders
@@ -250,7 +255,6 @@ public class ReceivingService : IReceivingService
             }
         }
 
-        // Save trước để có ReceivingReportId thật
         await _db.SaveChangesAsync(ct);
 
         _db.AuditLogs.Add(new AuditLog
@@ -285,25 +289,64 @@ public class ReceivingService : IReceivingService
         {
             ReceivingId = delivery.DeliveryId,
             DeliveryCode = BuildDeliveryCode(delivery.DeliveryId),
-            Status = "RECEIVED",
+            Status = StoreOrderStatus.ReceivedByStore,
             ConfirmedAt = report.ReceivedAt,
             InventoryUpdated = true
         };
     }
 
-    private static string ResolveReceivingStatus(Delivery delivery)
+    private static string ResolveReceivingStatus(Delivery delivery, string? storeOrderStatus = null)
     {
-        // ReceivingReport là source of truth mạnh nhất
+        // Check staus base on ReceivingReport data
         if (delivery.ReceivingReports.Any())
-            return "RECEIVED";
+            return StoreOrderStatus.ReceivedByStore;
 
         if (string.Equals(delivery.Status, DeliveryStatus.Confirmed, StringComparison.OrdinalIgnoreCase))
-            return "RECEIVED";
+            return StoreOrderStatus.ReceivedByStore;
 
+        // mapping by lifecycle order priority
+        if (!string.IsNullOrWhiteSpace(storeOrderStatus))
+        {
+            if (string.Equals(storeOrderStatus, StoreOrderStatus.ReceivedByStore, StringComparison.OrdinalIgnoreCase))
+                return StoreOrderStatus.ReceivedByStore;
+
+            if (string.Equals(storeOrderStatus, StoreOrderStatus.Delivered, StringComparison.OrdinalIgnoreCase))
+                return StoreOrderStatus.Delivered;
+
+            if (string.Equals(storeOrderStatus, StoreOrderStatus.InTransit, StringComparison.OrdinalIgnoreCase))
+                return StoreOrderStatus.InTransit;
+
+            if (string.Equals(storeOrderStatus, StoreOrderStatus.ReadyToDeliver, StringComparison.OrdinalIgnoreCase))
+                return StoreOrderStatus.ReadyToDeliver;
+
+            if (string.Equals(storeOrderStatus, StoreOrderStatus.Preparing, StringComparison.OrdinalIgnoreCase))
+                return StoreOrderStatus.Preparing;
+        }
+
+        // Fallback base on delivery if don't have linked order or order status haven't sync
         if (string.Equals(delivery.Status, DeliveryStatus.Delivered, StringComparison.OrdinalIgnoreCase))
-            return "PENDING";
+            return StoreOrderStatus.Delivered;
+
+        if (string.Equals(delivery.Status, DeliveryStatus.Shipped, StringComparison.OrdinalIgnoreCase))
+            return StoreOrderStatus.InTransit;
+
+        if (string.Equals(delivery.Status, DeliveryStatus.Created, StringComparison.OrdinalIgnoreCase))
+            return DeliveryStatus.Created;
+
+        if (string.Equals(delivery.Status, DeliveryStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
+            return StoreOrderStatus.Cancelled;
 
         return delivery.Status;
+    }
+
+    private static bool CanConfirmReceiving(Delivery delivery, string? storeOrderStatus = null)
+    {
+        if (delivery.ReceivingReports.Any())
+            return false;
+
+        var lifecycleStatus = ResolveReceivingStatus(delivery, storeOrderStatus);
+
+        return string.Equals(lifecycleStatus, StoreOrderStatus.Delivered, StringComparison.OrdinalIgnoreCase);
     }
 
     private void RequireOneOf(params string[] roles)
