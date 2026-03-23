@@ -537,7 +537,21 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 
             });
 
-            modelBuilder.Entity<DeliveryProductItem>(e => { e.ToTable("delivery_product_items"); e.HasKey(x => x.DeliveryProductItemId); });
+            modelBuilder.Entity<DeliveryProductItem>(e =>
+            {
+                e.ToTable("delivery_product_items");
+                e.HasKey(x => x.DeliveryProductItemId);
+
+                e.Property(x => x.Quantity)
+                    .HasColumnType("numeric(18,2)");
+
+                e.Property(x => x.RequestedQuantity)
+                    .HasColumnType("numeric(18,2)");
+
+                e.Property(x => x.DropReason)
+                    .HasMaxLength(1000);
+            });
+            
             modelBuilder.Entity<DeliveryIngredientItem>(e => { e.ToTable("delivery_ingredient_items"); e.HasKey(x => x.DeliveryIngredientItemId); });
 
             modelBuilder.Entity<ReceivingReport>(e =>

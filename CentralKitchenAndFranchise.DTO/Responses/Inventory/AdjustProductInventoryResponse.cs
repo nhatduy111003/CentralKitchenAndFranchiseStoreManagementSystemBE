@@ -5,7 +5,9 @@ public class AdjustProductInventoryResponse
     public int BatchId { get; set; }
     public int MovementId { get; set; }
 
-    public int CentralKitchenId { get; set; }
+    public int? FranchiseId { get; set; }
+    public int? CentralKitchenId { get; set; }
+
     public int ProductId { get; set; }
     public string BatchCode { get; set; } = default!;
     public DateOnly? ExpiredAt { get; set; }

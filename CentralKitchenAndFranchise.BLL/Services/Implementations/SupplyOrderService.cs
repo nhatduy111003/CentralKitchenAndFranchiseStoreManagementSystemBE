@@ -30,8 +30,6 @@ public class SupplyOrderService : ISupplyOrderService
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
 
-        // Với SupplyCoordinator: chỉ xem queue thuộc đúng CentralKitchen đang được assign.
-        // Với Admin/Manager: có thể xem toàn cục.
         int? scopedCentralKitchenId = null;
         if (_current.IsInRole(RoleNames.SupplyCoordinator))
         {
@@ -40,11 +38,11 @@ public class SupplyOrderService : ISupplyOrderService
 
         var statuses = new[]
         {
-            StoreOrderStatus.ForwardedToSupply,
-            StoreOrderStatus.Preparing,
-            StoreOrderStatus.ReadyToDeliver,
-            StoreOrderStatus.InTransit
-        };
+        StoreOrderStatus.ForwardedToSupply,
+        StoreOrderStatus.Preparing,
+        StoreOrderStatus.ReadyToDeliver,
+        StoreOrderStatus.InTransit
+    };
 
         var query = _db.StoreOrders
             .AsNoTracking()
@@ -63,6 +61,10 @@ public class SupplyOrderService : ISupplyOrderService
             .ThenByDescending(x => x.StoreOrderId)
             .ToListAsync(ct);
 
+        var orderIds = orders.Select(x => x.StoreOrderId).ToList();
+
+        var snapshotMap = await LoadForwardSnapshotMapAsync(orderIds, ct);
+
         var userIds = orders
             .Where(x => x.ForwardedByUserId.HasValue)
             .Select(x => x.ForwardedByUserId!.Value)
@@ -76,34 +78,55 @@ public class SupplyOrderService : ISupplyOrderService
                 .Where(x => userIds.Contains(x.UserId))
                 .ToDictionaryAsync(x => x.UserId, x => x.Username, ct);
 
-        return orders.Select(x => new SupplyOrderQueueItemResponse
+        return orders.Select(x =>
         {
-            StoreOrderId = x.StoreOrderId,
-            OrderCode = BuildOrderCode(x.StoreOrderId),
-            Status = x.Status,
-            CreatedAt = x.CreatedAt,
-            RequestedDeliveryDate = x.OrderDate,
-            StoreId = x.FranchiseId,
-            StoreName = x.Franchise.Name,
-            TotalItems = x.Items.Count,
-            TotalQuantity = x.Items.Sum(i => i.Quantity),
-            ForwardedAt = x.ForwardedAt,
-            ForwardedBy = x.ForwardedByUserId.HasValue && userMap.TryGetValue(x.ForwardedByUserId.Value, out var username)
-                ? username
-                : null,
-            ProcessingNote = x.ProcessingNote,
-            ForwardNote = x.ForwardNote,
-            Items = x.Items
+            snapshotMap.TryGetValue(x.StoreOrderId, out var orderSnapshot);
+            orderSnapshot ??= new Dictionary<int, ForwardSnapshotLine>();
+
+            var items = x.Items
                 .OrderBy(i => i.ProductId)
-                .Select(i => new SupplyOrderQueueItemLineResponse
+                .Select(i =>
                 {
-                    ProductId = i.ProductId,
-                    ProductName = i.Product?.Name ?? "(unknown)",
-                    Sku = i.Product?.Sku,
-                    Unit = i.Product?.Unit ?? "",
-                    Quantity = i.Quantity
+                    orderSnapshot.TryGetValue(i.ProductId, out var snapshot);
+
+                    return new SupplyOrderQueueItemLineResponse
+                    {
+                        ProductId = i.ProductId,
+                        ProductName = i.Product?.Name ?? "(unknown)",
+                        Sku = i.Product?.Sku,
+                        Unit = i.Product?.Unit ?? "",
+                        Quantity = i.Quantity,
+                        ForwardedQuantity = snapshot?.ForwardedQuantity ?? 0m,
+                        DroppedQuantity = snapshot?.DroppedQuantity ?? 0m,
+                        IsDroppedFromForward = snapshot?.IsDropped ?? false,
+                        DropReason = snapshot?.DropReason
+                    };
                 })
-                .ToList()
+                .ToList();
+
+            return new SupplyOrderQueueItemResponse
+            {
+                StoreOrderId = x.StoreOrderId,
+                OrderCode = BuildOrderCode(x.StoreOrderId),
+                Status = x.Status,
+                CreatedAt = x.CreatedAt,
+                RequestedDeliveryDate = x.OrderDate,
+                StoreId = x.FranchiseId,
+                StoreName = x.Franchise.Name,
+                TotalItems = x.Items.Count,
+                TotalQuantity = x.Items.Sum(i => i.Quantity),
+                ForwardedTotalItems = items.Count(i => i.ForwardedQuantity > 0),
+                ForwardedTotalQuantity = items.Sum(i => i.ForwardedQuantity),
+                DroppedTotalItems = items.Count(i => i.IsDroppedFromForward),
+                DroppedTotalQuantity = items.Sum(i => i.DroppedQuantity),
+                ForwardedAt = x.ForwardedAt,
+                ForwardedBy = x.ForwardedByUserId.HasValue && userMap.TryGetValue(x.ForwardedByUserId.Value, out var username)
+                    ? username
+                    : null,
+                ProcessingNote = x.ProcessingNote,
+                ForwardNote = x.ForwardNote,
+                Items = items
+            };
         }).ToList();
     }
 
@@ -301,9 +324,27 @@ public class SupplyOrderService : ISupplyOrderService
 
     private async Task EnsureCentralKitchenHasSufficientProductStockAsync(StoreOrder order, CancellationToken ct)
     {
-        var requiredMap = order.Items
-            .GroupBy(x => x.ProductId)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
+        var snapshotMap = await LoadForwardSnapshotMapAsync(new List<int> { order.StoreOrderId }, ct);
+
+        snapshotMap.TryGetValue(order.StoreOrderId, out var orderSnapshot);
+
+        Dictionary<int, decimal> requiredMap;
+
+        if (orderSnapshot is not null && orderSnapshot.Values.Any(x => x.ForwardedQuantity > 0))
+        {
+            requiredMap = orderSnapshot.Values
+                .Where(x => x.ForwardedQuantity > 0)
+                .ToDictionary(x => x.ProductId, x => x.ForwardedQuantity);
+        }
+        else
+        {
+            requiredMap = order.Items
+                .GroupBy(x => x.ProductId)
+                .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
+        }
+
+        if (requiredMap.Count == 0)
+            throw new InvalidOperationException("Cannot prepare delivery because there are no forwarded lines.");
 
         var productBatches = await _db.ProductBatches
             .AsNoTracking()
@@ -349,11 +390,9 @@ public class SupplyOrderService : ISupplyOrderService
                 string.Join("; ", shortages));
         }
     }
-    /// <summary>
     /// Phase 1:
     /// - 1 StoreOrder -> 1 DeliveryPlan -> 1 Delivery
     /// - sync product items từ StoreOrder.Items
-    /// </summary>
     private async Task EnsureDeliveryArtifactsAsync(StoreOrder order, CancellationToken ct)
     {
         var existingPlan = await _db.DeliveryPlans
@@ -374,7 +413,6 @@ public class SupplyOrderService : ISupplyOrderService
         }
         else
         {
-            // Giữ plan luôn đúng scope/order date mới nhất nếu có thay đổi dữ liệu cũ
             existingPlan.CentralKitchenId = order.Franchise.CentralKitchenId;
             existingPlan.FranchiseId = order.FranchiseId;
             existingPlan.PlannedDate = order.OrderDate;
@@ -399,43 +437,29 @@ public class SupplyOrderService : ISupplyOrderService
         }
         else
         {
-            // Fix dữ liệu cũ: luôn đảm bảo source CK được set đúng
             existingDelivery.FromCentralKitchenId = order.Franchise.CentralKitchenId;
         }
 
-        var orderItemMap = order.Items
-            .GroupBy(x => x.ProductId)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
-
-        var existingItemMap = existingDelivery.ProductItems
-            .ToDictionary(x => x.ProductId, x => x);
-
-        // Upsert item từ StoreOrder -> DeliveryProductItem
-        foreach (var (productId, qty) in orderItemMap)
+        // backward compatibility:
+        // only backfill from StoreOrder.Items when delivery snapshot does not exist yet
+        if (existingDelivery.ProductItems.Count == 0)
         {
-            if (existingItemMap.TryGetValue(productId, out var line))
-            {
-                line.Quantity = qty;
-            }
-            else
+            foreach (var item in order.Items
+                         .GroupBy(x => x.ProductId)
+                         .Select(g => new { ProductId = g.Key, Quantity = g.Sum(x => x.Quantity) }))
             {
                 existingDelivery.ProductItems.Add(new DeliveryProductItem
                 {
-                    ProductId = productId,
-                    Quantity = qty
+                    ProductId = item.ProductId,
+                    Quantity = item.Quantity,
+                    RequestedQuantity = item.Quantity,
+                    IsDropped = false,
+                    DropReason = null
                 });
             }
         }
 
-        // Xóa orphan item nếu có lệch dữ liệu cũ
-        var orphanLines = existingDelivery.ProductItems
-            .Where(x => !orderItemMap.ContainsKey(x.ProductId))
-            .ToList();
-
-        if (orphanLines.Count > 0)
-        {
-            _db.DeliveryProductItems.RemoveRange(orphanLines);
-        }
+        await _db.SaveChangesAsync(ct);
     }
 
     private static string NormalizeDeliveryStatus(string rawStatus)
@@ -478,6 +502,61 @@ public class SupplyOrderService : ISupplyOrderService
             var s when s == StoreOrderStatus.Cancelled => DeliveryStatus.Cancelled,
             _ => DeliveryStatus.Created
         };
+    }
+
+    private sealed class ForwardSnapshotLine
+    {
+        public int ProductId { get; set; }
+        public decimal RequestedQuantity { get; set; }
+        public decimal ForwardedQuantity { get; set; }
+        public decimal DroppedQuantity { get; set; }
+        public bool IsDropped { get; set; }
+        public string? DropReason { get; set; }
+    }
+
+    private async Task<Dictionary<int, Dictionary<int, ForwardSnapshotLine>>> LoadForwardSnapshotMapAsync(
+        List<int> orderIds,
+        CancellationToken ct)
+    {
+        if (orderIds.Count == 0)
+            return new();
+
+        var lines = await _db.DeliveryProductItems
+            .AsNoTracking()
+            .Include(x => x.Delivery)
+                .ThenInclude(x => x.DeliveryPlan)
+            .Where(x =>
+                x.Delivery.DeliveryPlan.StoreOrderId.HasValue &&
+                orderIds.Contains(x.Delivery.DeliveryPlan.StoreOrderId.Value))
+            .ToListAsync(ct);
+
+        return lines
+            .GroupBy(x => x.Delivery.DeliveryPlan.StoreOrderId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .GroupBy(x => x.ProductId)
+                    .Select(x =>
+                    {
+                        var requested = x.Sum(i => i.RequestedQuantity > 0 ? i.RequestedQuantity : i.Quantity);
+                        var forwarded = x.Sum(i => i.Quantity);
+                        var reasons = x
+                            .Where(i => !string.IsNullOrWhiteSpace(i.DropReason))
+                            .Select(i => i.DropReason!.Trim())
+                            .Distinct()
+                            .ToList();
+
+                        return new ForwardSnapshotLine
+                        {
+                            ProductId = x.Key,
+                            RequestedQuantity = requested,
+                            ForwardedQuantity = forwarded,
+                            DroppedQuantity = Math.Max(requested - forwarded, 0m),
+                            IsDropped = x.Any(i => i.IsDropped),
+                            DropReason = reasons.Count == 0 ? null : string.Join(" | ", reasons)
+                        };
+                    })
+                    .ToDictionary(x => x.ProductId, x => x));
     }
 
     private async Task<string?> ResolveUsernameAsync(int? userId, CancellationToken ct)

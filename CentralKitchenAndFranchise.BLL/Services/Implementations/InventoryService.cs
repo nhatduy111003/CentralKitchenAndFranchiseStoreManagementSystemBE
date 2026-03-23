@@ -651,6 +651,37 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             };
         }
 
+        private static FranchiseIngredientBatchResponse MapFranchiseIngredientBatch(IngredientBatch batch)
+        {
+            return new FranchiseIngredientBatchResponse
+            {
+                BatchId = batch.BatchId,
+                FranchiseId = batch.FranchiseId!.Value,
+                IngredientId = batch.IngredientId,
+                IngredientName = batch.Ingredient.Name,
+                Unit = batch.Ingredient.Unit,
+                BatchCode = batch.BatchCode,
+                Quantity = batch.Quantity,
+                CreatedAt = batch.CreatedAt,
+                ExpiredAt = batch.CalculateExpiredAt()
+            };
+        }
+
+        private static FranchiseProductBatchResponse MapFranchiseProductBatch(ProductBatch batch)
+        {
+            return new FranchiseProductBatchResponse
+            {
+                BatchId = batch.BatchId,
+                FranchiseId = batch.FranchiseId!.Value,
+                ProductId = batch.ProductId,
+                ProductName = batch.Product.Name,
+                Unit = batch.Product.Unit,
+                BatchCode = batch.BatchCode,
+                Quantity = batch.Quantity,
+                CreatedAt = batch.CreatedAt,
+                ExpiredAt = batch.CalculateExpiredAt()
+            };
+        }
         // PRODUCT INBOUND
         // chưa chuyển sang flow derived như ingredient.
         public async Task<ProductInboundResponse> InboundProductAsync(
@@ -773,6 +804,492 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             };
         }
 
+        public async Task<AdjustProductInventoryResponse> AdjustProductAsync(
+    int franchiseId,
+    AdjustProductInventoryDto request,
+    CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            if (request.BatchId <= 0)
+                throw new ArgumentException("BatchId must be positive.");
+
+            if (string.IsNullOrWhiteSpace(request.Reason))
+                throw new ArgumentException("Reason is required.");
+
+            if (request.DeltaQuantity == 0)
+                throw new ArgumentException("DeltaQuantity must not be 0.");
+
+            var type = (request.Type ?? "").Trim().ToUpperInvariant();
+            if (type is not ("ADJUST" or "WASTE"))
+                throw new ArgumentException("Type must be ADJUST or WASTE.");
+
+            if (type == "WASTE" && request.DeltaQuantity >= 0)
+                throw new ArgumentException("WASTE requires DeltaQuantity < 0.");
+
+            var batch = await _db.ProductBatches
+                .Include(b => b.Product)
+                .FirstOrDefaultAsync(b =>
+                    b.BatchId == request.BatchId &&
+                    b.FranchiseId == franchiseId &&
+                    b.CentralKitchenId == null,
+                    ct);
+
+            if (batch is null)
+                throw new KeyNotFoundException($"ProductBatch {request.BatchId} not found.");
+
+            var before = batch.Quantity;
+            var after = before + request.DeltaQuantity;
+
+            if (after < 0)
+                throw new InvalidOperationException("Adjustment would make inventory negative.");
+
+            var now = DateTime.UtcNow;
+            var expiredAt = batch.CalculateExpiredAt();
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            batch.Quantity = after;
+
+            var mv = new ProductMovement
+            {
+                BatchId = batch.BatchId,
+                Type = type,
+                Quantity = Math.Abs(request.DeltaQuantity),
+                CreatedByUserId = _current.UserId,
+                Reason = BuildReason(request.Reason, request.Reference),
+                DeliveryId = null,
+                CreatedAt = now
+            };
+
+            _db.ProductMovements.Add(mv);
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                UserId = _current.UserId,
+                FranchiseId = franchiseId,
+                Action = type == "WASTE" ? "FRANCHISE_PRODUCT_WASTE" : "FRANCHISE_PRODUCT_ADJUST",
+                EntityName = "ProductBatch",
+                EntityId = batch.BatchId,
+                OldDataJson = JsonSerializer.Serialize(new
+                {
+                    batch.BatchId,
+                    batch.ProductId,
+                    batch.BatchCode,
+                    batch.CreatedAt,
+                    ExpiredAt = expiredAt,
+                    Quantity = before
+                }),
+                NewDataJson = JsonSerializer.Serialize(new
+                {
+                    batch.BatchId,
+                    batch.ProductId,
+                    batch.BatchCode,
+                    batch.CreatedAt,
+                    ExpiredAt = expiredAt,
+                    Quantity = after,
+                    Movement = new
+                    {
+                        mv.Type,
+                        Delta = request.DeltaQuantity,
+                        mv.CreatedAt,
+                        mv.Reason
+                    }
+                }),
+                Reason = mv.Reason,
+                CreatedAt = now
+            });
+
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
+            return new AdjustProductInventoryResponse
+            {
+                BatchId = batch.BatchId,
+                MovementId = mv.MovementId,
+                FranchiseId = franchiseId,
+                CentralKitchenId = null,
+                ProductId = batch.ProductId,
+                BatchCode = batch.BatchCode,
+                ExpiredAt = expiredAt,
+                BeforeQuantity = before,
+                DeltaQuantity = request.DeltaQuantity,
+                AfterQuantity = after,
+                Type = type,
+                Reason = mv.Reason ?? "",
+                CreatedAt = now
+            };
+        }
+
+        public async Task<List<FranchiseIngredientBatchResponse>> GetFranchiseIngredientBatchesAsync(
+            int franchiseId,
+            int? ingredientId = null,
+            bool includeZero = false,
+            CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            var query = _db.IngredientBatches
+                .AsNoTracking()
+                .Include(x => x.Ingredient)
+                .Where(x =>
+                    x.Type == InventoryOwnerType.Franchise &&
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null);
+
+            if (ingredientId.HasValue)
+                query = query.Where(x => x.IngredientId == ingredientId.Value);
+
+            if (!includeZero)
+                query = query.Where(x => x.Quantity > 0);
+
+            var batches = await query.ToListAsync(ct);
+
+            batches = batches
+                .OrderBy(x => x.CalculateExpiredAt() == null)
+                .ThenBy(x => x.CalculateExpiredAt())
+                .ThenBy(x => x.CreatedAt)
+                .ThenBy(x => x.BatchId)
+                .ToList();
+
+            return batches.Select(MapFranchiseIngredientBatch).ToList();
+        }
+
+        public async Task<FranchiseIngredientBatchResponse> GetFranchiseIngredientBatchByIdAsync(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            var batch = await _db.IngredientBatches
+                .AsNoTracking()
+                .Include(x => x.Ingredient)
+                .FirstOrDefaultAsync(x =>
+                    x.BatchId == batchId &&
+                    x.Type == InventoryOwnerType.Franchise &&
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null,
+                    ct);
+
+            if (batch is null)
+                throw new KeyNotFoundException($"IngredientBatch {batchId} not found.");
+
+            return MapFranchiseIngredientBatch(batch);
+        }
+
+        public async Task<FranchiseIngredientBatchResponse> UpdateFranchiseIngredientBatchCodeAsync(
+            int franchiseId,
+            int batchId,
+            UpdateBatchCodeRequest request,
+            CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            if (string.IsNullOrWhiteSpace(request.BatchCode))
+                throw new ArgumentException("BatchCode is required.");
+
+            var batch = await _db.IngredientBatches
+                .Include(x => x.Ingredient)
+                .FirstOrDefaultAsync(x =>
+                    x.BatchId == batchId &&
+                    x.Type == InventoryOwnerType.Franchise &&
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null,
+                    ct);
+
+            if (batch is null)
+                throw new KeyNotFoundException($"IngredientBatch {batchId} not found.");
+
+            var movements = await _db.InventoryMovements
+                .Where(x => x.BatchId == batchId)
+                .ToListAsync(ct);
+
+            if (movements.Any(x => x.DeliveryId != null))
+                throw new InvalidOperationException("Cannot rename a franchise batch that was credited from delivery/transfer.");
+
+            if (movements.Count > 1)
+                throw new InvalidOperationException("BatchCode can only be changed before follow-up movements happen.");
+
+            var newCode = request.BatchCode.Trim();
+
+            var duplicate = await _db.IngredientBatches
+                .AnyAsync(x =>
+                    x.BatchId != batchId &&
+                    x.Type == InventoryOwnerType.Franchise &&
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null &&
+                    x.IngredientId == batch.IngredientId &&
+                    x.BatchCode == newCode,
+                    ct);
+
+            if (duplicate)
+                throw new InvalidOperationException("BatchCode already exists for this ingredient in this franchise.");
+
+            var oldCode = batch.BatchCode;
+            batch.BatchCode = newCode;
+
+            await _db.SaveChangesAsync(ct);
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                UserId = _current.UserId,
+                FranchiseId = franchiseId,
+                Action = "FRANCHISE_INGREDIENT_BATCH_RENAME",
+                EntityName = "IngredientBatch",
+                EntityId = batch.BatchId,
+                OldDataJson = JsonSerializer.Serialize(new { BatchCode = oldCode }),
+                NewDataJson = JsonSerializer.Serialize(new { BatchCode = batch.BatchCode }),
+                Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Manual franchise ingredient batch code update" : request.Reason.Trim(),
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _db.SaveChangesAsync(ct);
+
+            return MapFranchiseIngredientBatch(batch);
+        }
+
+        public async Task DeleteFranchiseIngredientBatchAsync(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            var batch = await _db.IngredientBatches
+                .Include(x => x.Ingredient)
+                .FirstOrDefaultAsync(x =>
+                    x.BatchId == batchId &&
+                    x.Type == InventoryOwnerType.Franchise &&
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null,
+                    ct);
+
+            if (batch is null)
+                throw new KeyNotFoundException($"IngredientBatch {batchId} not found.");
+
+            if (batch.Quantity != 0)
+                throw new InvalidOperationException("Only zero-quantity batches can be deleted.");
+
+            var movements = await _db.InventoryMovements
+                .Where(x => x.BatchId == batchId)
+                .ToListAsync(ct);
+
+            if (movements.Any(x => x.DeliveryId != null || x.Type == InventoryMovementType.Out))
+                throw new InvalidOperationException("Cannot delete a batch that has been used in transfer/delivery.");
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            _db.InventoryMovements.RemoveRange(movements);
+            _db.IngredientBatches.Remove(batch);
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                UserId = _current.UserId,
+                FranchiseId = franchiseId,
+                Action = "FRANCHISE_INGREDIENT_BATCH_DELETE",
+                EntityName = "IngredientBatch",
+                EntityId = batchId,
+                OldDataJson = JsonSerializer.Serialize(new
+                {
+                    batch.BatchId,
+                    batch.IngredientId,
+                    batch.BatchCode,
+                    batch.Quantity,
+                    batch.CreatedAt,
+                    ExpiredAt = batch.CalculateExpiredAt()
+                }),
+                NewDataJson = null,
+                Reason = "Manual franchise ingredient batch delete",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+
+        public async Task<List<FranchiseProductBatchResponse>> GetFranchiseProductBatchesAsync(
+            int franchiseId,
+            int? productId = null,
+            bool includeZero = false,
+            CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            var query = _db.ProductBatches
+                .AsNoTracking()
+                .Include(x => x.Product)
+                .Where(x =>
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null);
+
+            if (productId.HasValue)
+                query = query.Where(x => x.ProductId == productId.Value);
+
+            if (!includeZero)
+                query = query.Where(x => x.Quantity > 0);
+
+            var batches = await query.ToListAsync(ct);
+
+            batches = batches
+                .OrderBy(x => x.CalculateExpiredAt() == null)
+                .ThenBy(x => x.CalculateExpiredAt())
+                .ThenBy(x => x.CreatedAt)
+                .ThenBy(x => x.BatchId)
+                .ToList();
+
+            return batches.Select(MapFranchiseProductBatch).ToList();
+        }
+
+        public async Task<FranchiseProductBatchResponse> GetFranchiseProductBatchByIdAsync(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            var batch = await _db.ProductBatches
+                .AsNoTracking()
+                .Include(x => x.Product)
+                .FirstOrDefaultAsync(x =>
+                    x.BatchId == batchId &&
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null,
+                    ct);
+
+            if (batch is null)
+                throw new KeyNotFoundException($"ProductBatch {batchId} not found.");
+
+            return MapFranchiseProductBatch(batch);
+        }
+
+        public async Task<FranchiseProductBatchResponse> UpdateFranchiseProductBatchCodeAsync(
+            int franchiseId,
+            int batchId,
+            UpdateBatchCodeRequest request,
+            CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            if (string.IsNullOrWhiteSpace(request.BatchCode))
+                throw new ArgumentException("BatchCode is required.");
+
+            var batch = await _db.ProductBatches
+                .Include(x => x.Product)
+                .FirstOrDefaultAsync(x =>
+                    x.BatchId == batchId &&
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null,
+                    ct);
+
+            if (batch is null)
+                throw new KeyNotFoundException($"ProductBatch {batchId} not found.");
+
+            var movements = await _db.ProductMovements
+                .Where(x => x.BatchId == batchId)
+                .ToListAsync(ct);
+
+            if (movements.Any(x => x.DeliveryId != null))
+                throw new InvalidOperationException("Cannot rename a franchise batch that was credited from delivery/transfer.");
+
+            if (movements.Count > 1)
+                throw new InvalidOperationException("BatchCode can only be changed before follow-up movements happen.");
+
+            var newCode = request.BatchCode.Trim();
+
+            var duplicate = await _db.ProductBatches
+                .AnyAsync(x =>
+                    x.BatchId != batchId &&
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null &&
+                    x.ProductId == batch.ProductId &&
+                    x.BatchCode == newCode,
+                    ct);
+
+            if (duplicate)
+                throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
+
+            var oldCode = batch.BatchCode;
+            batch.BatchCode = newCode;
+
+            await _db.SaveChangesAsync(ct);
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                UserId = _current.UserId,
+                FranchiseId = franchiseId,
+                Action = "FRANCHISE_PRODUCT_BATCH_RENAME",
+                EntityName = "ProductBatch",
+                EntityId = batch.BatchId,
+                OldDataJson = JsonSerializer.Serialize(new { BatchCode = oldCode }),
+                NewDataJson = JsonSerializer.Serialize(new { BatchCode = batch.BatchCode }),
+                Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Manual franchise product batch code update" : request.Reason.Trim(),
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _db.SaveChangesAsync(ct);
+
+            return MapFranchiseProductBatch(batch);
+        }
+
+        public async Task DeleteFranchiseProductBatchAsync(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            var batch = await _db.ProductBatches
+                .Include(x => x.Product)
+                .FirstOrDefaultAsync(x =>
+                    x.BatchId == batchId &&
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null,
+                    ct);
+
+            if (batch is null)
+                throw new KeyNotFoundException($"ProductBatch {batchId} not found.");
+
+            if (batch.Quantity != 0)
+                throw new InvalidOperationException("Only zero-quantity batches can be deleted.");
+
+            var movements = await _db.ProductMovements
+                .Where(x => x.BatchId == batchId)
+                .ToListAsync(ct);
+
+            if (movements.Any(x => x.DeliveryId != null || x.Type == MovementType.Out))
+                throw new InvalidOperationException("Cannot delete a batch that has been used in transfer/delivery.");
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            _db.ProductMovements.RemoveRange(movements);
+            _db.ProductBatches.Remove(batch);
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                UserId = _current.UserId,
+                FranchiseId = franchiseId,
+                Action = "FRANCHISE_PRODUCT_BATCH_DELETE",
+                EntityName = "ProductBatch",
+                EntityId = batchId,
+                OldDataJson = JsonSerializer.Serialize(new
+                {
+                    batch.BatchId,
+                    batch.ProductId,
+                    batch.BatchCode,
+                    batch.Quantity,
+                    batch.CreatedAt,
+                    ExpiredAt = batch.CalculateExpiredAt()
+                }),
+                NewDataJson = null,
+                Reason = "Manual franchise product batch delete",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+        // CRUD ingredient batches CentralKitchen
         public async Task<FranchiseInventorySummaryResponse> GetFranchiseInventorySummaryAsync(
              int franchiseId,
              CancellationToken ct = default)
@@ -855,6 +1372,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             };
         }
 
+        // CRUD ingredient batches CentralKitchen
         public async Task<CentralKitchenInventorySummaryResponse> GetCentralKitchenInventorySummaryAsync(
             int centralKitchenId,
             CancellationToken ct = default)
@@ -944,7 +1462,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             };
         }
 
-        // CRUD ingredient batches
 
         public async Task<CentralKitchenIngredientBatchResponse> InboundCentralKitchenIngredientAsync(
             int centralKitchenId,

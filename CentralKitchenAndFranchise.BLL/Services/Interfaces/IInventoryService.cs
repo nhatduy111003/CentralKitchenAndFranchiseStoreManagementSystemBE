@@ -29,14 +29,65 @@ namespace CentralKitchenAndFranchise.BLL.Services.Interfaces
             IssueIngredientsByProductionPlanDto request,
             CancellationToken ct = default);
 
+        //CRUD Ingredient/ProductBatch cho Franchise
         Task<FranchiseInventorySummaryResponse> GetFranchiseInventorySummaryAsync(
             int franchiseId,
             CancellationToken ct = default);
 
+        Task<AdjustProductInventoryResponse> AdjustProductAsync(
+            int franchiseId,
+            AdjustProductInventoryDto request,
+            CancellationToken ct = default);
+
+        Task<List<FranchiseIngredientBatchResponse>> GetFranchiseIngredientBatchesAsync(
+            int franchiseId,
+            int? ingredientId = null,
+            bool includeZero = false,
+            CancellationToken ct = default);
+
+        Task<FranchiseIngredientBatchResponse> GetFranchiseIngredientBatchByIdAsync(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct = default);
+
+        Task<FranchiseIngredientBatchResponse> UpdateFranchiseIngredientBatchCodeAsync(
+            int franchiseId,
+            int batchId,
+            UpdateBatchCodeRequest request,
+            CancellationToken ct = default);
+
+        Task DeleteFranchiseIngredientBatchAsync(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct = default);
+
+        Task<List<FranchiseProductBatchResponse>> GetFranchiseProductBatchesAsync(
+            int franchiseId,
+            int? productId = null,
+            bool includeZero = false,
+            CancellationToken ct = default);
+
+        Task<FranchiseProductBatchResponse> GetFranchiseProductBatchByIdAsync(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct = default);
+
+        Task<FranchiseProductBatchResponse> UpdateFranchiseProductBatchCodeAsync(
+            int franchiseId,
+            int batchId,
+            UpdateBatchCodeRequest request,
+            CancellationToken ct = default);
+
+        Task DeleteFranchiseProductBatchAsync(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct = default);
+
+        //CRUD Ingredient/ProductBatch cho CentralKitchen
         Task<CentralKitchenInventorySummaryResponse> GetCentralKitchenInventorySummaryAsync(
             int centralKitchenId,
             CancellationToken ct = default);
-        //CRUD Ingredient/ProductBatch cho CentralKitchen
+
         Task<CentralKitchenIngredientBatchResponse> InboundCentralKitchenIngredientAsync(
             int centralKitchenId,
             CreateIngredientBatchDto request,

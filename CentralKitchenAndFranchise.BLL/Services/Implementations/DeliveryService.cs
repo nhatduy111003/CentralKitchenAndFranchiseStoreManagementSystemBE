@@ -206,15 +206,24 @@ public class DeliveryService : IDeliveryService
             ConfirmedAt = delivery.ConfirmedAt is null
                 ? null
                 : new DateTimeOffset(DateTime.SpecifyKind(delivery.ConfirmedAt.Value, DateTimeKind.Utc)),
-            ProductItems = delivery.ProductItems.Select(x => new DeliveryProductItemDto
+            ProductItems = delivery.ProductItems.Select(x =>
             {
-                ProductId = x.ProductId,
-                ProductName = x.Product.Name,
-                Quantity = x.Quantity,
-                AvailableInCentralKitchenQuantity = GetTotalQuantity(availableProductQtyMap, x.ProductId),
-                AvailableCentralKitchenBatches = GetBatchList(availableProductBatchMap, x.ProductId),
-                ShippedToFranchiseQuantity = GetTotalQuantity(shippedProductQtyMap, x.ProductId),
-                ShippedToFranchiseBatches = GetBatchList(shippedProductBatchMap, x.ProductId)
+                var requestedQuantity = x.RequestedQuantity > 0 ? x.RequestedQuantity : x.Quantity;
+
+                return new DeliveryProductItemDto
+                {
+                    ProductId = x.ProductId,
+                    ProductName = x.Product.Name,
+                    Quantity = x.Quantity,
+                    RequestedQuantity = requestedQuantity,
+                    DroppedQuantity = Math.Max(requestedQuantity - x.Quantity, 0m),
+                    IsDropped = x.IsDropped,
+                    DropReason = x.DropReason,
+                    AvailableInCentralKitchenQuantity = GetTotalQuantity(availableProductQtyMap, x.ProductId),
+                    AvailableCentralKitchenBatches = GetBatchList(availableProductBatchMap, x.ProductId),
+                    ShippedToFranchiseQuantity = GetTotalQuantity(shippedProductQtyMap, x.ProductId),
+                    ShippedToFranchiseBatches = GetBatchList(shippedProductBatchMap, x.ProductId)
+                };
             }).ToList(),
             IngredientItems = delivery.IngredientItems.Select(x => new DeliveryIngredientItemDto
             {
@@ -273,12 +282,18 @@ public class DeliveryService : IDeliveryService
                 {
                     DeliveryId = deliveryId,
                     ProductId = req.ProductId,
-                    Quantity = req.Quantity
+                    Quantity = req.Quantity,
+                    RequestedQuantity = req.Quantity,
+                    IsDropped = false,
+                    DropReason = null
                 });
             }
             else
             {
                 line.Quantity = req.Quantity;
+                line.RequestedQuantity = req.Quantity;
+                line.IsDropped = false;
+                line.DropReason = null;
             }
         }
 

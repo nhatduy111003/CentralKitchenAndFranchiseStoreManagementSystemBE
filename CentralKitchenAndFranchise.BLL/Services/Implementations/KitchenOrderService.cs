@@ -55,6 +55,34 @@ public class KitchenOrderService : IKitchenOrderService
         var availableQtyMap = availableBatchMap
             .ToDictionary(x => x.Key, x => x.Value.Sum(b => b.Quantity));
 
+        var snapshotMap = await LoadForwardSnapshotMapAsync(order.StoreOrderId, ct);
+
+        var items = order.Items
+            .OrderBy(i => i.ProductId)
+            .Select(i =>
+            {
+                var availableQty = GetTotalQuantity(availableQtyMap, i.ProductId);
+                snapshotMap.TryGetValue(i.ProductId, out var snapshot);
+
+                return new IncomingOrderDetailItemResponse
+                {
+                    ProductId = i.ProductId,
+                    ProductName = i.Product?.Name ?? "(unknown)",
+                    Sku = i.Product?.Sku,
+                    Unit = i.Product?.Unit ?? "",
+                    Quantity = i.Quantity,
+                    ProductStatus = i.Product?.Status,
+                    ForwardedQuantity = snapshot?.ForwardedQuantity ?? 0m,
+                    DroppedQuantity = snapshot?.DroppedQuantity ?? 0m,
+                    IsDroppedFromForward = snapshot?.IsDropped ?? false,
+                    DropReason = snapshot?.DropReason,
+                    AvailableInCentralKitchenQuantity = availableQty,
+                    IsSufficientInCentralKitchen = availableQty >= i.Quantity,
+                    AvailableCentralKitchenBatches = GetBatchList(availableBatchMap, i.ProductId)
+                };
+            })
+            .ToList();
+
         return new IncomingOrderDetailResponse
         {
             StoreOrderId = order.StoreOrderId,
@@ -68,32 +96,17 @@ public class KitchenOrderService : IKitchenOrderService
             StoreAddress = order.Franchise.Address,
             TotalItems = order.Items.Count,
             TotalQuantity = order.Items.Sum(i => i.Quantity),
+            ForwardedTotalItems = items.Count(x => x.ForwardedQuantity > 0),
+            ForwardedTotalQuantity = items.Sum(x => x.ForwardedQuantity),
+            DroppedTotalItems = items.Count(x => x.IsDroppedFromForward),
+            DroppedTotalQuantity = items.Sum(x => x.DroppedQuantity),
             ReceivedAt = order.ReceivedAt,
             ReceivedBy = receivedBy,
             ForwardedAt = order.ForwardedAt,
             ForwardedBy = forwardedBy,
             ProcessingNote = order.ProcessingNote,
             ForwardNote = order.ForwardNote,
-            Items = order.Items
-                .OrderBy(i => i.ProductId)
-                .Select(i =>
-                {
-                    var availableQty = GetTotalQuantity(availableQtyMap, i.ProductId);
-
-                    return new IncomingOrderDetailItemResponse
-                    {
-                        ProductId = i.ProductId,
-                        ProductName = i.Product.Name,
-                        Sku = i.Product.Sku,
-                        Unit = i.Product.Unit,
-                        Quantity = i.Quantity,
-                        ProductStatus = i.Product.Status,
-                        AvailableInCentralKitchenQuantity = availableQty,
-                        IsSufficientInCentralKitchen = availableQty >= i.Quantity,
-                        AvailableCentralKitchenBatches = GetBatchList(availableBatchMap, i.ProductId)
-                    };
-                })
-                .ToList()
+            Items = items
         };
     }
 
@@ -211,11 +224,15 @@ public class KitchenOrderService : IKitchenOrderService
         if (!string.Equals(order.Status, StoreOrderStatus.ReceivedByKitchen, StringComparison.OrdinalIgnoreCase))
             throw new BadRequestException("Only orders received by kitchen can be forwarded to supply.");
 
-        await EnsureCentralKitchenHasSufficientProductStockAsync(order, ct);
+        var forwardPlan = await EvaluateForwardPlanAsync(order, ct);
+
+        if (!forwardPlan.Any(x => x.ForwardedQuantity > 0))
+            throw new BadRequestException("No order lines can be forwarded because none of them have sufficient central kitchen stock.");
+
+        await UpsertDeliveryArtifactsFromForwardPlanAsync(order, forwardPlan, ct);
 
         var now = DateTime.UtcNow;
         var currentUserId = _current.UserId;
-
         var oldStatus = order.Status;
 
         order.Status = StoreOrderStatus.ForwardedToSupply;
@@ -245,6 +262,25 @@ public class KitchenOrderService : IKitchenOrderService
             ForwardedAt = order.ForwardedAt,
             ForwardedBy = await ResolveUsernameAsync(order.ForwardedByUserId, ct),
             ForwardNote = order.ForwardNote,
+            ForwardedTotalItems = forwardPlan.Count(x => x.ForwardedQuantity > 0),
+            ForwardedTotalQuantity = forwardPlan.Sum(x => x.ForwardedQuantity),
+            DroppedTotalItems = forwardPlan.Count(x => x.IsDropped),
+            DroppedTotalQuantity = forwardPlan.Sum(x => x.DroppedQuantity),
+            ForwardResultItems = forwardPlan
+                .OrderBy(x => x.ProductId)
+                .Select(x => new OrderForwardResultItemResponse
+                {
+                    ProductId = x.ProductId,
+                    ProductName = x.ProductName,
+                    Sku = x.Sku,
+                    Unit = x.Unit,
+                    RequestedQuantity = x.RequestedQuantity,
+                    ForwardedQuantity = x.ForwardedQuantity,
+                    DroppedQuantity = x.DroppedQuantity,
+                    IsDropped = x.IsDropped,
+                    DropReason = x.DropReason
+                })
+                .ToList(),
             Message = "Order forwarded to supply successfully."
         };
     }
@@ -298,6 +334,7 @@ public class KitchenOrderService : IKitchenOrderService
         var order = await _db.StoreOrders
             .Include(x => x.Franchise)
             .Include(x => x.Items)
+            .ThenInclude(x => x.Product)
             .FirstOrDefaultAsync(x =>
                 x.StoreOrderId == orderId &&
                 x.Franchise.CentralKitchenId == centralKitchenId, ct);
@@ -308,7 +345,34 @@ public class KitchenOrderService : IKitchenOrderService
         return order;
     }
 
-    private async Task EnsureCentralKitchenHasSufficientProductStockAsync(StoreOrder order, CancellationToken ct)
+    //helpers
+    private sealed class ForwardPlanLine
+    {
+        public int ProductId { get; set; }
+        public string ProductName { get; set; } = default!;
+        public string? Sku { get; set; }
+        public string Unit { get; set; } = default!;
+
+        public decimal RequestedQuantity { get; set; }
+        public decimal AvailableQuantity { get; set; }
+        public decimal ForwardedQuantity { get; set; }
+
+        public decimal DroppedQuantity => RequestedQuantity - ForwardedQuantity;
+        public bool IsDropped { get; set; }
+        public string? DropReason { get; set; }
+    }
+
+    private sealed class ForwardSnapshotLine
+    {
+        public int ProductId { get; set; }
+        public decimal RequestedQuantity { get; set; }
+        public decimal ForwardedQuantity { get; set; }
+        public decimal DroppedQuantity { get; set; }
+        public bool IsDropped { get; set; }
+        public string? DropReason { get; set; }
+    }
+
+    private async Task<List<ForwardPlanLine>> EvaluateForwardPlanAsync(StoreOrder order, CancellationToken ct)
     {
         if (order.Franchise is null)
             throw new InvalidOperationException("Store order franchise context is missing.");
@@ -330,39 +394,160 @@ public class KitchenOrderService : IKitchenOrderService
                 x.Quantity > 0)
             .ToListAsync(ct);
 
-        var shortages = new List<string>();
+        return order.Items
+            .OrderBy(x => x.ProductId)
+            .Select(item =>
+            {
+                var availableQty = productBatches
+                    .Where(x => x.ProductId == item.ProductId)
+                    .OrderBy(x => x.CalculateExpiredAt() == null)
+                    .ThenBy(x => x.CalculateExpiredAt())
+                    .ThenBy(x => x.CreatedAt)
+                    .ThenBy(x => x.BatchId)
+                    .Sum(x => x.Quantity);
 
-        foreach (var entry in requiredMap.OrderBy(x => x.Key))
+                var isFulfillable = availableQty >= item.Quantity;
+
+                return new ForwardPlanLine
+                {
+                    ProductId = item.ProductId,
+                    ProductName = item.Product?.Name ?? "(unknown)",
+                    Sku = item.Product?.Sku,
+                    Unit = item.Product?.Unit ?? "",
+                    RequestedQuantity = item.Quantity,
+                    AvailableQuantity = availableQty,
+                    ForwardedQuantity = isFulfillable ? item.Quantity : 0m,
+                    IsDropped = !isFulfillable,
+                    DropReason = isFulfillable
+                        ? null
+                        : $"Insufficient central kitchen inventory. Required={item.Quantity}, Available={availableQty}."
+                };
+            })
+            .ToList();
+    }
+
+    private async Task UpsertDeliveryArtifactsFromForwardPlanAsync(
+        StoreOrder order,
+        IReadOnlyCollection<ForwardPlanLine> forwardPlan,
+        CancellationToken ct)
+    {
+        var existingPlan = await _db.DeliveryPlans
+            .FirstOrDefaultAsync(x => x.StoreOrderId == order.StoreOrderId, ct);
+
+        if (existingPlan is null)
         {
-            var productId = entry.Key;
-            var requiredQty = entry.Value;
+            existingPlan = new DeliveryPlan
+            {
+                CentralKitchenId = order.Franchise.CentralKitchenId,
+                FranchiseId = order.FranchiseId,
+                PlannedDate = order.OrderDate,
+                StoreOrderId = order.StoreOrderId
+            };
 
-            var availableQty = productBatches
-                .Where(x => x.ProductId == productId)
-                .OrderBy(x => x.CalculateExpiredAt() == null)
-                .ThenBy(x => x.CalculateExpiredAt())
-                .ThenBy(x => x.CreatedAt)
-                .ThenBy(x => x.BatchId)
-                .Sum(x => x.Quantity);
-
-            if (availableQty >= requiredQty)
-                continue;
-
-            var productName = order.Items
-                .Where(x => x.ProductId == productId)
-                .Select(x => x.Product?.Name)
-                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
-                ?? $"ProductId={productId}";
-
-            shortages.Add($"{productName}: required={requiredQty}, available={availableQty}");
+            _db.DeliveryPlans.Add(existingPlan);
+            await _db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            existingPlan.CentralKitchenId = order.Franchise.CentralKitchenId;
+            existingPlan.FranchiseId = order.FranchiseId;
+            existingPlan.PlannedDate = order.OrderDate;
         }
 
-        if (shortages.Count > 0)
+        var existingDelivery = await _db.Deliveries
+            .Include(x => x.ProductItems)
+            .FirstOrDefaultAsync(x => x.DeliveryPlanId == existingPlan.DeliveryPlanId, ct);
+
+        if (existingDelivery is null)
         {
-            throw new BadRequestException(
-                "Insufficient central kitchen inventory to forward this order. " +
-                string.Join("; ", shortages));
+            existingDelivery = new Delivery
+            {
+                DeliveryPlanId = existingPlan.DeliveryPlanId,
+                FromCentralKitchenId = order.Franchise.CentralKitchenId,
+                Status = DeliveryStatus.Created,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _db.Deliveries.Add(existingDelivery);
+            await _db.SaveChangesAsync(ct);
         }
+        else
+        {
+            existingDelivery.FromCentralKitchenId = order.Franchise.CentralKitchenId;
+        }
+
+        var existingItemMap = existingDelivery.ProductItems
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        foreach (var line in forwardPlan)
+        {
+            if (existingItemMap.TryGetValue(line.ProductId, out var deliveryLine))
+            {
+                deliveryLine.Quantity = line.ForwardedQuantity;
+                deliveryLine.RequestedQuantity = line.RequestedQuantity;
+                deliveryLine.IsDropped = line.IsDropped;
+                deliveryLine.DropReason = line.DropReason;
+            }
+            else
+            {
+                existingDelivery.ProductItems.Add(new DeliveryProductItem
+                {
+                    ProductId = line.ProductId,
+                    Quantity = line.ForwardedQuantity,
+                    RequestedQuantity = line.RequestedQuantity,
+                    IsDropped = line.IsDropped,
+                    DropReason = line.DropReason
+                });
+            }
+        }
+
+        var validProductIds = forwardPlan.Select(x => x.ProductId).ToHashSet();
+
+        var orphanLines = existingDelivery.ProductItems
+            .Where(x => !validProductIds.Contains(x.ProductId))
+            .ToList();
+
+        if (orphanLines.Count > 0)
+        {
+            _db.DeliveryProductItems.RemoveRange(orphanLines);
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task<Dictionary<int, ForwardSnapshotLine>> LoadForwardSnapshotMapAsync(int orderId, CancellationToken ct)
+    {
+        var lines = await _db.DeliveryProductItems
+            .AsNoTracking()
+            .Include(x => x.Delivery)
+                .ThenInclude(x => x.DeliveryPlan)
+            .Where(x => x.Delivery.DeliveryPlan.StoreOrderId == orderId)
+            .ToListAsync(ct);
+
+        return lines
+            .GroupBy(x => x.ProductId)
+            .Select(g =>
+            {
+                var requested = g.Sum(x => x.RequestedQuantity > 0 ? x.RequestedQuantity : x.Quantity);
+                var forwarded = g.Sum(x => x.Quantity);
+                var reasons = g
+                    .Where(x => !string.IsNullOrWhiteSpace(x.DropReason))
+                    .Select(x => x.DropReason!.Trim())
+                    .Distinct()
+                    .ToList();
+
+                return new ForwardSnapshotLine
+                {
+                    ProductId = g.Key,
+                    RequestedQuantity = requested,
+                    ForwardedQuantity = forwarded,
+                    DroppedQuantity = Math.Max(requested - forwarded, 0m),
+                    IsDropped = g.Any(x => x.IsDropped),
+                    DropReason = reasons.Count == 0 ? null : string.Join(" | ", reasons)
+                };
+            })
+            .ToDictionary(x => x.ProductId, x => x);
     }
 
     private async Task<Dictionary<int, List<InventoryBatchQuantityResponse>>> LoadCentralKitchenProductBatchMapAsync(

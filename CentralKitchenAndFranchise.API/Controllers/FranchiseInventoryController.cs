@@ -1,9 +1,10 @@
-﻿using CentralKitchenAndFranchise.BLL.Services.Implementations;
-using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
+using CentralKitchenAndFranchise.DTO.Requests.Inventory;
 using CentralKitchenAndFranchise.DTO.Responses;
+using CentralKitchenAndFranchise.DTO.Responses.Inventory;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,9 +22,7 @@ namespace CentralKitchenAndFranchise.API.Controllers
             _service = service;
         }
 
-        // Franchise nhập kho nguyên liệu
         [HttpPost("ingredients/inbound")]
-        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
         public async Task<ActionResult<ApiResponse<IngredientInboundResponse>>> InboundIngredient(
             int franchiseId,
             [FromBody] CreateIngredientInboundDto request,
@@ -33,9 +32,7 @@ namespace CentralKitchenAndFranchise.API.Controllers
             return Ok(ApiResponse<IngredientInboundResponse>.Ok(data));
         }
 
-        // Franchise điều chỉnh tồn kho nguyên liệu
         [HttpPost("ingredients/adjustment")]
-        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
         public async Task<ActionResult<ApiResponse<AdjustIngredientInventoryResponse>>> AdjustIngredient(
             int franchiseId,
             [FromBody] AdjustIngredientInventoryDto request,
@@ -45,9 +42,49 @@ namespace CentralKitchenAndFranchise.API.Controllers
             return Ok(ApiResponse<AdjustIngredientInventoryResponse>.Ok(data));
         }
 
-        // Franchise nhập kho thành phẩm
+        [HttpGet("ingredients/batches")]
+        public async Task<ActionResult<ApiResponse<List<FranchiseIngredientBatchResponse>>>> GetIngredientBatches(
+            int franchiseId,
+            [FromQuery] int? ingredientId,
+            [FromQuery] bool includeZero,
+            CancellationToken ct)
+        {
+            var data = await _service.GetFranchiseIngredientBatchesAsync(franchiseId, ingredientId, includeZero, ct);
+            return Ok(ApiResponse<List<FranchiseIngredientBatchResponse>>.Ok(data));
+        }
+
+        [HttpGet("ingredients/batches/{batchId:int}")]
+        public async Task<ActionResult<ApiResponse<FranchiseIngredientBatchResponse>>> GetIngredientBatchById(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct)
+        {
+            var data = await _service.GetFranchiseIngredientBatchByIdAsync(franchiseId, batchId, ct);
+            return Ok(ApiResponse<FranchiseIngredientBatchResponse>.Ok(data));
+        }
+
+        [HttpPut("ingredients/batches/{batchId:int}/batch-code")]
+        public async Task<ActionResult<ApiResponse<FranchiseIngredientBatchResponse>>> UpdateIngredientBatchCode(
+            int franchiseId,
+            int batchId,
+            [FromBody] UpdateBatchCodeRequest request,
+            CancellationToken ct)
+        {
+            var data = await _service.UpdateFranchiseIngredientBatchCodeAsync(franchiseId, batchId, request, ct);
+            return Ok(ApiResponse<FranchiseIngredientBatchResponse>.Ok(data));
+        }
+
+        [HttpDelete("ingredients/batches/{batchId:int}")]
+        public async Task<ActionResult<ApiResponse<object>>> DeleteIngredientBatch(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct)
+        {
+            await _service.DeleteFranchiseIngredientBatchAsync(franchiseId, batchId, ct);
+            return Ok(ApiResponse<object>.Ok(new { message = "Franchise ingredient batch deleted successfully." }));
+        }
+
         [HttpPost("products/inbound")]
-        [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
         public async Task<ActionResult<ApiResponse<ProductInboundResponse>>> InboundProduct(
             int franchiseId,
             [FromBody] CreateProductInboundDto request,
@@ -55,6 +92,58 @@ namespace CentralKitchenAndFranchise.API.Controllers
         {
             var data = await _service.InboundProductAsync(franchiseId, request, ct);
             return Ok(ApiResponse<ProductInboundResponse>.Ok(data));
+        }
+
+        [HttpPost("products/adjustment")]
+        public async Task<ActionResult<ApiResponse<AdjustProductInventoryResponse>>> AdjustProduct(
+            int franchiseId,
+            [FromBody] AdjustProductInventoryDto request,
+            CancellationToken ct)
+        {
+            var data = await _service.AdjustProductAsync(franchiseId, request, ct);
+            return Ok(ApiResponse<AdjustProductInventoryResponse>.Ok(data));
+        }
+
+        [HttpGet("products/batches")]
+        public async Task<ActionResult<ApiResponse<List<FranchiseProductBatchResponse>>>> GetProductBatches(
+            int franchiseId,
+            [FromQuery] int? productId,
+            [FromQuery] bool includeZero,
+            CancellationToken ct)
+        {
+            var data = await _service.GetFranchiseProductBatchesAsync(franchiseId, productId, includeZero, ct);
+            return Ok(ApiResponse<List<FranchiseProductBatchResponse>>.Ok(data));
+        }
+
+        [HttpGet("products/batches/{batchId:int}")]
+        public async Task<ActionResult<ApiResponse<FranchiseProductBatchResponse>>> GetProductBatchById(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct)
+        {
+            var data = await _service.GetFranchiseProductBatchByIdAsync(franchiseId, batchId, ct);
+            return Ok(ApiResponse<FranchiseProductBatchResponse>.Ok(data));
+        }
+
+        [HttpPut("products/batches/{batchId:int}/batch-code")]
+        public async Task<ActionResult<ApiResponse<FranchiseProductBatchResponse>>> UpdateProductBatchCode(
+            int franchiseId,
+            int batchId,
+            [FromBody] UpdateBatchCodeRequest request,
+            CancellationToken ct)
+        {
+            var data = await _service.UpdateFranchiseProductBatchCodeAsync(franchiseId, batchId, request, ct);
+            return Ok(ApiResponse<FranchiseProductBatchResponse>.Ok(data));
+        }
+
+        [HttpDelete("products/batches/{batchId:int}")]
+        public async Task<ActionResult<ApiResponse<object>>> DeleteProductBatch(
+            int franchiseId,
+            int batchId,
+            CancellationToken ct)
+        {
+            await _service.DeleteFranchiseProductBatchAsync(franchiseId, batchId, ct);
+            return Ok(ApiResponse<object>.Ok(new { message = "Franchise product batch deleted successfully." }));
         }
 
         [HttpGet("summary")]

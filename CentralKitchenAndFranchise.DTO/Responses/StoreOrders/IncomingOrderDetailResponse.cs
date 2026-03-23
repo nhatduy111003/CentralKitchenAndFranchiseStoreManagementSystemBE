@@ -20,6 +20,11 @@ public class IncomingOrderDetailResponse
     public int TotalItems { get; set; }
     public decimal TotalQuantity { get; set; }
 
+    public int ForwardedTotalItems { get; set; }
+    public decimal ForwardedTotalQuantity { get; set; }
+    public int DroppedTotalItems { get; set; }
+    public decimal DroppedTotalQuantity { get; set; }
+
     public DateTime? ReceivedAt { get; set; }
     public string? ReceivedBy { get; set; }
 
@@ -38,8 +43,15 @@ public class IncomingOrderDetailItemResponse
     public string ProductName { get; set; } = default!;
     public string? Sku { get; set; }
     public string Unit { get; set; } = default!;
+
+    // original locked order quantity
     public decimal Quantity { get; set; }
     public string? ProductStatus { get; set; }
+
+    public decimal ForwardedQuantity { get; set; }
+    public decimal DroppedQuantity { get; set; }
+    public bool IsDroppedFromForward { get; set; }
+    public string? DropReason { get; set; }
 
     public decimal AvailableInCentralKitchenQuantity { get; set; }
     public bool IsSufficientInCentralKitchen { get; set; }

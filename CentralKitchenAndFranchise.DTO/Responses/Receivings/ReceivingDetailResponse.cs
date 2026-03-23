@@ -1,4 +1,6 @@
-﻿namespace CentralKitchenAndFranchise.DTO.Responses.Receivings;
+﻿using CentralKitchenAndFranchise.DTO.Responses.Inventory;
+
+namespace CentralKitchenAndFranchise.DTO.Responses.Receivings;
 
 public class ReceivingDetailResponse
 {
@@ -33,8 +35,17 @@ public class ReceivingDetailLineResponse
     public string ItemName { get; set; } = default!;
     public string Unit { get; set; } = default!;
 
-    public decimal ExpectedQuantity { get; set; }
-    public decimal DeliveredQuantity { get; set; }
+    public decimal ExpectedQuantity { get; set; }   // requested quantity gốc
+    public decimal DeliveredQuantity { get; set; }  // actual forwarded / shipped
+    public decimal? ReceivedQuantity { get; set; }  // actual credited vào franchise sau confirm
 
-    public decimal? ReceivedQuantity { get; set; }
+    public decimal AvailableInCentralKitchenQuantity { get; set; }
+    public List<InventoryBatchQuantityResponse> AvailableCentralKitchenBatches { get; set; } = new();
+
+    public decimal CreditedToFranchiseQuantity { get; set; }
+    public List<InventoryBatchQuantityResponse> CreditedToFranchiseBatches { get; set; } = new();
+
+    public decimal DroppedQuantity { get; set; }
+    public bool IsDropped { get; set; }
+    public string? DropReason { get; set; }
 }

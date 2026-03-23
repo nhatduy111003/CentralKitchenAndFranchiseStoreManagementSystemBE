@@ -17,6 +17,12 @@ public class OrderWorkflowActionResponse
     public string? ForwardedBy { get; set; }
     public string? ForwardNote { get; set; }
 
+    public int ForwardedTotalItems { get; set; }
+    public decimal ForwardedTotalQuantity { get; set; }
+    public int DroppedTotalItems { get; set; }
+    public decimal DroppedTotalQuantity { get; set; }
+    public List<OrderForwardResultItemResponse> ForwardResultItems { get; set; } = new();
+
     public DateTime? PreparedAt { get; set; }
     public string? PreparedBy { get; set; }
     public string? PreparingNote { get; set; }
@@ -26,4 +32,19 @@ public class OrderWorkflowActionResponse
     public string? StatusNote { get; set; }
 
     public string Message { get; set; } = default!;
+}
+
+public class OrderForwardResultItemResponse
+{
+    public int ProductId { get; set; }
+    public string ProductName { get; set; } = default!;
+    public string? Sku { get; set; }
+    public string Unit { get; set; } = default!;
+
+    public decimal RequestedQuantity { get; set; }
+    public decimal ForwardedQuantity { get; set; }
+    public decimal DroppedQuantity { get; set; }
+
+    public bool IsDropped { get; set; }
+    public string? DropReason { get; set; }
 }

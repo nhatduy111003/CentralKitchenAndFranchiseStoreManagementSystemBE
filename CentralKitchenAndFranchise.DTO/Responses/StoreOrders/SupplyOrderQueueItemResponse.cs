@@ -15,6 +15,11 @@ public class SupplyOrderQueueItemResponse
     public int TotalItems { get; set; }
     public decimal TotalQuantity { get; set; }
 
+    public int ForwardedTotalItems { get; set; }
+    public decimal ForwardedTotalQuantity { get; set; }
+    public int DroppedTotalItems { get; set; }
+    public decimal DroppedTotalQuantity { get; set; }
+
     public DateTime? ForwardedAt { get; set; }
     public string? ForwardedBy { get; set; }
 
@@ -30,5 +35,12 @@ public class SupplyOrderQueueItemLineResponse
     public string ProductName { get; set; } = default!;
     public string? Sku { get; set; }
     public string Unit { get; set; } = default!;
+
+    // original locked order quantity
     public decimal Quantity { get; set; }
+
+    public decimal ForwardedQuantity { get; set; }
+    public decimal DroppedQuantity { get; set; }
+    public bool IsDroppedFromForward { get; set; }
+    public string? DropReason { get; set; }
 }
