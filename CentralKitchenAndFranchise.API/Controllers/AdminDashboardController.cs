@@ -19,7 +19,7 @@ public class AdminDashboardController : ControllerBase
 
     [HttpGet("overview")]
     public async Task<ActionResult<ApiResponse<AdminDashboardOverviewResponse>>> GetOverview(
-        [FromQuery] AdminDashboardOverviewQuery query,
-        CancellationToken ct)
-        => Ok(ApiResponse<AdminDashboardOverviewResponse>.Ok(await _service.GetOverviewAsync(query, ct)));
+     [FromQuery] AdminDashboardOverviewQuery query,
+     CancellationToken ct)
+     => Ok(ApiResponse<AdminDashboardOverviewResponse>.Ok(await _service.GetOverviewAsync(query, ct)));
 }

@@ -16,13 +16,15 @@ public class ManagerDashboardController : ControllerBase
 
     public ManagerDashboardController(IManagerDashboardService service) => _service = service;
 
+    /// <summary>Return the global manager overview dashboard.</summary>
     [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpGet("dashboard/overview")]
     public async Task<ActionResult<ApiResponse<ManagerDashboardOverviewResponse>>> GetOverview(
-        [FromQuery] ManagerDashboardOverviewQuery query,
-        CancellationToken ct)
-        => Ok(ApiResponse<ManagerDashboardOverviewResponse>.Ok(await _service.GetOverviewAsync(query, ct)));
+    [FromQuery] ManagerDashboardOverviewQuery query,
+    CancellationToken ct)
+    => Ok(ApiResponse<ManagerDashboardOverviewResponse>.Ok(await _service.GetOverviewAsync(query, ct)));
 
+    /// <summary>Return the manager dashboard for one franchise.</summary>
     [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager}")]
     [HttpGet("franchises/{franchiseId:int}/dashboard/overview")]
     public async Task<ActionResult<ApiResponse<ManagerDashboardOverviewResponse>>> GetFranchiseOverview(

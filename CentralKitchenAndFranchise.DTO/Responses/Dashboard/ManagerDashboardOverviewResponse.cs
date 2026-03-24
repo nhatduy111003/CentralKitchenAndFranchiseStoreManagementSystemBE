@@ -1,5 +1,4 @@
-﻿// CentralKitchenAndFranchise.DTO/Responses/Dashboard/ManagerDashboardOverviewResponse.cs
-namespace CentralKitchenAndFranchise.DTO.Responses.Dashboard;
+﻿namespace CentralKitchenAndFranchise.DTO.Responses.Dashboard;
 
 public class ManagerDashboardOverviewResponse
 {
@@ -7,10 +6,13 @@ public class ManagerDashboardOverviewResponse
     public DateOnly ToDate { get; set; }
     public int TimezoneOffsetMinutes { get; set; }
 
-    // Scope for Manager = assigned franchises; Admin = all active franchises
+    // Admin/Manager are global roles, so this is the number of active franchises in scope.
     public int FranchiseCount { get; set; }
 
+    // Order summary uses StoreOrder.OrderDate as business date.
     public OrderStatusSummary OrderStatusSummary { get; set; } = new();
+
+    // Delivery summary uses DeliveryPlan.PlannedDate as business date.
     public DeliveryStatusSummary DeliveryStatusSummary { get; set; } = new();
 
     public ServiceLevelSummary ServiceLevelSummary { get; set; } = new();
@@ -19,7 +21,6 @@ public class ManagerDashboardOverviewResponse
     public List<NearExpiryAlertItem> NearExpiryAlerts { get; set; } = new();
     public List<WasteAlertItem> WasteAlerts { get; set; } = new();
 
-    // Optional hints when some metrics have no data due to missing module/records.
     public List<string> Notes { get; set; } = new();
 }
 
@@ -34,18 +35,17 @@ public class DeliveryStatusSummary
     public int Total { get; set; }
     public Dictionary<string, int> ByStatus { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public int PendingCount { get; set; } // CREATED / CONFIRMED / PLANNED...
-    public int DeliveredCount { get; set; } // DELIVERED / COMPLETED...
+    public int PendingCount { get; set; }
+    public int DeliveredCount { get; set; }
+    public int DeliveredPendingReceivingCount { get; set; }
+    public int ConfirmedReceivingCount { get; set; }
 }
 
 public class ServiceLevelSummary
 {
-    // Currently supported based on DeliveryPlan.PlannedDate and Delivery.DeliveredAt.
-    // If no delivery data in range => nulls.
     public int? TotalDeliveriesPlannedInRange { get; set; }
     public int? TotalDeliveriesDeliveredInRange { get; set; }
 
-    // DeliveredAt local date <= PlannedDate => on-time
     public int? OnTimeDeliveredCount { get; set; }
     public decimal? OnTimeRate { get; set; }
 }
@@ -89,8 +89,8 @@ public class WasteAlertItem
     public string Unit { get; set; } = default!;
 
     public decimal WasteQuantity { get; set; }
-    public decimal IssuedQuantity { get; set; } // OUT
-    public decimal? WasteRate { get; set; } // Waste / (Waste + OUT)
+    public decimal IssuedQuantity { get; set; }
+    public decimal? WasteRate { get; set; }
     public decimal WasteThreshold { get; set; }
     public bool IsExceedThreshold { get; set; }
-}
+}   

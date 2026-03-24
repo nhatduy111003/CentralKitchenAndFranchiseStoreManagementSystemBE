@@ -1,7 +1,7 @@
-﻿// CentralKitchenAndFranchise.BLL/Services/Implementations/AdminDashboardService.cs
-using CentralKitchenAndFranchise.BLL.Exceptions;
+﻿using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DAL.Enums;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.Dashboard;
 using CentralKitchenAndFranchise.DTO.Responses.Dashboard;
@@ -20,6 +20,7 @@ public class AdminDashboardService : IAdminDashboardService
         _current = current;
     }
 
+    /// <summary>Build the admin dashboard with system-wide operational and governance metrics.</summary>
     public async Task<AdminDashboardOverviewResponse> GetOverviewAsync(AdminDashboardOverviewQuery query, CancellationToken ct = default)
     {
         RequireAdmin();
@@ -27,228 +28,259 @@ public class AdminDashboardService : IAdminDashboardService
 
         var (fromDate, toDate, tzOffsetMinutes, top, fromUtc, toUtcExclusive) = NormalizeQuery(query);
 
-        var resp = new AdminDashboardOverviewResponse
+        var response = new AdminDashboardOverviewResponse
         {
             FromDate = fromDate,
             ToDate = toDate,
             TimezoneOffsetMinutes = tzOffsetMinutes
         };
 
-        await FillFranchiseSummaryAsync(resp, ct);
-        await FillUserSummaryAsync(resp, ct);
-        await FillRbacSummaryAsync(resp, ct);
+        await FillCentralKitchenSummaryAsync(response, ct);
+        await FillFranchiseSummaryAsync(response, ct);
+        await FillUserSummaryAsync(response, ct);
+        await FillRbacSummaryAsync(response, ct);
+        await FillOperationalSnapshotAsync(response, ct);
 
-        await FillAuditActivityAsync(resp, fromUtc, toUtcExclusive, top, ct);
+        await FillAuditActivityAsync(response, fromUtc, toUtcExclusive, top, ct);
+        await FillStoreOrderWorkloadAsync(response, fromDate, toDate, top, ct);
+        await FillDeliveryWorkloadAsync(response, fromDate, toDate, top, ct);
+        await FillProductionPlanStatusWorkloadAsync(response, fromDate, toDate, top, ct);
+        await FillSupportRequestWorkloadAsync(response, fromUtc, toUtcExclusive, top, ct);
 
-        await FillStatusWorkloadAsync(
-            resp.StoreOrders,
-            _db.StoreOrders.AsNoTracking(),
-            x => x.CreatedAt,
-            x => x.Status,
-            fromUtc,
-            toUtcExclusive,
-            top,
-            ct);
+        await FillDataFreshnessAsync(response, ct);
 
-        await FillStatusWorkloadAsync(
-            resp.Deliveries,
-            _db.Deliveries.AsNoTracking(),
-            x => x.CreatedAt,
-            x => x.Status,
-            fromUtc,
-            toUtcExclusive,
-            top,
-            ct);
-
-        await FillProductionPlanStatusWorkloadAsync(resp.ProductionPlans, fromUtc, toUtcExclusive, top, ct);
-
-        await FillStatusWorkloadAsync(
-            resp.SupportRequests,
-            _db.SupportRequests.AsNoTracking(),
-            x => x.CreatedAt,
-            x => x.Status,
-            fromUtc,
-            toUtcExclusive,
-            top,
-            ct);
-
-        await FillDataFreshnessAsync(resp, ct);
-
-        return resp;
+        return response;
     }
 
+    /// <summary>Enforce the Admin-only permission for this dashboard.</summary>
     private void RequireAdmin()
     {
         if (!_current.IsInRole(RoleNames.Admin))
             throw new ForbiddenAccessException("Admin role required.");
     }
 
-    private static (DateOnly fromDate, DateOnly toDate, int tzOffsetMinutes, int top, DateTime fromUtc, DateTime toUtcExclusive)
-        NormalizeQuery(AdminDashboardOverviewQuery query)
+    /// <summary>Normalize dashboard filters and derive the UTC window for CreatedAt-based metrics.</summary>
+    private static (DateOnly fromDate, DateOnly toDate, int tzOffsetMinutes, int top, DateTime fromUtc, DateTime toUtcExclusive) NormalizeQuery(AdminDashboardOverviewQuery query)
     {
         var tzOffsetMinutes = query.TimezoneOffsetMinutes ?? 0;
         if (tzOffsetMinutes is < -14 * 60 or > 14 * 60)
             throw new ArgumentException("timezoneOffsetMinutes must be between -840 and 840.");
 
-        var nowLocal = DateTime.UtcNow.AddMinutes(tzOffsetMinutes);
-        var todayLocal = DateOnly.FromDateTime(nowLocal);
-
+        var todayLocal = DateOnly.FromDateTime(DateTime.UtcNow.AddMinutes(tzOffsetMinutes));
         var toDate = query.ToDate ?? todayLocal;
         var fromDate = query.FromDate ?? toDate.AddDays(-6);
 
-        if (fromDate > toDate) throw new ArgumentException("fromDate must be <= toDate.");
+        if (fromDate > toDate)
+            throw new ArgumentException("fromDate must be <= toDate.");
 
-        // Protect DB: cap 366 days.
         if (toDate.DayNumber - fromDate.DayNumber > 366)
             throw new ArgumentException("date range too large (max 366 days).");
 
         var top = query.Top <= 0 ? 10 : query.Top;
         if (top > 50) top = 50;
 
-        // Convert local date range [fromDate..toDate] to UTC instants:
-        // fromUtc = local 00:00
-        // toUtcExclusive = (toDate + 1) local 00:00
         var fromLocal = fromDate.ToDateTime(TimeOnly.MinValue);
         var toLocalExclusive = toDate.AddDays(1).ToDateTime(TimeOnly.MinValue);
 
-        var fromUtc = fromLocal.AddMinutes(-tzOffsetMinutes);
-        var toUtcExclusive = toLocalExclusive.AddMinutes(-tzOffsetMinutes);
+        var fromUtc = DateTime.SpecifyKind(fromLocal.AddMinutes(-tzOffsetMinutes), DateTimeKind.Utc);
+        var toUtcExclusive = DateTime.SpecifyKind(toLocalExclusive.AddMinutes(-tzOffsetMinutes), DateTimeKind.Utc);
 
-        return (
-            fromDate,
-            toDate,
-            tzOffsetMinutes,
-            top,
-            DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc),
-            DateTime.SpecifyKind(toUtcExclusive, DateTimeKind.Utc)
-        );
+        return (fromDate, toDate, tzOffsetMinutes, top, fromUtc, toUtcExclusive);
     }
 
-    private async Task FillFranchiseSummaryAsync(AdminDashboardOverviewResponse resp, CancellationToken ct)
+    /// <summary>Aggregate total and active central-kitchen counts.</summary>
+    private async Task FillCentralKitchenSummaryAsync(AdminDashboardOverviewResponse response, CancellationToken ct)
     {
-        var grouped = await _db.Franchises.AsNoTracking()
+        var grouped = await _db.CentralKitchens
+            .AsNoTracking()
             .GroupBy(x => x.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
             .ToListAsync(ct);
 
-        resp.FranchiseSummary.Total = grouped.Sum(x => x.Count);
-        resp.FranchiseSummary.Active = grouped.FirstOrDefault(x => x.Status == "ACTIVE")?.Count ?? 0;
-        resp.FranchiseSummary.Inactive = grouped.FirstOrDefault(x => x.Status == "INACTIVE")?.Count ?? 0;
+        response.CentralKitchenSummary.Total = grouped.Sum(x => x.Count);
+        response.CentralKitchenSummary.Active = GetStatusCount(grouped, OrganizationStatus.Active);
+        response.CentralKitchenSummary.Inactive = GetStatusCount(grouped, OrganizationStatus.Inactive);
     }
 
-    private async Task FillUserSummaryAsync(AdminDashboardOverviewResponse resp, CancellationToken ct)
+    /// <summary>Aggregate total and active franchise counts.</summary>
+    private async Task FillFranchiseSummaryAsync(AdminDashboardOverviewResponse response, CancellationToken ct)
     {
-        var grouped = await _db.Users.AsNoTracking()
+        var grouped = await _db.Franchises
+            .AsNoTracking()
             .GroupBy(x => x.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
             .ToListAsync(ct);
 
-        resp.UserSummary.Total = grouped.Sum(x => x.Count);
-        resp.UserSummary.Active = grouped.FirstOrDefault(x => x.Status == "ACTIVE")?.Count ?? 0;
-        resp.UserSummary.Inactive = grouped.FirstOrDefault(x => x.Status == "INACTIVE")?.Count ?? 0;
+        response.FranchiseSummary.Total = grouped.Sum(x => x.Count);
+        response.FranchiseSummary.Active = GetStatusCount(grouped, OrganizationStatus.Active);
+        response.FranchiseSummary.Inactive = GetStatusCount(grouped, OrganizationStatus.Inactive);
+    }
 
-        var activeByRole = await _db.Users.AsNoTracking()
-            .Where(u => u.Status == "ACTIVE")
-            .GroupBy(u => u.Role.Name)
+    /// <summary>Aggregate user counts and active users by role.</summary>
+    private async Task FillUserSummaryAsync(AdminDashboardOverviewResponse response, CancellationToken ct)
+    {
+        var grouped = await _db.Users
+            .AsNoTracking()
+            .GroupBy(x => x.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        response.UserSummary.Total = grouped.Sum(x => x.Count);
+        response.UserSummary.Active = GetStatusCount(grouped, OrganizationStatus.Active);
+        response.UserSummary.Inactive = GetStatusCount(grouped, OrganizationStatus.Inactive);
+
+        var activeByRole = await _db.Users
+            .AsNoTracking()
+            .Where(x => x.Status == OrganizationStatus.Active)
+            .GroupBy(x => x.Role.Name)
             .Select(g => new { RoleName = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Count)
             .ToListAsync(ct);
 
-        resp.UserSummary.ActiveUsersByRole = activeByRole.ToDictionary(
+        response.UserSummary.ActiveUsersByRole = activeByRole.ToDictionary(
             x => x.RoleName ?? "UNKNOWN",
             x => x.Count,
             StringComparer.OrdinalIgnoreCase);
     }
 
-    private async Task FillRbacSummaryAsync(AdminDashboardOverviewResponse resp, CancellationToken ct)
+    /// <summary>Aggregate role, permission, and role-permission link counts.</summary>
+    private async Task FillRbacSummaryAsync(AdminDashboardOverviewResponse response, CancellationToken ct)
     {
-        var roleGrouped = await _db.Roles.AsNoTracking()
-            .GroupBy(r => r.Status)
+        var roleGrouped = await _db.Roles
+            .AsNoTracking()
+            .GroupBy(x => x.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
             .ToListAsync(ct);
 
-        resp.RbacSummary.RoleActiveCount = roleGrouped.FirstOrDefault(x => x.Status == "ACTIVE")?.Count ?? 0;
-        resp.RbacSummary.RoleInactiveCount = roleGrouped.FirstOrDefault(x => x.Status == "INACTIVE")?.Count ?? 0;
+        response.RbacSummary.RoleActiveCount = GetStatusCount(roleGrouped, OrganizationStatus.Active);
+        response.RbacSummary.RoleInactiveCount = GetStatusCount(roleGrouped, OrganizationStatus.Inactive);
 
-        var permGrouped = await _db.Permissions.AsNoTracking()
-            .GroupBy(p => p.Status)
+        var permissionGrouped = await _db.Permissions
+            .AsNoTracking()
+            .GroupBy(x => x.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
             .ToListAsync(ct);
 
-        resp.RbacSummary.PermissionActiveCount = permGrouped.FirstOrDefault(x => x.Status == "ACTIVE")?.Count ?? 0;
-        resp.RbacSummary.PermissionInactiveCount = permGrouped.FirstOrDefault(x => x.Status == "INACTIVE")?.Count ?? 0;
-
-        resp.RbacSummary.RolePermissionLinkCount = await _db.RolePermissions.AsNoTracking().CountAsync(ct);
+        response.RbacSummary.PermissionActiveCount = GetStatusCount(permissionGrouped, OrganizationStatus.Active);
+        response.RbacSummary.PermissionInactiveCount = GetStatusCount(permissionGrouped, OrganizationStatus.Inactive);
+        response.RbacSummary.RolePermissionLinkCount = await _db.RolePermissions.AsNoTracking().CountAsync(ct);
     }
 
-    private async Task FillAuditActivityAsync(AdminDashboardOverviewResponse resp, DateTime fromUtc, DateTime toUtcExclusive, int top, CancellationToken ct)
+    /// <summary>Compute current open-workflow counts that are useful for system-level monitoring.</summary>
+    private async Task FillOperationalSnapshotAsync(AdminDashboardOverviewResponse response, CancellationToken ct)
     {
-        var baseQuery = _db.AuditLogs.AsNoTracking()
-            .Where(a => a.CreatedAt >= fromUtc && a.CreatedAt < toUtcExclusive);
+        response.OperationalSnapshot.OpenStoreOrdersCount = await _db.StoreOrders
+            .AsNoTracking()
+            .Where(x =>
+                x.Status != StoreOrderStatus.Cancelled &&
+                x.Status != StoreOrderStatus.ReceivedByStore)
+            .CountAsync(ct);
 
-        resp.AuditActivity.TotalInRange = await baseQuery.CountAsync(ct);
+        response.OperationalSnapshot.ActiveProductionPlansCount = await _db.ProductionPlans
+            .AsNoTracking()
+            .Where(x => x.Status != ProductionPlanStatus.COMPLETED && x.Status != ProductionPlanStatus.CANCELLED)
+            .CountAsync(ct);
 
-        resp.AuditActivity.MostRecentAuditAtUtc = await baseQuery
-            .OrderByDescending(a => a.CreatedAt)
-            .Select(a => (DateTime?)a.CreatedAt)
-            .FirstOrDefaultAsync(ct);
+        response.OperationalSnapshot.OpenDeliveriesCount = await _db.Deliveries
+            .AsNoTracking()
+            .Where(x =>
+                x.Status != DeliveryStatus.Confirmed &&
+                x.Status != DeliveryStatus.Cancelled)
+            .CountAsync(ct);
 
-        resp.AuditActivity.TopActions = await baseQuery
-            .GroupBy(a => a.Action)
-            .Select(g => new NamedCount { Name = g.Key ?? "UNKNOWN", Count = g.Count() })
-            .OrderByDescending(x => x.Count)
-            .ThenBy(x => x.Name)
-            .Take(top)
-            .ToListAsync(ct);
-
-        resp.AuditActivity.TopEntities = await baseQuery
-            .GroupBy(a => string.IsNullOrWhiteSpace(a.EntityName) ? "UNKNOWN" : a.EntityName!)
-            .Select(g => new NamedCount { Name = g.Key, Count = g.Count() })
-            .OrderByDescending(x => x.Count)
-            .ThenBy(x => x.Name)
-            .Take(top)
-            .ToListAsync(ct);
+        response.OperationalSnapshot.PendingReceivingCount = await _db.Deliveries
+            .AsNoTracking()
+            .Where(x => x.Status == DeliveryStatus.Delivered && !x.ReceivingReports.Any())
+            .CountAsync(ct);
     }
 
-    // For entities having Status as string (most of your tables)
-    private static async Task FillStatusWorkloadAsync<T>(
-        StatusWorkloadSummary target,
-        IQueryable<T> source,
-        System.Linq.Expressions.Expression<Func<T, DateTime>> createdAtExpr,
-        System.Linq.Expressions.Expression<Func<T, string>> statusExpr,
-        DateTime fromUtc,
-        DateTime toUtcExclusive,
-        int top,
-        CancellationToken ct)
-        where T : class
+    /// <summary>Aggregate audit activity within the selected CreatedAt UTC window.</summary>
+    private async Task FillAuditActivityAsync(AdminDashboardOverviewResponse response, DateTime fromUtc, DateTime toUtcExclusive, int top, CancellationToken ct)
     {
-        var filtered = source.Where(BuildDatePredicate(createdAtExpr, fromUtc, toUtcExclusive));
-
-        target.TotalInRange = await filtered.CountAsync(ct);
-
-        target.TopStatuses = await filtered
-            .GroupBy(statusExpr)
-            .Select(g => new NamedCount { Name = g.Key ?? "UNKNOWN", Count = g.Count() })
-            .OrderByDescending(x => x.Count)
-            .ThenBy(x => x.Name)
-            .Take(top)
-            .ToListAsync(ct);
-    }
-
-    private async Task FillProductionPlanStatusWorkloadAsync(
-    StatusWorkloadSummary target,
-    DateTime fromUtc,
-    DateTime toUtcExclusive,
-    int top,
-    CancellationToken ct)
-    {
-        var filtered = _db.ProductionPlans.AsNoTracking()
+        var baseQuery = _db.AuditLogs
+            .AsNoTracking()
             .Where(x => x.CreatedAt >= fromUtc && x.CreatedAt < toUtcExclusive);
 
-        target.TotalInRange = await filtered.CountAsync(ct);
+        response.AuditActivity.TotalInRange = await baseQuery.CountAsync(ct);
 
-        // Aggregate ở DB (enum key), ToString() sau khi materialize
-        var rows = await filtered
+        response.AuditActivity.MostRecentAuditAtUtc = await baseQuery
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => (DateTime?)x.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+        response.AuditActivity.TopActions = await baseQuery
+            .GroupBy(x => x.Action)
+            .Select(g => new NamedCount
+            {
+                Name = g.Key ?? "UNKNOWN",
+                Count = g.Count()
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Name)
+            .Take(top)
+            .ToListAsync(ct);
+
+        response.AuditActivity.TopEntities = await baseQuery
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.EntityName) ? "UNKNOWN" : x.EntityName!)
+            .Select(g => new NamedCount
+            {
+                Name = g.Key,
+                Count = g.Count()
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Name)
+            .Take(top)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>Aggregate store-order workload using OrderDate as the business date.</summary>
+    private async Task FillStoreOrderWorkloadAsync(AdminDashboardOverviewResponse response, DateOnly fromDate, DateOnly toDate, int top, CancellationToken ct)
+    {
+        var rows = await _db.StoreOrders
+            .AsNoTracking()
+            .Where(x => x.OrderDate >= fromDate && x.OrderDate <= toDate)
+            .GroupBy(x => x.Status)
+            .Select(g => new NamedCount
+            {
+                Name = g.Key ?? "UNKNOWN",
+                Count = g.Count()
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Name)
+            .Take(top)
+            .ToListAsync(ct);
+
+        response.StoreOrders.TotalInRange = rows.Sum(x => x.Count);
+        response.StoreOrders.TopStatuses = rows;
+    }
+
+    /// <summary>Aggregate delivery workload using DeliveryPlan.PlannedDate as the business date.</summary>
+    private async Task FillDeliveryWorkloadAsync(AdminDashboardOverviewResponse response, DateOnly fromDate, DateOnly toDate, int top, CancellationToken ct)
+    {
+        var rows = await _db.Deliveries
+            .AsNoTracking()
+            .Where(x => x.DeliveryPlan.PlannedDate >= fromDate && x.DeliveryPlan.PlannedDate <= toDate)
+            .GroupBy(x => x.Status)
+            .Select(g => new NamedCount
+            {
+                Name = g.Key ?? "UNKNOWN",
+                Count = g.Count()
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Name)
+            .Take(top)
+            .ToListAsync(ct);
+
+        response.Deliveries.TotalInRange = rows.Sum(x => x.Count);
+        response.Deliveries.TopStatuses = rows;
+    }
+
+    /// <summary>Aggregate production-plan workload using PlanDate as the business date.</summary>
+    private async Task FillProductionPlanStatusWorkloadAsync(AdminDashboardOverviewResponse response, DateOnly fromDate, DateOnly toDate, int top, CancellationToken ct)
+    {
+        var rows = await _db.ProductionPlans
+            .AsNoTracking()
+            .Where(x => x.PlanDate >= fromDate && x.PlanDate <= toDate)
             .GroupBy(x => x.Status)
             .Select(g => new
             {
@@ -256,69 +288,105 @@ public class AdminDashboardService : IAdminDashboardService
                 Count = g.Count()
             })
             .OrderByDescending(x => x.Count)
-            .ThenBy(x => x.Status) // enum sortable
             .Take(top)
             .ToListAsync(ct);
 
-        target.TopStatuses = rows
+        response.ProductionPlans.TotalInRange = rows.Sum(x => x.Count);
+        response.ProductionPlans.TopStatuses = rows
             .Select(x => new NamedCount
             {
-                Name = x.Status.ToString(),
+                Name = x.Status?.ToString() ?? "UNKNOWN",
                 Count = x.Count
             })
             .ToList();
     }
 
-    private static System.Linq.Expressions.Expression<Func<T, bool>> BuildDatePredicate<T>(
-        System.Linq.Expressions.Expression<Func<T, DateTime>> createdAtExpr,
-        DateTime fromUtc,
-        DateTime toUtcExclusive)
+    /// <summary>Aggregate support-request workload using CreatedAt because no business date exists.</summary>
+    private async Task FillSupportRequestWorkloadAsync(AdminDashboardOverviewResponse response, DateTime fromUtc, DateTime toUtcExclusive, int top, CancellationToken ct)
     {
-        var p = createdAtExpr.Parameters[0];
-        var left = createdAtExpr.Body;
+        var rows = await _db.SupportRequests
+            .AsNoTracking()
+            .Where(x => x.CreatedAt >= fromUtc && x.CreatedAt < toUtcExclusive)
+            .GroupBy(x => x.Status)
+            .Select(g => new NamedCount
+            {
+                Name = g.Key ?? "UNKNOWN",
+                Count = g.Count()
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Name)
+            .Take(top)
+            .ToListAsync(ct);
 
-        var ge = System.Linq.Expressions.Expression.GreaterThanOrEqual(left, System.Linq.Expressions.Expression.Constant(fromUtc));
-        var lt = System.Linq.Expressions.Expression.LessThan(left, System.Linq.Expressions.Expression.Constant(toUtcExclusive));
-        var and = System.Linq.Expressions.Expression.AndAlso(ge, lt);
-
-        return System.Linq.Expressions.Expression.Lambda<Func<T, bool>>(and, p);
+        response.SupportRequests.TotalInRange = rows.Sum(x => x.Count);
+        response.SupportRequests.TopStatuses = rows;
     }
 
-    private async Task FillDataFreshnessAsync(AdminDashboardOverviewResponse resp, CancellationToken ct)
+    /// <summary>Read latest timestamps for quick data-freshness validation.</summary>
+    private async Task FillDataFreshnessAsync(AdminDashboardOverviewResponse response, CancellationToken ct)
     {
-        resp.DataFreshness.LatestAuditLogAtUtc = await _db.AuditLogs.AsNoTracking()
+        response.DataFreshness.LatestAuditLogAtUtc = await _db.AuditLogs
+            .AsNoTracking()
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => (DateTime?)x.CreatedAt)
             .FirstOrDefaultAsync(ct);
 
-        resp.DataFreshness.LatestUserUpdatedAtUtc = await _db.Users.AsNoTracking()
+        response.DataFreshness.LatestUserUpdatedAtUtc = await _db.Users
+            .AsNoTracking()
             .OrderByDescending(x => x.UpdatedAt)
             .Select(x => (DateTime?)x.UpdatedAt)
             .FirstOrDefaultAsync(ct);
 
-        resp.DataFreshness.LatestFranchiseUpdatedAtUtc = await _db.Franchises.AsNoTracking()
+        response.DataFreshness.LatestFranchiseUpdatedAtUtc = await _db.Franchises
+            .AsNoTracking()
             .OrderByDescending(x => x.UpdatedAt)
             .Select(x => (DateTime?)x.UpdatedAt)
             .FirstOrDefaultAsync(ct);
 
-        resp.DataFreshness.LatestStoreOrderAtUtc = await _db.StoreOrders.AsNoTracking()
+        response.DataFreshness.LatestCentralKitchenUpdatedAtUtc = await _db.CentralKitchens
+            .AsNoTracking()
+            .OrderByDescending(x => x.UpdatedAt)
+            .Select(x => (DateTime?)x.UpdatedAt)
+            .FirstOrDefaultAsync(ct);
+
+        response.DataFreshness.LatestStoreOrderAtUtc = await _db.StoreOrders
+            .AsNoTracking()
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => (DateTime?)x.CreatedAt)
             .FirstOrDefaultAsync(ct);
 
-        resp.DataFreshness.LatestDeliveryAtUtc = await _db.Deliveries.AsNoTracking()
+        response.DataFreshness.LatestDeliveryAtUtc = await _db.Deliveries
+            .AsNoTracking()
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => (DateTime?)x.CreatedAt)
             .FirstOrDefaultAsync(ct);
 
-        resp.DataFreshness.LatestProductionPlanAtUtc = await _db.ProductionPlans.AsNoTracking()
+        response.DataFreshness.LatestProductionPlanAtUtc = await _db.ProductionPlans
+            .AsNoTracking()
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => (DateTime?)x.CreatedAt)
             .FirstOrDefaultAsync(ct);
 
-        resp.DataFreshness.LatestSupportRequestAtUtc = await _db.SupportRequests.AsNoTracking()
+        response.DataFreshness.LatestSupportRequestAtUtc = await _db.SupportRequests
+            .AsNoTracking()
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => (DateTime?)x.CreatedAt)
             .FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>Return a status count from a grouped result set with case-insensitive matching.</summary>
+    private static int GetStatusCount<T>(IEnumerable<T> rows, string status) where T : class
+    {
+        var statusProperty = typeof(T).GetProperty("Status");
+        var countProperty = typeof(T).GetProperty("Count");
+
+        foreach (var row in rows)
+        {
+            var rowStatus = statusProperty?.GetValue(row) as string;
+            if (string.Equals(rowStatus, status, StringComparison.OrdinalIgnoreCase))
+                return (int)(countProperty?.GetValue(row) ?? 0);
+        }
+
+        return 0;
     }
 }
