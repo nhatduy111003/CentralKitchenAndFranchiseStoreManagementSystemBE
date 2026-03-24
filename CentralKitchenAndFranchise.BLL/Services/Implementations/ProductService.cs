@@ -22,7 +22,7 @@ public class ProductService : IProductService
     }
     public async Task<PagedResult<ProductResponse>> SearchAsync(ProductListQuery query, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
+        RequireCatalogRead();
         query ??= new ProductListQuery();
 
         var page = query.Page <= 0 ? 1 : query.Page;
@@ -82,7 +82,7 @@ public class ProductService : IProductService
 
     public async Task<ProductResponse> GetByIdAsync(int id, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
+        RequireCatalogRead();
 
         if (id <= 0) throw new ArgumentException("id must be a positive integer.");
 
@@ -279,6 +279,19 @@ public class ProductService : IProductService
 
         await _db.SaveChangesAsync(ct);
     }
+
+    private void RequireCatalogRead()
+    {
+        var role = _current.Role;
+        if (role == RoleNames.Admin ||
+            role == RoleNames.Manager ||
+            role == RoleNames.KitchenStaff ||
+            role == RoleNames.StoreStaff)
+            return;
+
+        throw new ForbiddenAccessException("You do not have permission to read product catalog data.");
+    }
+
     private void RequireAdminOrManager()
     {
         var role = _current.Role;
