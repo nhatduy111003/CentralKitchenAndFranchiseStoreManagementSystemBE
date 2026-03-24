@@ -442,7 +442,9 @@ public class ManagerDashboardService : IManagerDashboardService
             {
                 var ingredient = ingredientMap[x.IngredientId];
                 var denominator = x.Waste + x.Out;
-                var wasteRate = denominator <= 0 ? null : Math.Round(x.Waste / denominator, 6);
+                var wasteRate = denominator <= 0
+                    ? (decimal?)null
+                    : Math.Round(x.Waste / denominator, 6);
                 var isExceed = wasteRate.HasValue && ingredient.WasteThreshold > 0 && wasteRate.Value > ingredient.WasteThreshold;
 
                 return new WasteAlertItem
