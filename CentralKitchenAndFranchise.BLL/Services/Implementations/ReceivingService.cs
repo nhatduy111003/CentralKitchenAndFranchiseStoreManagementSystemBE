@@ -431,14 +431,16 @@ public class ReceivingService : IReceivingService
     }
 
     private async Task<Dictionary<int, List<InventoryBatchQuantityResponse>>> LoadAvailableCentralKitchenProductBatchMapAsync(
-        int centralKitchenId,
-        List<int> productIds,
-        CancellationToken ct)
-        {
-            if (productIds.Count == 0)
-                return new();
+    int centralKitchenId,
+    List<int> productIds,
+    CancellationToken ct)
+    {
+        if (productIds.Count == 0)
+            return new();
 
-            var batches = await _db.ProductBatches
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var batches = (await _db.ProductBatches
                 .AsNoTracking()
                 .Include(x => x.Product)
                 .Where(x =>
@@ -446,27 +448,29 @@ public class ReceivingService : IReceivingService
                     x.FranchiseId == null &&
                     productIds.Contains(x.ProductId) &&
                     x.Quantity > 0)
-                .ToListAsync(ct);
+                .ToListAsync(ct))
+            .Where(x => x.IsUsableNonExpired(today))
+            .ToList();
 
-            return batches
-                .GroupBy(x => x.ProductId)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g
-                        .OrderBy(x => x.CalculateExpiredAt() == null)
-                        .ThenBy(x => x.CalculateExpiredAt())
-                        .ThenBy(x => x.CreatedAt)
-                        .ThenBy(x => x.BatchId)
-                        .Select(x => new InventoryBatchQuantityResponse
-                        {
-                            BatchId = x.BatchId,
-                            BatchCode = x.BatchCode,
-                            Quantity = x.Quantity,
-                            CreatedAt = x.CreatedAt,
-                            ExpiredAt = x.CalculateExpiredAt()
-                        })
-                        .ToList());
-        }
+        return batches
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .OrderBy(x => x.CalculateExpiredAt() == null)
+                    .ThenBy(x => x.CalculateExpiredAt())
+                    .ThenBy(x => x.CreatedAt)
+                    .ThenBy(x => x.BatchId)
+                    .Select(x => new InventoryBatchQuantityResponse
+                    {
+                        BatchId = x.BatchId,
+                        BatchCode = x.BatchCode,
+                        Quantity = x.Quantity,
+                        CreatedAt = x.CreatedAt,
+                        ExpiredAt = x.CalculateExpiredAt()
+                    })
+                    .ToList());
+    }
 
     private async Task<Dictionary<int, List<InventoryBatchQuantityResponse>>> LoadAvailableCentralKitchenIngredientBatchMapAsync(
         int centralKitchenId,

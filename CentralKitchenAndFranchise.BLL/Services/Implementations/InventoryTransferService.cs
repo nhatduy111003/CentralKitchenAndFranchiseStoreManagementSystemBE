@@ -58,6 +58,7 @@ public class InventoryTransferService : IInventoryTransferService
             return;
 
         var remaining = item.Quantity;
+        var today = DateOnly.FromDateTime(now);
 
         var sourceBatches = await _db.ProductBatches
             .Include(x => x.Product)
@@ -69,6 +70,7 @@ public class InventoryTransferService : IInventoryTransferService
             .ToListAsync(ct);
 
         sourceBatches = sourceBatches
+            .Where(x => x.IsUsableNonExpired(today))
             .OrderBy(x => x.CalculateExpiredAt() == null)
             .ThenBy(x => x.CalculateExpiredAt())
             .ThenBy(x => x.CreatedAt)
@@ -78,7 +80,7 @@ public class InventoryTransferService : IInventoryTransferService
         var total = sourceBatches.Sum(x => x.Quantity);
         if (total < remaining)
             throw new InvalidOperationException(
-                $"Insufficient central kitchen product stock for productId={item.ProductId}");
+                $"Insufficient usable central kitchen product stock for productId={item.ProductId}");
 
         foreach (var src in sourceBatches)
         {
@@ -151,6 +153,7 @@ public class InventoryTransferService : IInventoryTransferService
     CancellationToken ct)
     {
         var remaining = item.Quantity;
+        var today = DateOnly.FromDateTime(now);
 
         var sourceBatches = await _db.IngredientBatches
             .Include(x => x.Ingredient)
@@ -163,6 +166,7 @@ public class InventoryTransferService : IInventoryTransferService
             .ToListAsync(ct);
 
         sourceBatches = sourceBatches
+            .Where(x => x.IsUsableNonExpired(today))
             .OrderBy(x => x.CalculateExpiredAt() == null)
             .ThenBy(x => x.CalculateExpiredAt())
             .ThenBy(x => x.CreatedAt)
@@ -172,7 +176,7 @@ public class InventoryTransferService : IInventoryTransferService
         var total = sourceBatches.Sum(x => x.Quantity);
         if (total < remaining)
             throw new InvalidOperationException(
-                $"Insufficient central kitchen ingredient stock for ingredientId={item.IngredientId}");
+                $"Insufficient usable central kitchen ingredient stock for ingredientId={item.IngredientId}");
 
         foreach (var src in sourceBatches)
         {

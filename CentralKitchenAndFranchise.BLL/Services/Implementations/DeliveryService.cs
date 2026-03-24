@@ -435,15 +435,19 @@ public class DeliveryService : IDeliveryService
         if (productIds.Count == 0)
             return new();
 
-        var batches = await _db.ProductBatches
-            .AsNoTracking()
-            .Include(x => x.Product)
-            .Where(x =>
-                x.CentralKitchenId == centralKitchenId &&
-                x.FranchiseId == null &&
-                productIds.Contains(x.ProductId) &&
-                x.Quantity > 0)
-            .ToListAsync(ct);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var batches = (await _db.ProductBatches
+                .AsNoTracking()
+                .Include(x => x.Product)
+                .Where(x =>
+                    x.CentralKitchenId == centralKitchenId &&
+                    x.FranchiseId == null &&
+                    productIds.Contains(x.ProductId) &&
+                    x.Quantity > 0)
+                .ToListAsync(ct))
+            .Where(x => x.IsUsableNonExpired(today))
+            .ToList();
 
         return batches
             .GroupBy(x => x.ProductId)
