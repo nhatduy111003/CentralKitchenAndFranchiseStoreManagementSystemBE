@@ -25,5 +25,13 @@ public class StoreOrderItemResponse
     public int ProductId { get; set; }
     public string ProductName { get; set; } = default!;
     public string Unit { get; set; } = default!;
+
+    // quantity originally requested by store
     public decimal Quantity { get; set; }
+
+    // sanitized forward result for store-side display
+    public decimal ForwardedQuantity { get; set; }
+    public decimal DroppedQuantity { get; set; }
+    public bool IsDroppedFromForward { get; set; }
+    public string? DropReason { get; set; }
 }

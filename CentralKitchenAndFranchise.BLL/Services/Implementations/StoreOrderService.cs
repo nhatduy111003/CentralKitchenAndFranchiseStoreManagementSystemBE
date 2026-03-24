@@ -1,5 +1,5 @@
-﻿using System.Text.Json;
-using CentralKitchenAndFranchise.BLL.Exceptions;
+﻿using CentralKitchenAndFranchise.BLL.Exceptions;
+using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
@@ -8,6 +8,7 @@ using CentralKitchenAndFranchise.DTO.Responses.Common;
 using CentralKitchenAndFranchise.DTO.Responses.StoreOrders;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
 
@@ -320,9 +321,19 @@ public class StoreOrderService : IStoreOrderService
             .ThenInclude(i => i.Product)
             .ToListAsync(ct);
 
+        var snapshotMap = await LoadForwardSnapshotMapAsync(ids, ct);
+
         // keep same ordering as ids
         var map = orders.ToDictionary(x => x.StoreOrderId);
-        var result = ids.Where(map.ContainsKey).Select(id => ToDto(map[id])).ToList();
+        var result = ids
+            .Where(map.ContainsKey)
+            .Select(id =>
+            {
+                snapshotMap.TryGetValue(id, out var orderSnapshot);
+                var resolvedSnapshotMap = ResolveForwardSnapshotByProduct(map[id], orderSnapshot);
+                return ToDto(map[id], resolvedSnapshotMap);
+            })
+            .ToList();
 
         return PagedResult<StoreOrderResponse>.Create(result, page, pageSize, total);
     }
@@ -556,11 +567,20 @@ public class StoreOrderService : IStoreOrderService
         if (order is null)
             throw new KeyNotFoundException($"StoreOrder {orderId} not found.");
 
-        return ToDto(order);
+        var snapshotMap = await LoadForwardSnapshotMapAsync(new List<int> { order.StoreOrderId }, ct);
+        snapshotMap.TryGetValue(order.StoreOrderId, out var orderSnapshot);
+
+        var resolvedSnapshotMap = ResolveForwardSnapshotByProduct(order, orderSnapshot);
+        return ToDto(order, resolvedSnapshotMap);
     }
 
-    private static StoreOrderResponse ToDto(StoreOrder order)
-        => new StoreOrderResponse
+    private static StoreOrderResponse ToDto(
+    StoreOrder order,
+    Dictionary<int, ResolvedForwardSnapshotLine>? resolvedSnapshotMap = null)
+    {
+        resolvedSnapshotMap ??= new Dictionary<int, ResolvedForwardSnapshotLine>();
+
+        return new StoreOrderResponse
         {
             StoreOrderId = order.StoreOrderId,
             FranchiseId = order.FranchiseId,
@@ -573,15 +593,26 @@ public class StoreOrderService : IStoreOrderService
             CancelledAt = order.CancelledAt,
             CancelReason = order.CancelReason,
             Items = order.Items
-                .Select(i => new StoreOrderItemResponse
+                .Select(i =>
                 {
-                    ProductId = i.ProductId,
-                    ProductName = i.Product?.Name ?? "(unknown)",
-                    Unit = i.Product?.Unit ?? "",
-                    Quantity = i.Quantity
+                    resolvedSnapshotMap.TryGetValue(i.ProductId, out var resolved);
+
+                    return new StoreOrderItemResponse
+                    {
+                        ProductId = i.ProductId,
+                        ProductName = i.Product?.Name ?? "(unknown)",
+                        Unit = i.Product?.Unit ?? "",
+                        Quantity = i.Quantity,
+
+                        ForwardedQuantity = resolved?.ForwardedQuantity ?? 0m,
+                        DroppedQuantity = resolved?.DroppedQuantity ?? 0m,
+                        IsDroppedFromForward = resolved?.IsDropped ?? false,
+                        DropReason = resolved?.DropReason
+                    };
                 })
                 .ToList()
         };
+    }
 
     private static IncomingOrderResponse ToIncomingDto(StoreOrder order)
     => new IncomingOrderResponse
@@ -607,6 +638,87 @@ public class StoreOrderService : IStoreOrderService
             })
             .ToList()
     };
+
+    private Dictionary<int, ResolvedForwardSnapshotLine> ResolveForwardSnapshotByProduct(
+    StoreOrder order,
+    Dictionary<int, ForwardSnapshotLine>? orderSnapshot)
+    {
+        orderSnapshot ??= new Dictionary<int, ForwardSnapshotLine>();
+
+        return order.Items
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    orderSnapshot.TryGetValue(g.Key, out var snapshot);
+
+                    return StoreOrderForwardSnapshotHelper.Resolve(
+                        order.Status,
+                        g.Key,
+                        g.Sum(x => x.Quantity),
+                        snapshot is not null,
+                        snapshot?.RequestedQuantity ?? 0m,
+                        snapshot?.ForwardedQuantity ?? 0m,
+                        snapshot?.IsDropped ?? false,
+                        snapshot?.DropReason);
+                });
+    }
+
+    private sealed class ForwardSnapshotLine
+    {
+        public int ProductId { get; set; }
+        public decimal RequestedQuantity { get; set; }
+        public decimal ForwardedQuantity { get; set; }
+        public decimal DroppedQuantity { get; set; }
+        public bool IsDropped { get; set; }
+        public string? DropReason { get; set; }
+    }
+
+    private async Task<Dictionary<int, Dictionary<int, ForwardSnapshotLine>>> LoadForwardSnapshotMapAsync(
+        List<int> orderIds,
+        CancellationToken ct)
+    {
+        if (orderIds.Count == 0)
+            return new();
+
+        var lines = await _db.DeliveryProductItems
+            .AsNoTracking()
+            .Include(x => x.Delivery)
+                .ThenInclude(x => x.DeliveryPlan)
+            .Where(x =>
+                x.Delivery.DeliveryPlan.StoreOrderId.HasValue &&
+                orderIds.Contains(x.Delivery.DeliveryPlan.StoreOrderId.Value))
+            .ToListAsync(ct);
+
+        return lines
+            .GroupBy(x => x.Delivery.DeliveryPlan.StoreOrderId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .GroupBy(x => x.ProductId)
+                    .Select(x =>
+                    {
+                        var requested = x.Sum(i => i.RequestedQuantity > 0 ? i.RequestedQuantity : i.Quantity);
+                        var forwarded = x.Sum(i => i.Quantity);
+                        var reasons = x
+                            .Where(i => !string.IsNullOrWhiteSpace(i.DropReason))
+                            .Select(i => i.DropReason!.Trim())
+                            .Distinct()
+                            .ToList();
+
+                        return new ForwardSnapshotLine
+                        {
+                            ProductId = x.Key,
+                            RequestedQuantity = requested,
+                            ForwardedQuantity = forwarded,
+                            DroppedQuantity = Math.Max(requested - forwarded, 0m),
+                            IsDropped = x.Any(i => i.IsDropped),
+                            DropReason = reasons.Count == 0 ? null : string.Join(" | ", reasons)
+                        };
+                    })
+                    .ToDictionary(x => x.ProductId, x => x));
+    }
 
     private async Task AddAuditAsync(string action, int franchiseId, string entityName, int entityId, object? oldObj, object? newObj, string? reason, CancellationToken ct)
     {
