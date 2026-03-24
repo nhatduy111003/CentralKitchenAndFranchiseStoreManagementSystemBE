@@ -63,6 +63,7 @@ public class KitchenOrderService : IKitchenOrderService
             {
                 var availableQty = GetTotalQuantity(availableQtyMap, i.ProductId);
                 snapshotMap.TryGetValue(i.ProductId, out var snapshot);
+                var resolvedSnapshot = ResolveForwardSnapshot(order.Status, i.ProductId, i.Quantity, snapshot);
 
                 return new IncomingOrderDetailItemResponse
                 {
@@ -72,10 +73,19 @@ public class KitchenOrderService : IKitchenOrderService
                     Unit = i.Product?.Unit ?? "",
                     Quantity = i.Quantity,
                     ProductStatus = i.Product?.Status,
-                    ForwardedQuantity = snapshot?.ForwardedQuantity ?? 0m,
-                    DroppedQuantity = snapshot?.DroppedQuantity ?? 0m,
-                    IsDroppedFromForward = snapshot?.IsDropped ?? false,
-                    DropReason = snapshot?.DropReason,
+
+                    ForwardedQuantity = resolvedSnapshot.ForwardedQuantity,
+                    DroppedQuantity = resolvedSnapshot.DroppedQuantity,
+                    IsDroppedFromForward = resolvedSnapshot.IsDropped,
+                    DropReason = resolvedSnapshot.DropReason,
+
+                    HasForwardSnapshot = resolvedSnapshot.HasSnapshot,
+                    IsForwardSnapshotConsistent = resolvedSnapshot.IsConsistent,
+                    ForwardSnapshotWarning = resolvedSnapshot.Warning,
+                    RawForwardSnapshotRequestedQuantity = resolvedSnapshot.RawRequestedQuantity,
+                    RawForwardSnapshotForwardedQuantity = resolvedSnapshot.RawForwardedQuantity,
+                    RawForwardSnapshotDroppedQuantity = resolvedSnapshot.RawDroppedQuantity,
+
                     AvailableInCentralKitchenQuantity = availableQty,
                     IsSufficientInCentralKitchen = availableQty >= i.Quantity,
                     AvailableCentralKitchenBatches = GetBatchList(availableBatchMap, i.ProductId)
@@ -372,6 +382,22 @@ public class KitchenOrderService : IKitchenOrderService
         public string? DropReason { get; set; }
     }
 
+    private sealed class ResolvedForwardSnapshotLine
+    {
+        public bool HasSnapshot { get; set; }
+        public bool IsConsistent { get; set; }
+        public string? Warning { get; set; }
+
+        public decimal RawRequestedQuantity { get; set; }
+        public decimal RawForwardedQuantity { get; set; }
+        public decimal RawDroppedQuantity { get; set; }
+
+        public decimal ForwardedQuantity { get; set; }
+        public decimal DroppedQuantity { get; set; }
+        public bool IsDropped { get; set; }
+        public string? DropReason { get; set; }
+    }
+
     private async Task<List<ForwardPlanLine>> EvaluateForwardPlanAsync(StoreOrder order, CancellationToken ct)
     {
         if (order.Franchise is null)
@@ -384,15 +410,19 @@ public class KitchenOrderService : IKitchenOrderService
             .GroupBy(x => x.ProductId)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
 
-        var productBatches = await _db.ProductBatches
-            .AsNoTracking()
-            .Include(x => x.Product)
-            .Where(x =>
-                x.CentralKitchenId == order.Franchise.CentralKitchenId &&
-                x.FranchiseId == null &&
-                requiredMap.Keys.Contains(x.ProductId) &&
-                x.Quantity > 0)
-            .ToListAsync(ct);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var productBatches = (await _db.ProductBatches
+                .AsNoTracking()
+                .Include(x => x.Product)
+                .Where(x =>
+                    x.CentralKitchenId == order.Franchise.CentralKitchenId &&
+                    x.FranchiseId == null &&
+                    requiredMap.Keys.Contains(x.ProductId) &&
+                    x.Quantity > 0)
+                .ToListAsync(ct))
+            .Where(x => IsUsableNonExpiredProductBatch(x, today))
+            .ToList();
 
         return order.Items
             .OrderBy(x => x.ProductId)
@@ -558,15 +588,19 @@ public class KitchenOrderService : IKitchenOrderService
         if (productIds.Count == 0)
             return new();
 
-        var batches = await _db.ProductBatches
-            .AsNoTracking()
-            .Include(x => x.Product)
-            .Where(x =>
-                x.CentralKitchenId == centralKitchenId &&
-                x.FranchiseId == null &&
-                productIds.Contains(x.ProductId) &&
-                x.Quantity > 0)
-            .ToListAsync(ct);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var batches = (await _db.ProductBatches
+                .AsNoTracking()
+                .Include(x => x.Product)
+                .Where(x =>
+                    x.CentralKitchenId == centralKitchenId &&
+                    x.FranchiseId == null &&
+                    productIds.Contains(x.ProductId) &&
+                    x.Quantity > 0)
+                .ToListAsync(ct))
+            .Where(x => IsUsableNonExpiredProductBatch(x, today))
+            .ToList();
 
         return batches
             .GroupBy(x => x.ProductId)
@@ -586,6 +620,98 @@ public class KitchenOrderService : IKitchenOrderService
                         ExpiredAt = x.CalculateExpiredAt()
                     })
                     .ToList());
+    }
+
+    private static bool IsUsableNonExpiredProductBatch(ProductBatch batch, DateOnly today)
+    {
+        if (batch.Quantity <= 0)
+            return false;
+
+        var expiredAt = batch.CalculateExpiredAt();
+        return expiredAt is null || expiredAt.Value >= today;
+    }
+
+    private static bool ShouldExposeForwardSnapshot(string status)
+        => status is StoreOrderStatus.ForwardedToSupply
+            or StoreOrderStatus.Preparing
+            or StoreOrderStatus.ReadyToDeliver
+            or StoreOrderStatus.InTransit
+            or StoreOrderStatus.Delivered
+            or StoreOrderStatus.ReceivedByStore;
+
+    private static ResolvedForwardSnapshotLine ResolveForwardSnapshot(
+        string orderStatus,
+        int productId,
+        decimal orderQuantity,
+        ForwardSnapshotLine? snapshot)
+    {
+        var shouldExpose = ShouldExposeForwardSnapshot(orderStatus);
+
+        if (snapshot is null)
+        {
+            return new ResolvedForwardSnapshotLine
+            {
+                HasSnapshot = false,
+                IsConsistent = !shouldExpose,
+                Warning = shouldExpose
+                    ? $"Forward snapshot is missing for ProductId={productId} while order status is {orderStatus}."
+                    : null
+            };
+        }
+
+        var resolved = new ResolvedForwardSnapshotLine
+        {
+            HasSnapshot = true,
+            RawRequestedQuantity = snapshot.RequestedQuantity,
+            RawForwardedQuantity = snapshot.ForwardedQuantity,
+            RawDroppedQuantity = snapshot.DroppedQuantity
+        };
+
+        // Có snapshot trước khi order tới stage forward => stale artifact / dữ liệu cũ
+        if (!shouldExpose)
+        {
+            resolved.IsConsistent = false;
+            resolved.Warning = $"Forward snapshot already exists for ProductId={productId} while order status is {orderStatus}.";
+            return resolved;
+        }
+
+        var expectedDropped = Math.Max(snapshot.RequestedQuantity - snapshot.ForwardedQuantity, 0m);
+        string? warning = null;
+
+        if (snapshot.RequestedQuantity <= 0)
+        {
+            warning = $"Forward snapshot requested quantity is invalid for ProductId={productId}.";
+        }
+        else if (snapshot.RequestedQuantity != orderQuantity)
+        {
+            warning = $"Forward snapshot requested quantity ({snapshot.RequestedQuantity}) does not match current order quantity ({orderQuantity}) for ProductId={productId}.";
+        }
+        else if (snapshot.ForwardedQuantity > snapshot.RequestedQuantity)
+        {
+            warning = $"Forward snapshot forwarded quantity ({snapshot.ForwardedQuantity}) exceeds requested quantity ({snapshot.RequestedQuantity}) for ProductId={productId}.";
+        }
+        else if (snapshot.ForwardedQuantity > orderQuantity)
+        {
+            warning = $"Forward snapshot forwarded quantity ({snapshot.ForwardedQuantity}) exceeds current order quantity ({orderQuantity}) for ProductId={productId}.";
+        }
+        else if (snapshot.DroppedQuantity != expectedDropped)
+        {
+            warning = $"Forward snapshot dropped quantity ({snapshot.DroppedQuantity}) does not match expected dropped quantity ({expectedDropped}) for ProductId={productId}.";
+        }
+
+        if (warning is not null)
+        {
+            resolved.IsConsistent = false;
+            resolved.Warning = warning;
+            return resolved;
+        }
+
+        resolved.IsConsistent = true;
+        resolved.ForwardedQuantity = snapshot.ForwardedQuantity;
+        resolved.DroppedQuantity = snapshot.DroppedQuantity;
+        resolved.IsDropped = snapshot.IsDropped;
+        resolved.DropReason = snapshot.DropReason;
+        return resolved;
     }
 
     private static decimal GetTotalQuantity(Dictionary<int, decimal> map, int itemId)

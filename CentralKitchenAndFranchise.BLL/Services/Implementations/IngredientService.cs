@@ -26,7 +26,7 @@ public class IngredientService : IIngredientService
 
     public async Task<PagedResult<IngredientResponse>> SearchAsync(IngredientListQuery query, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
+        RequireCatalogRead();
         var page = query.Page <= 0 ? 1 : query.Page;
         var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
         if (pageSize > 200) pageSize = 200;
@@ -76,7 +76,7 @@ public class IngredientService : IIngredientService
 
     public async Task<IngredientResponse> GetByIdAsync(int id, CancellationToken ct = default)
     {
-        RequireAdminOrManager();
+        RequireCatalogRead();
         var entity = await _uow.Ingredients.GetByIdAsync(id, ct);
         if (entity is null) throw new KeyNotFoundException($"Ingredient {id} not found.");
         return ToDto(entity);
@@ -146,8 +146,6 @@ public class IngredientService : IIngredientService
     public async Task<IngredientResponse> UpdateAsync(int id, UpdateIngredientRequest request, CancellationToken ct = default)
     {
         RequireAdminOrManager();
-
-
 
         var entity = await _uow.Ingredients.GetByIdAsync(id, ct);
         if (entity is null) throw new KeyNotFoundException($"Ingredient {id} not found.");
@@ -295,9 +293,22 @@ public class IngredientService : IIngredientService
         };
     }
 
+    private void RequireCatalogRead()
+    {
+        var role = _current.Role;
+        if (role == RoleNames.Admin ||
+            role == RoleNames.Manager ||
+            role == RoleNames.KitchenStaff ||
+            role == RoleNames.StoreStaff)
+            return;
+
+        throw new ForbiddenAccessException("You do not have permission to read product catalog data.");
+    }
+
     private void RequireAdminOrManager()
     {
-        if (!_current.IsInRole(RoleNames.Admin) && !_current.IsInRole(RoleNames.Manager))
+        var role = _current.Role;
+        if (role != RoleNames.Admin && role != RoleNames.Manager)
             throw new ForbiddenAccessException("Only Admin/Manager can perform this action.");
     }
 

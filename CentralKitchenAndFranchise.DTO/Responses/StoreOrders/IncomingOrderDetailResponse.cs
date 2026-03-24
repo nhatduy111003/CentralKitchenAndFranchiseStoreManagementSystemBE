@@ -48,10 +48,19 @@ public class IncomingOrderDetailItemResponse
     public decimal Quantity { get; set; }
     public string? ProductStatus { get; set; }
 
+    // effective sanitized values for FE main rendering
     public decimal ForwardedQuantity { get; set; }
     public decimal DroppedQuantity { get; set; }
     public bool IsDroppedFromForward { get; set; }
     public string? DropReason { get; set; }
+
+    // raw delivery snapshot data before BE consistency sanitization
+    public bool HasForwardSnapshot { get; set; }
+    public bool IsForwardSnapshotConsistent { get; set; }
+    public string? ForwardSnapshotWarning { get; set; }
+    public decimal RawForwardSnapshotRequestedQuantity { get; set; }
+    public decimal RawForwardSnapshotForwardedQuantity { get; set; }
+    public decimal RawForwardSnapshotDroppedQuantity { get; set; }
 
     public decimal AvailableInCentralKitchenQuantity { get; set; }
     public bool IsSufficientInCentralKitchen { get; set; }
