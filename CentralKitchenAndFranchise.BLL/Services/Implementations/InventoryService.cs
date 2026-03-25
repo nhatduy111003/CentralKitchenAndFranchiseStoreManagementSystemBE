@@ -100,9 +100,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             _db.InventoryMovements.Add(mv);
             await _db.SaveChangesAsync(ct);
 
-            // Gắn ingredient để helper derive expiry hoạt động.
-            batch.Ingredient = ingredient;
-            var expiredAt = batch.CalculateExpiredAt();
+            var expiredAt = CalculateExpiredAt(batch.CreatedAt, ingredient.ShelfLifeDays);
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -629,6 +627,14 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             return value;
         }
 
+        private static DateOnly? CalculateExpiredAt(DateTime createdAtUtc, int shelfLifeDays)
+        {
+            if (shelfLifeDays <= 0)
+                return null;
+
+            return DateOnly.FromDateTime(createdAtUtc.Date.AddDays(shelfLifeDays));
+        }
+
         private static CentralKitchenIngredientBatchResponse MapCentralKitchenIngredientBatch(IngredientBatch batch)
         {
             return new CentralKitchenIngredientBatchResponse
@@ -747,8 +753,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 CreatedAt = now
             };
 
-            batch.Product = product;
-
             _db.ProductBatches.Add(batch);
 
             try
@@ -774,7 +778,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             _db.ProductMovements.Add(mv);
             await _db.SaveChangesAsync(ct);
 
-            var expiredAt = batch.CalculateExpiredAt();
+            var expiredAt = CalculateExpiredAt(batch.CreatedAt, product.ShelfLifeDays);
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -1521,6 +1525,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             var now = DateTime.UtcNow;
             var createdAt = ResolveManualBatchCreatedAt(request.CreatedAtUtc, now);
+            var expiredAt = CalculateExpiredAt(createdAt, ingredient.ShelfLifeDays);
 
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
@@ -1534,8 +1539,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 Quantity = request.Quantity,
                 CreatedAt = createdAt
             };
-
-            batch.Ingredient = ingredient;
 
             _db.IngredientBatches.Add(batch);
 
@@ -1578,7 +1581,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     batch.BatchCode,
                     batch.Quantity,
                     batch.CreatedAt,
-                    ExpiredAt = batch.CalculateExpiredAt()
+                    ExpiredAt = expiredAt
                 }),
                 Reason = mv.Reason,
                 CreatedAt = now
@@ -1587,7 +1590,18 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
 
-            return MapCentralKitchenIngredientBatch(batch);
+            return new CentralKitchenIngredientBatchResponse
+            {
+                BatchId = batch.BatchId,
+                CentralKitchenId = centralKitchenId,
+                IngredientId = batch.IngredientId,
+                IngredientName = ingredient.Name,
+                Unit = ingredient.Unit,
+                BatchCode = batch.BatchCode,
+                Quantity = batch.Quantity,
+                CreatedAt = batch.CreatedAt,
+                ExpiredAt = expiredAt
+            };
         }
 
         public async Task<List<CentralKitchenIngredientBatchResponse>> GetCentralKitchenIngredientBatchesAsync(
@@ -1812,6 +1826,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             var now = DateTime.UtcNow;
             var createdAt = ResolveManualBatchCreatedAt(request.CreatedAtUtc, now);
+            var expiredAt = CalculateExpiredAt(createdAt, product.ShelfLifeDays);
 
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
@@ -1825,8 +1840,6 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 CreatedAt = createdAt,
                 ProductionRunId = null
             };
-
-            batch.Product = product;
 
             _db.ProductBatches.Add(batch);
 
@@ -1845,7 +1858,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 Type = MovementType.In,
                 Quantity = request.Quantity,
                 CreatedByUserId = _current.UserId,
-                Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Manual central kitchen product batch create" : request.Reason.Trim(),
+                Reason = string.IsNullOrWhiteSpace(request.Reason)
+                    ? "Manual central kitchen product batch create"
+                    : request.Reason.Trim(),
                 DeliveryId = null,
                 CreatedAt = now
             };
@@ -1868,7 +1883,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     batch.BatchCode,
                     batch.Quantity,
                     batch.CreatedAt,
-                    ExpiredAt = batch.CalculateExpiredAt()
+                    ExpiredAt = expiredAt
                 }),
                 Reason = mv.Reason,
                 CreatedAt = now
@@ -1877,7 +1892,18 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
 
-            return MapCentralKitchenProductBatch(batch);
+            return new CentralKitchenProductBatchResponse
+            {
+                BatchId = batch.BatchId,
+                CentralKitchenId = centralKitchenId,
+                ProductId = batch.ProductId,
+                ProductName = product.Name,
+                Unit = product.Unit,
+                BatchCode = batch.BatchCode,
+                Quantity = batch.Quantity,
+                CreatedAt = batch.CreatedAt,
+                ExpiredAt = expiredAt
+            };
         }
 
         public async Task<AdjustProductInventoryResponse> AdjustCentralKitchenProductAsync(
