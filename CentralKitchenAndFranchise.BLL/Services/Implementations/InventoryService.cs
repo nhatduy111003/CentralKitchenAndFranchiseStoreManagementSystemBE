@@ -1,14 +1,15 @@
-﻿using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+﻿using CentralKitchenAndFranchise.BLL.Extensions;
+using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
-using CentralKitchenAndFranchise.DTO.Requests;
-using CentralKitchenAndFranchise.DTO.Responses;
 using CentralKitchenAndFranchise.DTO.Constants;
-using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
-using CentralKitchenAndFranchise.BLL.Extensions;
+using CentralKitchenAndFranchise.DTO.Requests;
 using CentralKitchenAndFranchise.DTO.Requests.Ingredients;
-using CentralKitchenAndFranchise.DTO.Responses.Inventory;
 using CentralKitchenAndFranchise.DTO.Requests.Inventory;
+using CentralKitchenAndFranchise.DTO.Responses;
+using CentralKitchenAndFranchise.DTO.Responses.Inventory;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using System.Text.Json;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 {
@@ -38,11 +39,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (request.IngredientId <= 0)
                 throw new ArgumentException("IngredientId must be positive.");
 
-            if (string.IsNullOrWhiteSpace(request.BatchCode))
-                throw new ArgumentException("BatchCode is required.");
-
             if (request.Quantity <= 0)
                 throw new ArgumentException("Quantity must be > 0.");
+
+            var normalizedBatchCode = NormalizeBatchCode(request.BatchCode);
 
             var ingredient = await _db.Ingredients
                 .AsNoTracking()
@@ -50,6 +50,16 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             if (ingredient is null)
                 throw new KeyNotFoundException($"Ingredient {request.IngredientId} not found.");
+
+            var duplicateBatchCode = await FranchiseIngredientBatchCodeExistsAsync(
+                franchiseId,
+                request.IngredientId,
+                normalizedBatchCode,
+                excludeBatchId: null,
+                ct);
+
+            if (duplicateBatchCode)
+                throw new InvalidOperationException("BatchCode already exists for this ingredient in this franchise.");
 
             var now = DateTime.UtcNow;
 
@@ -61,7 +71,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 Type = InventoryOwnerType.Franchise,
                 FranchiseId = franchiseId,
                 CentralKitchenId = null,
-                BatchCode = request.BatchCode.Trim(),
+                BatchCode = normalizedBatchCode,
                 Quantity = request.Quantity,
                 CreatedAt = now
             };
@@ -72,7 +82,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             {
                 await _db.SaveChangesAsync(ct);
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (IsIngredientBatchUniqueViolation(ex))
             {
                 throw new InvalidOperationException("BatchCode already exists for this ingredient in this franchise.");
             }
@@ -90,7 +100,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             _db.InventoryMovements.Add(mv);
             await _db.SaveChangesAsync(ct);
 
-            // Gắn ingredient vào batch để dùng helper CalculateExpiredAt()
+            // Gắn ingredient để helper derive expiry hoạt động.
             batch.Ingredient = ingredient;
             var expiredAt = batch.CalculateExpiredAt();
 
@@ -685,20 +695,19 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         // PRODUCT INBOUND
         // chưa chuyển sang flow derived như ingredient.
         public async Task<ProductInboundResponse> InboundProductAsync(
-        int franchiseId,
-        CreateProductInboundDto request,
-        CancellationToken ct = default)
+            int franchiseId,
+            CreateProductInboundDto request,
+            CancellationToken ct = default)
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
             if (request.ProductId <= 0)
                 throw new ArgumentException("ProductId must be positive.");
 
-            if (string.IsNullOrWhiteSpace(request.BatchCode))
-                throw new ArgumentException("BatchCode is required.");
-
             if (request.Quantity <= 0)
                 throw new ArgumentException("Quantity must be > 0.");
+
+            var normalizedBatchCode = NormalizeBatchCode(request.BatchCode);
 
             var product = await _db.Products
                 .AsNoTracking()
@@ -714,6 +723,16 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 throw new InvalidOperationException(
                     $"Product {request.ProductId} has invalid ShelfLifeDays={product.ShelfLifeDays}. Product master data must be fixed.");
 
+            var duplicateBatchCode = await FranchiseProductBatchCodeExistsAsync(
+                franchiseId,
+                request.ProductId,
+                normalizedBatchCode,
+                excludeBatchId: null,
+                ct);
+
+            if (duplicateBatchCode)
+                throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
+
             var now = DateTime.UtcNow;
 
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
@@ -723,12 +742,11 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 ProductId = request.ProductId,
                 FranchiseId = franchiseId,
                 CentralKitchenId = null,
-                BatchCode = request.BatchCode.Trim(),
+                BatchCode = normalizedBatchCode,
                 Quantity = request.Quantity,
                 CreatedAt = now
             };
 
-            // gắn navigation để helper derive expiry hoạt động
             batch.Product = product;
 
             _db.ProductBatches.Add(batch);
@@ -737,7 +755,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             {
                 await _db.SaveChangesAsync(ct);
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (IsProductBatchUniqueViolation(ex))
             {
                 throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
             }
@@ -805,121 +823,121 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         }
 
         public async Task<AdjustProductInventoryResponse> AdjustProductAsync(
-    int franchiseId,
-    AdjustProductInventoryDto request,
-    CancellationToken ct = default)
-        {
-            await _access.EnsureCanAccessAsync(franchiseId, ct);
-
-            if (request.BatchId <= 0)
-                throw new ArgumentException("BatchId must be positive.");
-
-            if (string.IsNullOrWhiteSpace(request.Reason))
-                throw new ArgumentException("Reason is required.");
-
-            if (request.DeltaQuantity == 0)
-                throw new ArgumentException("DeltaQuantity must not be 0.");
-
-            var type = (request.Type ?? "").Trim().ToUpperInvariant();
-            if (type is not ("ADJUST" or "WASTE"))
-                throw new ArgumentException("Type must be ADJUST or WASTE.");
-
-            if (type == "WASTE" && request.DeltaQuantity >= 0)
-                throw new ArgumentException("WASTE requires DeltaQuantity < 0.");
-
-            var batch = await _db.ProductBatches
-                .Include(b => b.Product)
-                .FirstOrDefaultAsync(b =>
-                    b.BatchId == request.BatchId &&
-                    b.FranchiseId == franchiseId &&
-                    b.CentralKitchenId == null,
-                    ct);
-
-            if (batch is null)
-                throw new KeyNotFoundException($"ProductBatch {request.BatchId} not found.");
-
-            var before = batch.Quantity;
-            var after = before + request.DeltaQuantity;
-
-            if (after < 0)
-                throw new InvalidOperationException("Adjustment would make inventory negative.");
-
-            var now = DateTime.UtcNow;
-            var expiredAt = batch.CalculateExpiredAt();
-
-            await using var tx = await _db.Database.BeginTransactionAsync(ct);
-
-            batch.Quantity = after;
-
-            var mv = new ProductMovement
-            {
-                BatchId = batch.BatchId,
-                Type = type,
-                Quantity = Math.Abs(request.DeltaQuantity),
-                CreatedByUserId = _current.UserId,
-                Reason = BuildReason(request.Reason, request.Reference),
-                DeliveryId = null,
-                CreatedAt = now
-            };
-
-            _db.ProductMovements.Add(mv);
-
-            _db.AuditLogs.Add(new AuditLog
-            {
-                UserId = _current.UserId,
-                FranchiseId = franchiseId,
-                Action = type == "WASTE" ? "FRANCHISE_PRODUCT_WASTE" : "FRANCHISE_PRODUCT_ADJUST",
-                EntityName = "ProductBatch",
-                EntityId = batch.BatchId,
-                OldDataJson = JsonSerializer.Serialize(new
+            int franchiseId,
+            AdjustProductInventoryDto request,
+            CancellationToken ct = default)
                 {
-                    batch.BatchId,
-                    batch.ProductId,
-                    batch.BatchCode,
-                    batch.CreatedAt,
-                    ExpiredAt = expiredAt,
-                    Quantity = before
-                }),
-                NewDataJson = JsonSerializer.Serialize(new
-                {
-                    batch.BatchId,
-                    batch.ProductId,
-                    batch.BatchCode,
-                    batch.CreatedAt,
-                    ExpiredAt = expiredAt,
-                    Quantity = after,
-                    Movement = new
+                    await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+                    if (request.BatchId <= 0)
+                        throw new ArgumentException("BatchId must be positive.");
+
+                    if (string.IsNullOrWhiteSpace(request.Reason))
+                        throw new ArgumentException("Reason is required.");
+
+                    if (request.DeltaQuantity == 0)
+                        throw new ArgumentException("DeltaQuantity must not be 0.");
+
+                    var type = (request.Type ?? "").Trim().ToUpperInvariant();
+                    if (type is not ("ADJUST" or "WASTE"))
+                        throw new ArgumentException("Type must be ADJUST or WASTE.");
+
+                    if (type == "WASTE" && request.DeltaQuantity >= 0)
+                        throw new ArgumentException("WASTE requires DeltaQuantity < 0.");
+
+                    var batch = await _db.ProductBatches
+                        .Include(b => b.Product)
+                        .FirstOrDefaultAsync(b =>
+                            b.BatchId == request.BatchId &&
+                            b.FranchiseId == franchiseId &&
+                            b.CentralKitchenId == null,
+                            ct);
+
+                    if (batch is null)
+                        throw new KeyNotFoundException($"ProductBatch {request.BatchId} not found.");
+
+                    var before = batch.Quantity;
+                    var after = before + request.DeltaQuantity;
+
+                    if (after < 0)
+                        throw new InvalidOperationException("Adjustment would make inventory negative.");
+
+                    var now = DateTime.UtcNow;
+                    var expiredAt = batch.CalculateExpiredAt();
+
+                    await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+                    batch.Quantity = after;
+
+                    var mv = new ProductMovement
                     {
-                        mv.Type,
-                        Delta = request.DeltaQuantity,
-                        mv.CreatedAt,
-                        mv.Reason
-                    }
-                }),
-                Reason = mv.Reason,
-                CreatedAt = now
-            });
+                        BatchId = batch.BatchId,
+                        Type = type,
+                        Quantity = Math.Abs(request.DeltaQuantity),
+                        CreatedByUserId = _current.UserId,
+                        Reason = BuildReason(request.Reason, request.Reference),
+                        DeliveryId = null,
+                        CreatedAt = now
+                    };
 
-            await _db.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
+                    _db.ProductMovements.Add(mv);
 
-            return new AdjustProductInventoryResponse
-            {
-                BatchId = batch.BatchId,
-                MovementId = mv.MovementId,
-                FranchiseId = franchiseId,
-                CentralKitchenId = null,
-                ProductId = batch.ProductId,
-                BatchCode = batch.BatchCode,
-                ExpiredAt = expiredAt,
-                BeforeQuantity = before,
-                DeltaQuantity = request.DeltaQuantity,
-                AfterQuantity = after,
-                Type = type,
-                Reason = mv.Reason ?? "",
-                CreatedAt = now
-            };
-        }
+                    _db.AuditLogs.Add(new AuditLog
+                    {
+                        UserId = _current.UserId,
+                        FranchiseId = franchiseId,
+                        Action = type == "WASTE" ? "FRANCHISE_PRODUCT_WASTE" : "FRANCHISE_PRODUCT_ADJUST",
+                        EntityName = "ProductBatch",
+                        EntityId = batch.BatchId,
+                        OldDataJson = JsonSerializer.Serialize(new
+                        {
+                            batch.BatchId,
+                            batch.ProductId,
+                            batch.BatchCode,
+                            batch.CreatedAt,
+                            ExpiredAt = expiredAt,
+                            Quantity = before
+                        }),
+                        NewDataJson = JsonSerializer.Serialize(new
+                        {
+                            batch.BatchId,
+                            batch.ProductId,
+                            batch.BatchCode,
+                            batch.CreatedAt,
+                            ExpiredAt = expiredAt,
+                            Quantity = after,
+                            Movement = new
+                            {
+                                mv.Type,
+                                Delta = request.DeltaQuantity,
+                                mv.CreatedAt,
+                                mv.Reason
+                            }
+                        }),
+                        Reason = mv.Reason,
+                        CreatedAt = now
+                    });
+
+                    await _db.SaveChangesAsync(ct);
+                    await tx.CommitAsync(ct);
+
+                    return new AdjustProductInventoryResponse
+                    {
+                        BatchId = batch.BatchId,
+                        MovementId = mv.MovementId,
+                        FranchiseId = franchiseId,
+                        CentralKitchenId = null,
+                        ProductId = batch.ProductId,
+                        BatchCode = batch.BatchCode,
+                        ExpiredAt = expiredAt,
+                        BeforeQuantity = before,
+                        DeltaQuantity = request.DeltaQuantity,
+                        AfterQuantity = after,
+                        Type = type,
+                        Reason = mv.Reason ?? "",
+                        CreatedAt = now
+                    };
+                }
 
         public async Task<List<FranchiseIngredientBatchResponse>> GetFranchiseIngredientBatchesAsync(
             int franchiseId,
@@ -986,8 +1004,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
-            if (string.IsNullOrWhiteSpace(request.BatchCode))
-                throw new ArgumentException("BatchCode is required.");
+            var normalizedBatchCode = NormalizeBatchCode(request.BatchCode);
 
             var batch = await _db.IngredientBatches
                 .Include(x => x.Ingredient)
@@ -1011,25 +1028,27 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (movements.Count > 1)
                 throw new InvalidOperationException("BatchCode can only be changed before follow-up movements happen.");
 
-            var newCode = request.BatchCode.Trim();
-
-            var duplicate = await _db.IngredientBatches
-                .AnyAsync(x =>
-                    x.BatchId != batchId &&
-                    x.Type == InventoryOwnerType.Franchise &&
-                    x.FranchiseId == franchiseId &&
-                    x.CentralKitchenId == null &&
-                    x.IngredientId == batch.IngredientId &&
-                    x.BatchCode == newCode,
-                    ct);
+            var duplicate = await FranchiseIngredientBatchCodeExistsAsync(
+                franchiseId,
+                batch.IngredientId,
+                normalizedBatchCode,
+                excludeBatchId: batchId,
+                ct);
 
             if (duplicate)
                 throw new InvalidOperationException("BatchCode already exists for this ingredient in this franchise.");
 
             var oldCode = batch.BatchCode;
-            batch.BatchCode = newCode;
+            batch.BatchCode = normalizedBatchCode;
 
-            await _db.SaveChangesAsync(ct);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (IsIngredientBatchUniqueViolation(ex))
+            {
+                throw new InvalidOperationException("BatchCode already exists for this ingredient in this franchise.");
+            }
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -1171,8 +1190,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
-            if (string.IsNullOrWhiteSpace(request.BatchCode))
-                throw new ArgumentException("BatchCode is required.");
+            var normalizedBatchCode = NormalizeBatchCode(request.BatchCode);
 
             var batch = await _db.ProductBatches
                 .Include(x => x.Product)
@@ -1195,24 +1213,27 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (movements.Count > 1)
                 throw new InvalidOperationException("BatchCode can only be changed before follow-up movements happen.");
 
-            var newCode = request.BatchCode.Trim();
-
-            var duplicate = await _db.ProductBatches
-                .AnyAsync(x =>
-                    x.BatchId != batchId &&
-                    x.FranchiseId == franchiseId &&
-                    x.CentralKitchenId == null &&
-                    x.ProductId == batch.ProductId &&
-                    x.BatchCode == newCode,
-                    ct);
+            var duplicate = await FranchiseProductBatchCodeExistsAsync(
+                franchiseId,
+                batch.ProductId,
+                normalizedBatchCode,
+                excludeBatchId: batchId,
+                ct);
 
             if (duplicate)
                 throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
 
             var oldCode = batch.BatchCode;
-            batch.BatchCode = newCode;
+            batch.BatchCode = normalizedBatchCode;
 
-            await _db.SaveChangesAsync(ct);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (IsProductBatchUniqueViolation(ex))
+            {
+                throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
+            }
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -1473,11 +1494,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (request.IngredientId <= 0)
                 throw new ArgumentException("IngredientId must be positive.");
 
-            if (string.IsNullOrWhiteSpace(request.BatchCode))
-                throw new ArgumentException("BatchCode is required.");
-
             if (request.Quantity <= 0)
                 throw new ArgumentException("Quantity must be > 0.");
+
+            var normalizedBatchCode = NormalizeBatchCode(request.BatchCode);
 
             var ingredient = await _db.Ingredients
                 .AsNoTracking()
@@ -1488,6 +1508,16 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             if (!string.Equals(ingredient.Status, IngredientStatus.Active, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException($"Ingredient {request.IngredientId} is not ACTIVE.");
+
+            var duplicateBatchCode = await CentralKitchenIngredientBatchCodeExistsAsync(
+                centralKitchenId,
+                request.IngredientId,
+                normalizedBatchCode,
+                excludeBatchId: null,
+                ct);
+
+            if (duplicateBatchCode)
+                throw new InvalidOperationException("BatchCode already exists for this ingredient in this central kitchen.");
 
             var now = DateTime.UtcNow;
             var createdAt = ResolveManualBatchCreatedAt(request.CreatedAtUtc, now);
@@ -1500,7 +1530,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 Type = InventoryOwnerType.CentralKitchen,
                 FranchiseId = null,
                 CentralKitchenId = centralKitchenId,
-                BatchCode = request.BatchCode.Trim(),
+                BatchCode = normalizedBatchCode,
                 Quantity = request.Quantity,
                 CreatedAt = createdAt
             };
@@ -1513,7 +1543,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             {
                 await _db.SaveChangesAsync(ct);
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (IsIngredientBatchUniqueViolation(ex))
             {
                 throw new InvalidOperationException("BatchCode already exists for this ingredient in this central kitchen.");
             }
@@ -1524,7 +1554,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 Type = InventoryMovementType.In,
                 Quantity = request.Quantity,
                 CreatedByUserId = _current.UserId,
-                Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Manual central kitchen ingredient batch create" : request.Reason.Trim(),
+                Reason = string.IsNullOrWhiteSpace(request.Reason)
+                    ? "Manual central kitchen ingredient batch create"
+                    : request.Reason.Trim(),
                 CreatedAt = now
             };
 
@@ -1618,11 +1650,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             int batchId,
             UpdateBatchCodeRequest request,
             CancellationToken ct = default)
-            {
+        {
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
-            if (string.IsNullOrWhiteSpace(request.BatchCode))
-                throw new ArgumentException("BatchCode is required.");
+            var normalizedBatchCode = NormalizeBatchCode(request.BatchCode);
 
             var batch = await _db.IngredientBatches
                 .Include(x => x.Ingredient)
@@ -1641,14 +1672,24 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (movementCount > 1)
                 throw new InvalidOperationException("BatchCode can only be changed before any follow-up movements happen.");
 
+            var duplicate = await CentralKitchenIngredientBatchCodeExistsAsync(
+                centralKitchenId,
+                batch.IngredientId,
+                normalizedBatchCode,
+                excludeBatchId: batchId,
+                ct);
+
+            if (duplicate)
+                throw new InvalidOperationException("BatchCode already exists for this ingredient in this central kitchen.");
+
             var oldCode = batch.BatchCode;
-            batch.BatchCode = request.BatchCode.Trim();
+            batch.BatchCode = normalizedBatchCode;
 
             try
             {
                 await _db.SaveChangesAsync(ct);
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (IsIngredientBatchUniqueViolation(ex))
             {
                 throw new InvalidOperationException("BatchCode already exists for this ingredient in this central kitchen.");
             }
@@ -1740,11 +1781,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (request.ProductId <= 0)
                 throw new ArgumentException("ProductId must be positive.");
 
-            if (string.IsNullOrWhiteSpace(request.BatchCode))
-                throw new ArgumentException("BatchCode is required.");
-
             if (request.Quantity <= 0)
                 throw new ArgumentException("Quantity must be > 0.");
+
+            var normalizedBatchCode = NormalizeBatchCode(request.BatchCode);
 
             var product = await _db.Products
                 .AsNoTracking()
@@ -1760,6 +1800,16 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 throw new InvalidOperationException(
                     $"Product {request.ProductId} has invalid ShelfLifeDays={product.ShelfLifeDays}. Product master data must be fixed.");
 
+            var duplicateBatchCode = await CentralKitchenProductBatchCodeExistsAsync(
+                centralKitchenId,
+                request.ProductId,
+                normalizedBatchCode,
+                excludeBatchId: null,
+                ct);
+
+            if (duplicateBatchCode)
+                throw new InvalidOperationException("BatchCode already exists for this product in this central kitchen.");
+
             var now = DateTime.UtcNow;
             var createdAt = ResolveManualBatchCreatedAt(request.CreatedAtUtc, now);
 
@@ -1770,7 +1820,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 ProductId = request.ProductId,
                 FranchiseId = null,
                 CentralKitchenId = centralKitchenId,
-                BatchCode = request.BatchCode.Trim(),
+                BatchCode = normalizedBatchCode,
                 Quantity = request.Quantity,
                 CreatedAt = createdAt,
                 ProductionRunId = null
@@ -1784,7 +1834,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             {
                 await _db.SaveChangesAsync(ct);
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (IsProductBatchUniqueViolation(ex))
             {
                 throw new InvalidOperationException("BatchCode already exists for this product in this central kitchen.");
             }
@@ -2010,8 +2060,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         {
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
-            if (string.IsNullOrWhiteSpace(request.BatchCode))
-                throw new ArgumentException("BatchCode is required.");
+            var normalizedBatchCode = NormalizeBatchCode(request.BatchCode);
 
             var batch = await _db.ProductBatches
                 .Include(x => x.Product)
@@ -2030,14 +2079,24 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (movementCount > 1)
                 throw new InvalidOperationException("BatchCode can only be changed before any follow-up movements happen.");
 
+            var duplicate = await CentralKitchenProductBatchCodeExistsAsync(
+                centralKitchenId,
+                batch.ProductId,
+                normalizedBatchCode,
+                excludeBatchId: batchId,
+                ct);
+
+            if (duplicate)
+                throw new InvalidOperationException("BatchCode already exists for this product in this central kitchen.");
+
             var oldCode = batch.BatchCode;
-            batch.BatchCode = request.BatchCode.Trim();
+            batch.BatchCode = normalizedBatchCode;
 
             try
             {
                 await _db.SaveChangesAsync(ct);
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (IsProductBatchUniqueViolation(ex))
             {
                 throw new InvalidOperationException("BatchCode already exists for this product in this central kitchen.");
             }
@@ -2116,6 +2175,109 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
+        }
+
+        //Helpers
+
+        // Chuẩn hoá batch code để validate và lưu nhất quán.
+        private static string NormalizeBatchCode(string batchCode)
+        {
+            if (string.IsNullOrWhiteSpace(batchCode))
+                throw new ArgumentException("BatchCode is required.");
+
+            return batchCode.Trim().ToUpperInvariant();
+        }
+
+        // Kiểm tra duplicate ingredient batch trong scope franchise.
+        private Task<bool> FranchiseIngredientBatchCodeExistsAsync(
+            int franchiseId,
+            int ingredientId,
+            string normalizedBatchCode,
+            int? excludeBatchId,
+            CancellationToken ct)
+        {
+            return _db.IngredientBatches.AnyAsync(x =>
+                x.Type == InventoryOwnerType.Franchise &&
+                x.FranchiseId == franchiseId &&
+                x.CentralKitchenId == null &&
+                x.IngredientId == ingredientId &&
+                x.BatchCode == normalizedBatchCode &&
+                (!excludeBatchId.HasValue || x.BatchId != excludeBatchId.Value),
+                ct);
+        }
+
+        // Kiểm tra duplicate ingredient batch trong scope central kitchen.
+        private Task<bool> CentralKitchenIngredientBatchCodeExistsAsync(
+            int centralKitchenId,
+            int ingredientId,
+            string normalizedBatchCode,
+            int? excludeBatchId,
+            CancellationToken ct)
+        {
+            return _db.IngredientBatches.AnyAsync(x =>
+                x.Type == InventoryOwnerType.CentralKitchen &&
+                x.CentralKitchenId == centralKitchenId &&
+                x.FranchiseId == null &&
+                x.IngredientId == ingredientId &&
+                x.BatchCode == normalizedBatchCode &&
+                (!excludeBatchId.HasValue || x.BatchId != excludeBatchId.Value),
+                ct);
+        }
+
+        // Chỉ nhận diện duplicate khi DB thật sự trả unique violation đúng index ingredient batch.
+        private static bool IsIngredientBatchUniqueViolation(DbUpdateException ex)
+        {
+            return ex.InnerException is PostgresException pg &&
+                   pg.SqlState == PostgresErrorCodes.UniqueViolation &&
+                   (
+                       string.Equals(pg.ConstraintName, "UX_ingredient_batches_ingredient_franchise_batchcode", StringComparison.Ordinal) ||
+                       string.Equals(pg.ConstraintName, "UX_ingredient_batches_ingredient_ck_batchcode", StringComparison.Ordinal)
+                   );
+        }
+
+        // Kiểm tra duplicate product batch trong scope franchise.
+        private Task<bool> FranchiseProductBatchCodeExistsAsync(
+            int franchiseId,
+            int productId,
+            string normalizedBatchCode,
+            int? excludeBatchId,
+            CancellationToken ct)
+        {
+            return _db.ProductBatches.AnyAsync(x =>
+                x.FranchiseId == franchiseId &&
+                x.CentralKitchenId == null &&
+                x.ProductId == productId &&
+                x.BatchCode == normalizedBatchCode &&
+                (!excludeBatchId.HasValue || x.BatchId != excludeBatchId.Value),
+                ct);
+        }
+
+        // Kiểm tra duplicate product batch trong scope central kitchen.
+        private Task<bool> CentralKitchenProductBatchCodeExistsAsync(
+            int centralKitchenId,
+            int productId,
+            string normalizedBatchCode,
+            int? excludeBatchId,
+            CancellationToken ct)
+        {
+            return _db.ProductBatches.AnyAsync(x =>
+                x.CentralKitchenId == centralKitchenId &&
+                x.FranchiseId == null &&
+                x.ProductId == productId &&
+                x.BatchCode == normalizedBatchCode &&
+                (!excludeBatchId.HasValue || x.BatchId != excludeBatchId.Value),
+                ct);
+        }
+
+        // Chỉ nhận diện duplicate khi DB thật sự trả unique violation đúng index product batch.
+        private static bool IsProductBatchUniqueViolation(DbUpdateException ex)
+        {
+            return ex.InnerException is PostgresException pg &&
+                   pg.SqlState == PostgresErrorCodes.UniqueViolation &&
+                   (
+                       string.Equals(pg.ConstraintName, "UX_product_batches_product_franchise_batchcode", StringComparison.Ordinal) ||
+                       string.Equals(pg.ConstraintName, "UX_product_batches_product_ck_batchcode", StringComparison.Ordinal)
+                   );
         }
     }
     }
