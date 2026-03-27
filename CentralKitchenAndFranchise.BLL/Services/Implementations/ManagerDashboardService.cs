@@ -177,7 +177,7 @@ public class ManagerDashboardService : IManagerDashboardService
             .ToDictionary(x => x.Status ?? "UNKNOWN", x => x.Count, StringComparer.OrdinalIgnoreCase);
 
         response.DeliveryStatusSummary.DeliveredCount = rows
-            .Where(x => string.Equals(x.Status, DeliveryStatus.Delivered, StringComparison.OrdinalIgnoreCase))
+            .Where(x => IsDeliveredOrConfirmed(x.Status))
             .Sum(x => x.Count);
 
         response.DeliveryStatusSummary.PendingCount = rows
@@ -234,9 +234,7 @@ public class ManagerDashboardService : IManagerDashboardService
         }
 
         var delivered = deliveries
-            .Where(x =>
-                string.Equals(x.Status, DeliveryStatus.Delivered, StringComparison.OrdinalIgnoreCase) &&
-                x.DeliveredAt.HasValue)
+            .Where(x => IsDeliveredOrConfirmed(x.Status) && x.DeliveredAt.HasValue)
             .ToList();
 
         var onTimeDeliveredCount = delivered.Count(x =>
@@ -480,5 +478,11 @@ public class ManagerDashboardService : IManagerDashboardService
             .FirstOrDefaultAsync(ct);
 
         return int.TryParse(raw, out var days) ? days : 0;
+    }
+
+    private static bool IsDeliveredOrConfirmed(string? status)
+    {
+        return string.Equals(status, DeliveryStatus.Delivered, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(status, DeliveryStatus.Confirmed, StringComparison.OrdinalIgnoreCase);
     }
 }
