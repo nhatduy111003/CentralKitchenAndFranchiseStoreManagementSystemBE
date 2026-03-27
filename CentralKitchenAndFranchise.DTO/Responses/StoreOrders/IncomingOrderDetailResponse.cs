@@ -35,6 +35,7 @@ public class IncomingOrderDetailResponse
     public string? ForwardNote { get; set; }
 
     public List<IncomingOrderDetailItemResponse> Items { get; set; } = new();
+    public List<IncomingOrderDetailIngredientItemResponse> IngredientItems { get; set; } = new();
 }
 
 public class IncomingOrderDetailItemResponse
@@ -44,17 +45,41 @@ public class IncomingOrderDetailItemResponse
     public string? Sku { get; set; }
     public string Unit { get; set; } = default!;
 
-    // original locked order quantity
     public decimal Quantity { get; set; }
     public string? ProductStatus { get; set; }
 
-    // effective sanitized values for FE main rendering
     public decimal ForwardedQuantity { get; set; }
     public decimal DroppedQuantity { get; set; }
     public bool IsDroppedFromForward { get; set; }
     public string? DropReason { get; set; }
 
-    // raw delivery snapshot data before BE consistency sanitization
+    public bool HasForwardSnapshot { get; set; }
+    public bool IsForwardSnapshotConsistent { get; set; }
+    public string? ForwardSnapshotWarning { get; set; }
+    public decimal RawForwardSnapshotRequestedQuantity { get; set; }
+    public decimal RawForwardSnapshotForwardedQuantity { get; set; }
+    public decimal RawForwardSnapshotDroppedQuantity { get; set; }
+
+    public decimal AvailableInCentralKitchenQuantity { get; set; }
+    public bool IsSufficientInCentralKitchen { get; set; }
+
+    public List<InventoryBatchQuantityResponse> AvailableCentralKitchenBatches { get; set; } = new();
+}
+
+public class IncomingOrderDetailIngredientItemResponse
+{
+    public int IngredientId { get; set; }
+    public string IngredientName { get; set; } = default!;
+    public string Unit { get; set; } = default!;
+
+    public decimal Quantity { get; set; }
+    public string? IngredientStatus { get; set; }
+
+    public decimal ForwardedQuantity { get; set; }
+    public decimal DroppedQuantity { get; set; }
+    public bool IsDroppedFromForward { get; set; }
+    public string? DropReason { get; set; }
+
     public bool HasForwardSnapshot { get; set; }
     public bool IsForwardSnapshotConsistent { get; set; }
     public string? ForwardSnapshotWarning { get; set; }

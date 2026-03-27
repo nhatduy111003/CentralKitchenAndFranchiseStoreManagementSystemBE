@@ -27,6 +27,7 @@ public class SupplyOrderQueueItemResponse
     public string? ProcessingNote { get; set; }
 
     public List<SupplyOrderQueueItemLineResponse> Items { get; set; } = new();
+    public List<SupplyOrderQueueIngredientLineResponse> IngredientItems { get; set; } = new();
 }
 
 public class SupplyOrderQueueItemLineResponse
@@ -36,16 +37,34 @@ public class SupplyOrderQueueItemLineResponse
     public string? Sku { get; set; }
     public string Unit { get; set; } = default!;
 
-    // original locked order quantity
     public decimal Quantity { get; set; }
 
-    // effective sanitized values for FE main rendering
     public decimal ForwardedQuantity { get; set; }
     public decimal DroppedQuantity { get; set; }
     public bool IsDroppedFromForward { get; set; }
     public string? DropReason { get; set; }
 
-    // debug / diagnostic snapshot info
+    public bool HasForwardSnapshot { get; set; }
+    public bool IsForwardSnapshotConsistent { get; set; }
+    public string? ForwardSnapshotWarning { get; set; }
+    public decimal RawForwardSnapshotRequestedQuantity { get; set; }
+    public decimal RawForwardSnapshotForwardedQuantity { get; set; }
+    public decimal RawForwardSnapshotDroppedQuantity { get; set; }
+}
+
+public class SupplyOrderQueueIngredientLineResponse
+{
+    public int IngredientId { get; set; }
+    public string IngredientName { get; set; } = default!;
+    public string Unit { get; set; } = default!;
+
+    public decimal Quantity { get; set; }
+
+    public decimal ForwardedQuantity { get; set; }
+    public decimal DroppedQuantity { get; set; }
+    public bool IsDroppedFromForward { get; set; }
+    public string? DropReason { get; set; }
+
     public bool HasForwardSnapshot { get; set; }
     public bool IsForwardSnapshotConsistent { get; set; }
     public string? ForwardSnapshotWarning { get; set; }

@@ -19,12 +19,21 @@ public class IncomingOrderResponse
     public string? CancelReason { get; set; }
 
     public List<IncomingOrderItemResponse> Items { get; set; } = new();
+    public List<IncomingOrderIngredientItemResponse> IngredientItems { get; set; } = new();
 }
 
 public class IncomingOrderItemResponse
 {
     public int ProductId { get; set; }
     public string ProductName { get; set; } = default!;
+    public string Unit { get; set; } = default!;
+    public decimal Quantity { get; set; }
+}
+
+public class IncomingOrderIngredientItemResponse
+{
+    public int IngredientId { get; set; }
+    public string IngredientName { get; set; } = default!;
     public string Unit { get; set; } = default!;
     public decimal Quantity { get; set; }
 }

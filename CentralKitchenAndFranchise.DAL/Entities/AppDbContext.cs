@@ -137,8 +137,8 @@ namespace CentralKitchenAndFranchise.DAL.Entities
         public DbSet<StoreCatalog> StoreCatalogs => Set<StoreCatalog>();
         public DbSet<StoreOrder> StoreOrders => Set<StoreOrder>();
         public DbSet<StoreOrderItem> StoreOrderItems => Set<StoreOrderItem>();
+        public DbSet<StoreOrderIngredientItem> StoreOrderIngredientItems => Set<StoreOrderIngredientItem>();
         public DbSet<StoreOrderHistory> StoreOrderHistories => Set<StoreOrderHistory>();
-
         public DbSet<DemandAggregation> DemandAggregations => Set<DemandAggregation>();
         public DbSet<DemandItem> DemandItems => Set<DemandItem>();
         public DbSet<Allocation> Allocations => Set<Allocation>();
@@ -279,6 +279,30 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .WithMany(x => x.Items)
                     .HasForeignKey(x => x.StoreOrderId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                e.HasOne(x => x.Product)
+                    .WithMany(x => x.StoreOrderItems)
+                    .HasForeignKey(x => x.ProductId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<StoreOrderIngredientItem>(e =>
+            {
+                e.ToTable("store_order_ingredient_items");
+                e.HasKey(x => x.StoreOrderIngredientItemId);
+
+                e.Property(x => x.Quantity)
+                    .HasColumnType("numeric(18,2)");
+
+                e.HasOne(x => x.StoreOrder)
+                    .WithMany(x => x.IngredientItems)
+                    .HasForeignKey(x => x.StoreOrderId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                e.HasOne(x => x.Ingredient)
+                    .WithMany(x => x.StoreOrderIngredientItems)
+                    .HasForeignKey(x => x.IngredientId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<StoreOrderHistory>(e =>
@@ -564,8 +588,26 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.Property(x => x.DropReason)
                     .HasMaxLength(1000);
             });
-            
-            modelBuilder.Entity<DeliveryIngredientItem>(e => { e.ToTable("delivery_ingredient_items"); e.HasKey(x => x.DeliveryIngredientItemId); });
+
+            modelBuilder.Entity<DeliveryIngredientItem>(e =>
+            {
+                e.ToTable("delivery_ingredient_items");
+                e.HasKey(x => x.DeliveryIngredientItemId);
+
+                e.Property(x => x.Quantity)
+                    .HasColumnType("numeric(18,2)");
+
+                e.Property(x => x.RequestedQuantity)
+                    .HasColumnType("numeric(18,2)");
+
+                e.Property(x => x.DropReason)
+                    .HasMaxLength(1000);
+
+                e.HasOne(x => x.Ingredient)
+                    .WithMany(x => x.DeliveryIngredientItems)
+                    .HasForeignKey(x => x.IngredientId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
 
             modelBuilder.Entity<ReceivingReport>(e =>
             {

@@ -229,6 +229,7 @@ public class ReceivingService : IReceivingService
         response.Items.AddRange(delivery.IngredientItems.Select(x =>
         {
             var creditedQuantity = GetTotalQuantity(creditedIngredientQtyMap, x.IngredientId);
+            var requestedQuantity = x.RequestedQuantity > 0 ? x.RequestedQuantity : x.Quantity;
 
             return new ReceivingDetailLineResponse
             {
@@ -236,7 +237,7 @@ public class ReceivingService : IReceivingService
                 ItemId = x.IngredientId,
                 ItemName = x.Ingredient?.Name ?? "(unknown)",
                 Unit = x.Ingredient?.Unit ?? "",
-                ExpectedQuantity = x.Quantity,
+                ExpectedQuantity = requestedQuantity,
                 DeliveredQuantity = x.Quantity,
                 ReceivedQuantity = isConfirmed ? creditedQuantity : null,
 
@@ -246,9 +247,9 @@ public class ReceivingService : IReceivingService
                 CreditedToFranchiseQuantity = creditedQuantity,
                 CreditedToFranchiseBatches = GetBatchList(creditedIngredientBatchMap, x.IngredientId),
 
-                DroppedQuantity = 0,
-                IsDropped = false,
-                DropReason = null
+                DroppedQuantity = Math.Max(requestedQuantity - x.Quantity, 0m),
+                IsDropped = x.IsDropped,
+                DropReason = x.DropReason
             };
         }));
 

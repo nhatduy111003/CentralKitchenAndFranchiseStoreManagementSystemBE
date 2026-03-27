@@ -225,15 +225,24 @@ public class DeliveryService : IDeliveryService
                     ShippedToFranchiseBatches = GetBatchList(shippedProductBatchMap, x.ProductId)
                 };
             }).ToList(),
-            IngredientItems = delivery.IngredientItems.Select(x => new DeliveryIngredientItemDto
+            IngredientItems = delivery.IngredientItems.Select(x =>
             {
-                IngredientId = x.IngredientId,
-                IngredientName = x.Ingredient.Name,
-                Quantity = x.Quantity,
-                AvailableInCentralKitchenQuantity = GetTotalQuantity(availableIngredientQtyMap, x.IngredientId),
-                AvailableCentralKitchenBatches = GetBatchList(availableIngredientBatchMap, x.IngredientId),
-                ShippedToFranchiseQuantity = GetTotalQuantity(shippedIngredientQtyMap, x.IngredientId),
-                ShippedToFranchiseBatches = GetBatchList(shippedIngredientBatchMap, x.IngredientId)
+                var requestedQuantity = x.RequestedQuantity > 0 ? x.RequestedQuantity : x.Quantity;
+
+                return new DeliveryIngredientItemDto
+                {
+                    IngredientId = x.IngredientId,
+                    IngredientName = x.Ingredient.Name,
+                    Quantity = x.Quantity,
+                    RequestedQuantity = requestedQuantity,
+                    DroppedQuantity = Math.Max(requestedQuantity - x.Quantity, 0m),
+                    IsDropped = x.IsDropped,
+                    DropReason = x.DropReason,
+                    AvailableInCentralKitchenQuantity = GetTotalQuantity(availableIngredientQtyMap, x.IngredientId),
+                    AvailableCentralKitchenBatches = GetBatchList(availableIngredientBatchMap, x.IngredientId),
+                    ShippedToFranchiseQuantity = GetTotalQuantity(shippedIngredientQtyMap, x.IngredientId),
+                    ShippedToFranchiseBatches = GetBatchList(shippedIngredientBatchMap, x.IngredientId)
+                };
             }).ToList()
         };
     }
@@ -344,12 +353,18 @@ public class DeliveryService : IDeliveryService
                 {
                     DeliveryId = deliveryId,
                     IngredientId = req.IngredientId,
-                    Quantity = req.Quantity
+                    Quantity = req.Quantity,
+                    RequestedQuantity = req.Quantity,
+                    IsDropped = false,
+                    DropReason = null
                 });
             }
             else
             {
                 line.Quantity = req.Quantity;
+                line.RequestedQuantity = req.Quantity;
+                line.IsDropped = false;
+                line.DropReason = null;
             }
         }
 

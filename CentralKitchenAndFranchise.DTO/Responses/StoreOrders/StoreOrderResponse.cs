@@ -18,6 +18,7 @@ public class StoreOrderResponse
     public string? CancelReason { get; set; }
 
     public List<StoreOrderItemResponse> Items { get; set; } = new();
+    public List<StoreOrderIngredientItemResponse> IngredientItems { get; set; } = new();
 }
 
 public class StoreOrderItemResponse
@@ -26,10 +27,22 @@ public class StoreOrderItemResponse
     public string ProductName { get; set; } = default!;
     public string Unit { get; set; } = default!;
 
-    // quantity originally requested by store
     public decimal Quantity { get; set; }
 
-    // sanitized forward result for store-side display
+    public decimal ForwardedQuantity { get; set; }
+    public decimal DroppedQuantity { get; set; }
+    public bool IsDroppedFromForward { get; set; }
+    public string? DropReason { get; set; }
+}
+
+public class StoreOrderIngredientItemResponse
+{
+    public int IngredientId { get; set; }
+    public string IngredientName { get; set; } = default!;
+    public string Unit { get; set; } = default!;
+
+    public decimal Quantity { get; set; }
+
     public decimal ForwardedQuantity { get; set; }
     public decimal DroppedQuantity { get; set; }
     public bool IsDroppedFromForward { get; set; }

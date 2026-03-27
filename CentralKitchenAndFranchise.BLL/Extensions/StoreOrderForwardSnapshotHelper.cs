@@ -4,7 +4,7 @@ namespace CentralKitchenAndFranchise.BLL.Extensions;
 
 public sealed class ResolvedForwardSnapshotLine
 {
-    public int ProductId { get; init; }
+    public int ItemId { get; init; }
     public bool HasSnapshot { get; init; }
     public bool IsConsistent { get; init; }
     public string? Warning { get; init; }
@@ -31,7 +31,8 @@ public static class StoreOrderForwardSnapshotHelper
 
     public static ResolvedForwardSnapshotLine Resolve(
         string orderStatus,
-        int productId,
+        string itemKeyLabel,
+        int itemId,
         decimal orderQuantity,
         bool hasSnapshot,
         decimal snapshotRequestedQuantity,
@@ -46,11 +47,11 @@ public static class StoreOrderForwardSnapshotHelper
         {
             return new ResolvedForwardSnapshotLine
             {
-                ProductId = productId,
+                ItemId = itemId,
                 HasSnapshot = false,
                 IsConsistent = !shouldExpose,
                 Warning = shouldExpose
-                    ? $"Forward snapshot is missing for ProductId={productId} while order status is {orderStatus}."
+                    ? $"Forward snapshot is missing for {itemKeyLabel}={itemId} while order status is {orderStatus}."
                     : null
             };
         }
@@ -59,26 +60,26 @@ public static class StoreOrderForwardSnapshotHelper
 
         if (!shouldExpose)
         {
-            warning = $"Forward snapshot already exists for ProductId={productId} while order status is {orderStatus}.";
+            warning = $"Forward snapshot already exists for {itemKeyLabel}={itemId} while order status is {orderStatus}.";
         }
         else if (snapshotRequestedQuantity <= 0)
         {
-            warning = $"Forward snapshot requested quantity is invalid for ProductId={productId}.";
+            warning = $"Forward snapshot requested quantity is invalid for {itemKeyLabel}={itemId}.";
         }
         else if (snapshotRequestedQuantity != orderQuantity)
         {
-            warning = $"Forward snapshot requested quantity ({snapshotRequestedQuantity}) does not match current order quantity ({orderQuantity}) for ProductId={productId}.";
+            warning = $"Forward snapshot requested quantity ({snapshotRequestedQuantity}) does not match current order quantity ({orderQuantity}) for {itemKeyLabel}={itemId}.";
         }
         else if (snapshotForwardedQuantity > snapshotRequestedQuantity)
         {
-            warning = $"Forward snapshot forwarded quantity ({snapshotForwardedQuantity}) exceeds requested quantity ({snapshotRequestedQuantity}) for ProductId={productId}.";
+            warning = $"Forward snapshot forwarded quantity ({snapshotForwardedQuantity}) exceeds requested quantity ({snapshotRequestedQuantity}) for {itemKeyLabel}={itemId}.";
         }
 
         var isConsistent = string.IsNullOrWhiteSpace(warning);
 
         return new ResolvedForwardSnapshotLine
         {
-            ProductId = productId,
+            ItemId = itemId,
             HasSnapshot = true,
             IsConsistent = isConsistent,
             Warning = warning,

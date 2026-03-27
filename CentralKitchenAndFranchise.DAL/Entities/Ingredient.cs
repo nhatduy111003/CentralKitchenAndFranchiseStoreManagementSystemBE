@@ -21,4 +21,7 @@ public class Ingredient
 
     public ICollection<BomItem> BomItems { get; set; } = new List<BomItem>();
     public ICollection<IngredientBatch> IngredientBatches { get; set; } = new List<IngredientBatch>();
+
+    public ICollection<StoreOrderIngredientItem> StoreOrderIngredientItems { get; set; } = new List<StoreOrderIngredientItem>();
+    public ICollection<DeliveryIngredientItem> DeliveryIngredientItems { get; set; } = new List<DeliveryIngredientItem>();
 }

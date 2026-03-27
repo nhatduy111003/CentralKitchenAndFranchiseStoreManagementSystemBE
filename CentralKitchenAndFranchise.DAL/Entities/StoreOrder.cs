@@ -45,6 +45,7 @@ public class StoreOrder
 
     public Franchise Franchise { get; set; } = default!;
     public ICollection<StoreOrderItem> Items { get; set; } = new List<StoreOrderItem>();
+    public ICollection<StoreOrderIngredientItem> IngredientItems { get; set; } = new List<StoreOrderIngredientItem>();
     public ICollection<StoreOrderHistory> Histories { get; set; } = new List<StoreOrderHistory>();
 
 }
