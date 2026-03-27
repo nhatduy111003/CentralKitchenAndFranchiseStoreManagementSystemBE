@@ -207,6 +207,7 @@ builder.Services.AddScoped<ISupplyOrderService, SupplyOrderService>();
 builder.Services.AddScoped<IReceivingService, ReceivingService>();
 builder.Services.AddScoped<IInventoryTransferService, InventoryTransferService>();
 builder.Services.AddScoped<IReportsService, ReportsService>();
+builder.Services.AddScoped<IReportExportService, ReportExportService>();
 
 var app = builder.Build();
 

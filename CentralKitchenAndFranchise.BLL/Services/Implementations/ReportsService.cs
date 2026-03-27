@@ -28,11 +28,15 @@ public class ReportsService : IReportsService
     /// <summary>Build one inventory scope report from batch, movement, and adjustment audit data.</summary>
     public async Task<InventoryReportResponse> GetInventoryReportAsync(InventoryReportQuery query, CancellationToken ct = default)
     {
-        RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
+        RequireOneOf(
+            RoleNames.Admin,
+            RoleNames.Manager,
+            RoleNames.StoreStaff,
+            RoleNames.KitchenStaff,
+            RoleNames.SupplyCoordinator);
 
         var normalized = NormalizeDateRange(query.FromDate, query.ToDate, query.TimezoneOffsetMinutes);
         var scope = await ResolveInventoryScopeAsync(query.FranchiseId, query.CentralKitchenId, ct);
-
         var response = new InventoryReportResponse
         {
             FromDate = normalized.FromDate,
@@ -98,12 +102,16 @@ public class ReportsService : IReportsService
     /// <summary>Build ingredient wastage aggregates from inventory movement history.</summary>
     public async Task<WastageReportResponse> GetWastageReportAsync(WastageReportQuery query, CancellationToken ct = default)
     {
-        RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
+        RequireOneOf(
+            RoleNames.Admin,
+            RoleNames.Manager,
+            RoleNames.StoreStaff,
+            RoleNames.KitchenStaff,
+            RoleNames.SupplyCoordinator);
 
         var normalized = NormalizeDateRange(query.FromDate, query.ToDate, query.TimezoneOffsetMinutes);
         var sortBy = NormalizeWastageSortBy(query.SortBy);
         var scope = await ResolveWastageScopeAsync(query.FranchiseId, query.CentralKitchenId, ct);
-
         var response = new WastageReportResponse
         {
             FromDate = normalized.FromDate,
