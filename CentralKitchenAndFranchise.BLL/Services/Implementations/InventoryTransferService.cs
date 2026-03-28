@@ -1,4 +1,4 @@
-﻿using CentralKitchenAndFranchise.BLL.Exceptions;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
@@ -152,6 +152,9 @@ public class InventoryTransferService : IInventoryTransferService
     DateTime now,
     CancellationToken ct)
     {
+        if (item.Quantity <= 0)
+            return;
+
         var remaining = item.Quantity;
         var today = DateOnly.FromDateTime(now);
 

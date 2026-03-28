@@ -1,4 +1,4 @@
-﻿using CentralKitchenAndFranchise.BLL.Exceptions;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
@@ -515,7 +515,8 @@ public class KitchenOrderService : IKitchenOrderService
                     .ThenBy(x => x.BatchId)
                     .Sum(x => x.Quantity);
 
-                var isFulfillable = availableQty >= item.Quantity;
+                var forwardedQty = Math.Min(availableQty, item.Quantity);
+                var isPartialOrFullDrop = forwardedQty < item.Quantity;
 
                 return new ProductForwardPlanLine
                 {
@@ -525,11 +526,13 @@ public class KitchenOrderService : IKitchenOrderService
                     Unit = item.Product?.Unit ?? "",
                     RequestedQuantity = item.Quantity,
                     AvailableQuantity = availableQty,
-                    ForwardedQuantity = isFulfillable ? item.Quantity : 0m,
-                    IsDropped = !isFulfillable,
-                    DropReason = isFulfillable
-                        ? null
-                        : $"Insufficient central kitchen inventory. Required={item.Quantity}, Available={availableQty}."
+                    ForwardedQuantity = forwardedQty,
+                    IsDropped = isPartialOrFullDrop,
+                    DropReason = isPartialOrFullDrop
+                        ? (forwardedQty == 0m
+                            ? $"Fully dropped \u2013 no central kitchen inventory. Required={item.Quantity}, Available={availableQty}."
+                            : $"Partial drop \u2013 insufficient central kitchen inventory. Required={item.Quantity}, Available={availableQty}, Forwarded={forwardedQty}.")
+                        : null
                 };
             })
             .ToList();
@@ -573,7 +576,8 @@ public class KitchenOrderService : IKitchenOrderService
                     .ThenBy(x => x.BatchId)
                     .Sum(x => x.Quantity);
 
-                var isFulfillable = availableQty >= item.Quantity;
+                var forwardedQty = Math.Min(availableQty, item.Quantity);
+                var isPartialOrFullDrop = forwardedQty < item.Quantity;
 
                 return new IngredientForwardPlanLine
                 {
@@ -582,11 +586,13 @@ public class KitchenOrderService : IKitchenOrderService
                     Unit = item.Ingredient?.Unit ?? "",
                     RequestedQuantity = item.Quantity,
                     AvailableQuantity = availableQty,
-                    ForwardedQuantity = isFulfillable ? item.Quantity : 0m,
-                    IsDropped = !isFulfillable,
-                    DropReason = isFulfillable
-                        ? null
-                        : $"Insufficient central kitchen inventory. Required={item.Quantity}, Available={availableQty}."
+                    ForwardedQuantity = forwardedQty,
+                    IsDropped = isPartialOrFullDrop,
+                    DropReason = isPartialOrFullDrop
+                        ? (forwardedQty == 0m
+                            ? $"Fully dropped \u2013 no central kitchen inventory. Required={item.Quantity}, Available={availableQty}."
+                            : $"Partial drop \u2013 insufficient central kitchen inventory. Required={item.Quantity}, Available={availableQty}, Forwarded={forwardedQty}.")
+                        : null
                 };
             })
             .ToList();

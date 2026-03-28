@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
@@ -191,8 +191,30 @@ public class SupplyOrderService : ISupplyOrderService
         if (!order.Items.Any() && !order.IngredientItems.Any())
             throw new InvalidOperationException("Cannot prepare delivery for an empty order.");
 
-        await EnsureCentralKitchenHasSufficientProductStockAsync(order, ct);
-        await EnsureCentralKitchenHasSufficientIngredientStockAsync(order, ct);
+        // Step 1: Create/sync delivery artifacts from forward snapshot
+        await EnsureDeliveryArtifactsAsync(order, ct);
+
+        // Step 2: Adjust delivery lines to current actual stock (partial shipping)
+        await AdjustDeliveryLinesByCurrentStockAsync(order, ct);
+
+        // Step 3: Zero-total guard — reject if nothing can be shipped
+        var deliveryPlan = await _db.DeliveryPlans
+            .FirstOrDefaultAsync(x => x.StoreOrderId == order.StoreOrderId, ct);
+        var delivery = await _db.Deliveries
+            .Include(x => x.ProductItems)
+            .Include(x => x.IngredientItems)
+            .FirstOrDefaultAsync(x => x.DeliveryPlanId == deliveryPlan!.DeliveryPlanId, ct);
+
+        var totalActualQty =
+            delivery!.ProductItems.Sum(x => x.Quantity) +
+            delivery!.IngredientItems.Sum(x => x.Quantity);
+
+        if (totalActualQty <= 0m)
+        {
+            throw new InvalidOperationException(
+                "Cannot prepare delivery because there is no usable stock left to ship for this order. " +
+                "All delivery lines have been adjusted to 0.");
+        }
 
         var now = DateTime.UtcNow;
         var currentUserId = _current.UserId;
@@ -205,13 +227,11 @@ public class SupplyOrderService : ISupplyOrderService
             ? null
             : request.PreparingNote.Trim();
 
-        await EnsureDeliveryArtifactsAsync(order, ct);
-
         _db.Set<StoreOrderHistory>().Add(new StoreOrderHistory
         {
             StoreOrderId = order.StoreOrderId,
             ActionType = StoreOrderHistoryActions.OrderPreparing,
-            ActionLabel = "Supply bắt đầu chuẩn bị giao hàng",
+            ActionLabel = "Supply b\u1eaft \u0111\u1ea7u chu\u1ea9n b\u1ecb giao h\u00e0ng",
             OldStatus = oldStatus,
             NewStatus = order.Status,
             Note = order.PreparingNote,
@@ -386,140 +406,162 @@ public class SupplyOrderService : ISupplyOrderService
         public string? DropReason { get; set; }
     }
 
-    private async Task EnsureCentralKitchenHasSufficientProductStockAsync(StoreOrder order, CancellationToken ct)
+
+
+    /// <summary>
+    /// Adjusts delivery lines to match CURRENT central kitchen stock.
+    /// Normalizes duplicate lines, then sets Quantity = Min(forwarded, available).
+    /// For linked store-order deliveries, resolves RequestedQuantity from original store order.
+    /// </summary>
+    private async Task AdjustDeliveryLinesByCurrentStockAsync(StoreOrder order, CancellationToken ct)
     {
-        var snapshotMap = await LoadProductForwardSnapshotMapAsync(new List<int> { order.StoreOrderId }, ct);
-        snapshotMap.TryGetValue(order.StoreOrderId, out var orderSnapshot);
+        var plan = await _db.DeliveryPlans
+            .FirstOrDefaultAsync(x => x.StoreOrderId == order.StoreOrderId, ct);
 
-        var resolvedSnapshotMap = ResolveForwardSnapshotByProduct(order, orderSnapshot);
+        if (plan is null) return;
 
-        var snapshotErrors = resolvedSnapshotMap.Values
-            .Where(x => !x.HasSnapshot || !x.IsConsistent)
-            .Select(x => x.Warning ?? $"Forward snapshot is invalid for ProductId={x.ItemId}.")
-            .ToList();
+        var delivery = await _db.Deliveries
+            .Include(x => x.ProductItems)
+            .Include(x => x.IngredientItems)
+            .FirstOrDefaultAsync(x => x.DeliveryPlanId == plan.DeliveryPlanId, ct);
 
-        if (snapshotErrors.Count > 0)
-        {
-            throw new InvalidOperationException(
-                "Cannot prepare delivery because forwarded snapshot is missing or inconsistent. " +
-                string.Join("; ", snapshotErrors));
-        }
-
-        var requiredMap = resolvedSnapshotMap.Values
-            .Where(x => x.ForwardedQuantity > 0)
-            .ToDictionary(x => x.ItemId, x => x.ForwardedQuantity);
-
-        if (requiredMap.Count == 0)
-            throw new InvalidOperationException("Cannot prepare delivery because there are no forwarded product lines.");
+        if (delivery is null) return;
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var ckId = order.Franchise.CentralKitchenId;
 
-        var productBatches = (await _db.ProductBatches
-                .AsNoTracking()
-                .Include(x => x.Product)
-                .Where(x =>
-                    x.CentralKitchenId == order.Franchise.CentralKitchenId &&
-                    x.FranchiseId == null &&
-                    requiredMap.Keys.Contains(x.ProductId) &&
-                    x.Quantity > 0)
-                .ToListAsync(ct))
-            .Where(x => x.IsUsableNonExpired(today))
-            .ToList();
+        // --- Load store order source-of-truth for RequestedQuantity ---
+        var storeOrderProductQtyMap = await _db.StoreOrderItems
+            .AsNoTracking()
+            .Where(x => x.StoreOrderId == order.StoreOrderId)
+            .GroupBy(x => x.ProductId)
+            .ToDictionaryAsync(g => g.Key, g => g.Sum(x => x.Quantity), ct);
 
-        var shortages = new List<string>();
+        var storeOrderIngredientQtyMap = await _db.StoreOrderIngredientItems
+            .AsNoTracking()
+            .Where(x => x.StoreOrderId == order.StoreOrderId)
+            .GroupBy(x => x.IngredientId)
+            .ToDictionaryAsync(g => g.Key, g => g.Sum(x => x.Quantity), ct);
 
-        foreach (var entry in requiredMap.OrderBy(x => x.Key))
+        // --- PRODUCT LINES: Normalize duplicates, then adjust ---
+        var productGroups = delivery.ProductItems.GroupBy(x => x.ProductId).ToList();
+        foreach (var group in productGroups)
         {
-            var productId = entry.Key;
-            var requiredQty = entry.Value;
+            var keep = group.OrderBy(x => x.DeliveryProductItemId).First();
+            var extras = group.OrderBy(x => x.DeliveryProductItemId).Skip(1).ToList();
 
+            if (extras.Count > 0)
+            {
+                // Resolve RequestedQuantity from store order (not sum of duplicates)
+                var resolvedRequestedQty = storeOrderProductQtyMap.TryGetValue(group.Key, out var soQty)
+                    ? soQty
+                    : keep.RequestedQuantity;
+
+                var mergedQty = Math.Min(group.Sum(x => x.Quantity), resolvedRequestedQty);
+                keep.Quantity = mergedQty;
+                keep.RequestedQuantity = resolvedRequestedQty;
+                _db.DeliveryProductItems.RemoveRange(extras);
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        // Re-load after normalization
+        delivery = await _db.Deliveries
+            .Include(x => x.ProductItems)
+            .Include(x => x.IngredientItems)
+            .FirstOrDefaultAsync(x => x.DeliveryId == delivery.DeliveryId, ct);
+
+        if (delivery is null) return;
+
+        // Load available product batches
+        var productIds = delivery.ProductItems.Select(x => x.ProductId).Distinct().ToList();
+        var productBatches = productIds.Count > 0
+            ? (await _db.ProductBatches
+                .AsNoTracking()
+                .Where(x =>
+                    x.CentralKitchenId == ckId &&
+                    x.FranchiseId == null &&
+                    productIds.Contains(x.ProductId) &&
+                    x.Quantity > 0)
+                .Include(x => x.Product)
+                .ToListAsync(ct))
+                .Where(x => x.IsUsableNonExpired(today))
+                .ToList()
+            : new List<ProductBatch>();
+
+        foreach (var line in delivery.ProductItems)
+        {
             var availableQty = productBatches
-                .Where(x => x.ProductId == productId)
-                .OrderBy(x => x.CalculateExpiredAt() == null)
-                .ThenBy(x => x.CalculateExpiredAt())
-                .ThenBy(x => x.CreatedAt)
-                .ThenBy(x => x.BatchId)
+                .Where(x => x.ProductId == line.ProductId)
                 .Sum(x => x.Quantity);
 
-            if (availableQty >= requiredQty)
-                continue;
+            var actualQty = Math.Min(line.Quantity, availableQty);
+            actualQty = Math.Min(actualQty, line.RequestedQuantity);
 
-            var productName = order.Items
-                .Where(x => x.ProductId == productId)
-                .Select(x => x.Product?.Name)
-                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
-                ?? $"ProductId={productId}";
-
-            shortages.Add($"{productName}: required={requiredQty}, available={availableQty}");
+            line.Quantity = actualQty;
+            line.IsDropped = actualQty < line.RequestedQuantity;
+            line.DropReason = line.IsDropped
+                ? (actualQty == 0m
+                    ? $"Fully dropped at prepare \u2013 no usable stock. Required={line.RequestedQuantity}."
+                    : $"Partial drop at prepare \u2013 stock reduced. Required={line.RequestedQuantity}, Available={availableQty}, Shipped={actualQty}.")
+                : null;
         }
 
-        if (shortages.Count > 0)
+        // --- INGREDIENT LINES: Normalize duplicates, then adjust ---
+        var ingredientGroups = delivery.IngredientItems.GroupBy(x => x.IngredientId).ToList();
+        foreach (var group in ingredientGroups)
         {
-            throw new InvalidOperationException(
-                "Insufficient usable central kitchen inventory to prepare this delivery. " +
-                string.Join("; ", shortages));
-        }
-    }
+            var keep = group.OrderBy(x => x.DeliveryIngredientItemId).First();
+            var extras = group.OrderBy(x => x.DeliveryIngredientItemId).Skip(1).ToList();
 
-    private async Task EnsureCentralKitchenHasSufficientIngredientStockAsync(StoreOrder order, CancellationToken ct)
-    {
-        if (order.IngredientItems.Count == 0)
-            return;
+            if (extras.Count > 0)
+            {
+                var resolvedRequestedQty = storeOrderIngredientQtyMap.TryGetValue(group.Key, out var soQty)
+                    ? soQty
+                    : keep.RequestedQuantity;
 
-        var snapshotMap = await LoadIngredientForwardSnapshotMapAsync(new List<int> { order.StoreOrderId }, ct);
-        snapshotMap.TryGetValue(order.StoreOrderId, out var orderSnapshot);
-
-        var resolvedSnapshotMap = ResolveForwardSnapshotByIngredient(order, orderSnapshot);
-
-        var snapshotErrors = resolvedSnapshotMap.Values
-            .Where(x => !x.HasSnapshot || !x.IsConsistent)
-            .Select(x => x.Warning ?? $"Forward snapshot is invalid for IngredientId={x.ItemId}.")
-            .ToList();
-
-        if (snapshotErrors.Count > 0)
-        {
-            throw new InvalidOperationException(
-                "Cannot prepare delivery because forwarded ingredient snapshot is missing or inconsistent. " +
-                string.Join("; ", snapshotErrors));
+                var mergedQty = Math.Min(group.Sum(x => x.Quantity), resolvedRequestedQty);
+                keep.Quantity = mergedQty;
+                keep.RequestedQuantity = resolvedRequestedQty;
+                _db.DeliveryIngredientItems.RemoveRange(extras);
+            }
         }
 
-        var requiredMap = resolvedSnapshotMap.Values
-            .Where(x => x.ForwardedQuantity > 0)
-            .ToDictionary(x => x.ItemId, x => x.ForwardedQuantity);
-
-        if (requiredMap.Count == 0)
-            return;
-
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-
-        var availableMap = (await _db.IngredientBatches
+        // Load available ingredient batches
+        var ingredientIds = delivery.IngredientItems.Select(x => x.IngredientId).Distinct().ToList();
+        var ingredientAvailableMap = ingredientIds.Count > 0
+            ? (await _db.IngredientBatches
                 .AsNoTracking()
                 .Where(x =>
-                    x.CentralKitchenId == order.Franchise.CentralKitchenId &&
+                    x.CentralKitchenId == ckId &&
                     x.FranchiseId == null &&
-                    requiredMap.Keys.Contains(x.IngredientId) &&
+                    ingredientIds.Contains(x.IngredientId) &&
                     x.Quantity > 0)
                 .Include(x => x.Ingredient)
                 .ToListAsync(ct))
-            .Where(x => x.IsUsableNonExpired(today))
-            .GroupBy(x => x.IngredientId)
-            .ToDictionary(x => x.Key, x => x.Sum(i => i.Quantity));
+                .Where(x => x.IsUsableNonExpired(today))
+                .GroupBy(x => x.IngredientId)
+                .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity))
+            : new Dictionary<int, decimal>();
 
-        var insufficient = requiredMap
-            .Where(x =>
-            {
-                var available = availableMap.TryGetValue(x.Key, out var qty) ? qty : 0m;
-                return available < x.Value;
-            })
-            .Select(x =>
-            {
-                var available = availableMap.TryGetValue(x.Key, out var qty) ? qty : 0m;
-                return $"IngredientId={x.Key}: required={x.Value}, available={available}";
-            })
-            .ToList();
+        foreach (var line in delivery.IngredientItems)
+        {
+            var availableQty = ingredientAvailableMap.TryGetValue(line.IngredientId, out var qty) ? qty : 0m;
 
-        if (insufficient.Count > 0)
-            throw new InvalidOperationException("Central kitchen ingredient stock is insufficient for prepared delivery. " + string.Join("; ", insufficient));
+            var actualQty = Math.Min(line.Quantity, availableQty);
+            actualQty = Math.Min(actualQty, line.RequestedQuantity);
+
+            line.Quantity = actualQty;
+            line.IsDropped = actualQty < line.RequestedQuantity;
+            line.DropReason = line.IsDropped
+                ? (actualQty == 0m
+                    ? $"Fully dropped at prepare \u2013 no usable stock. Required={line.RequestedQuantity}."
+                    : $"Partial drop at prepare \u2013 stock reduced. Required={line.RequestedQuantity}, Available={availableQty}, Shipped={actualQty}.")
+                : null;
+        }
+
+        await _db.SaveChangesAsync(ct);
     }
 
     /// Phase 1:

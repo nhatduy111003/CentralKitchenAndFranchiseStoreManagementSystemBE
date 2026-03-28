@@ -1,4 +1,4 @@
-﻿using CentralKitchenAndFranchise.BLL.Exceptions;
+using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
@@ -277,32 +277,81 @@ public class DeliveryService : IDeliveryService
         if (missing.Count > 0)
             throw new KeyNotFoundException($"Product not found: {string.Join(',', missing)}");
 
+        var isLinkedOrder = delivery.DeliveryPlan.StoreOrderId.HasValue;
+
         foreach (var req in items)
         {
-            if (req.Quantity <= 0)
-                throw new ArgumentException("Quantity must be > 0.");
+            if (req.Quantity < 0)
+                throw new ArgumentException($"Quantity must be >= 0 for ProductId={req.ProductId}.");
 
             var line = await _db.DeliveryProductItems
                 .FirstOrDefaultAsync(x => x.DeliveryId == deliveryId && x.ProductId == req.ProductId, ct);
 
             if (line is null)
             {
-                _db.DeliveryProductItems.Add(new DeliveryProductItem
+                // --- CREATE NEW LINE ---
+                if (isLinkedOrder)
                 {
-                    DeliveryId = deliveryId,
-                    ProductId = req.ProductId,
-                    Quantity = req.Quantity,
-                    RequestedQuantity = req.Quantity,
-                    IsDropped = false,
-                    DropReason = null
-                });
+                    var storeOrderQty = await _db.StoreOrderItems
+                        .AsNoTracking()
+                        .Where(x => x.StoreOrderId == delivery.DeliveryPlan.StoreOrderId!.Value
+                                  && x.ProductId == req.ProductId)
+                        .Select(x => (decimal?)x.Quantity)
+                        .FirstOrDefaultAsync(ct);
+
+                    if (!storeOrderQty.HasValue)
+                        throw new ArgumentException(
+                            $"ProductId={req.ProductId} does not exist in the linked store order. " +
+                            "Cannot add items not in the original order.");
+
+                    var resolvedRequestedQty = storeOrderQty.Value;
+
+                    if (req.Quantity > resolvedRequestedQty)
+                        throw new ArgumentException(
+                            $"Quantity ({req.Quantity}) cannot exceed RequestedQuantity ({resolvedRequestedQty}) for ProductId={req.ProductId}.");
+
+                    _db.DeliveryProductItems.Add(new DeliveryProductItem
+                    {
+                        DeliveryId = deliveryId,
+                        ProductId = req.ProductId,
+                        Quantity = req.Quantity,
+                        RequestedQuantity = resolvedRequestedQty,
+                        IsDropped = req.Quantity < resolvedRequestedQty,
+                        DropReason = req.Quantity < resolvedRequestedQty
+                            ? $"Manual adjustment. Shipped={req.Quantity}, Requested={resolvedRequestedQty}."
+                            : null
+                    });
+                }
+                else
+                {
+                    // Ad-hoc delivery — free to set any quantity
+                    _db.DeliveryProductItems.Add(new DeliveryProductItem
+                    {
+                        DeliveryId = deliveryId,
+                        ProductId = req.ProductId,
+                        Quantity = req.Quantity,
+                        RequestedQuantity = req.Quantity,
+                        IsDropped = false,
+                        DropReason = null
+                    });
+                }
             }
             else
             {
+                // --- UPDATE EXISTING LINE ---
+                if (isLinkedOrder && req.Quantity > line.RequestedQuantity)
+                    throw new ArgumentException(
+                        $"Quantity ({req.Quantity}) cannot exceed RequestedQuantity ({line.RequestedQuantity}) for ProductId={req.ProductId}.");
+
                 line.Quantity = req.Quantity;
-                line.RequestedQuantity = req.Quantity;
-                line.IsDropped = false;
-                line.DropReason = null;
+                // Do NOT overwrite RequestedQuantity for linked order
+                if (!isLinkedOrder)
+                    line.RequestedQuantity = req.Quantity;
+
+                line.IsDropped = line.Quantity < line.RequestedQuantity;
+                line.DropReason = line.IsDropped
+                    ? $"Manual adjustment. Shipped={line.Quantity}, Requested={line.RequestedQuantity}."
+                    : null;
             }
         }
 
@@ -339,32 +388,81 @@ public class DeliveryService : IDeliveryService
         if (missing.Count > 0)
             throw new KeyNotFoundException($"Ingredient not found: {string.Join(',', missing)}");
 
+        var isLinkedOrder = delivery.DeliveryPlan.StoreOrderId.HasValue;
+
         foreach (var req in items)
         {
-            if (req.Quantity <= 0)
-                throw new ArgumentException("Quantity must be > 0.");
+            if (req.Quantity < 0)
+                throw new ArgumentException($"Quantity must be >= 0 for IngredientId={req.IngredientId}.");
 
             var line = await _db.DeliveryIngredientItems
                 .FirstOrDefaultAsync(x => x.DeliveryId == deliveryId && x.IngredientId == req.IngredientId, ct);
 
             if (line is null)
             {
-                _db.DeliveryIngredientItems.Add(new DeliveryIngredientItem
+                // --- CREATE NEW LINE ---
+                if (isLinkedOrder)
                 {
-                    DeliveryId = deliveryId,
-                    IngredientId = req.IngredientId,
-                    Quantity = req.Quantity,
-                    RequestedQuantity = req.Quantity,
-                    IsDropped = false,
-                    DropReason = null
-                });
+                    var storeOrderQty = await _db.StoreOrderIngredientItems
+                        .AsNoTracking()
+                        .Where(x => x.StoreOrderId == delivery.DeliveryPlan.StoreOrderId!.Value
+                                  && x.IngredientId == req.IngredientId)
+                        .Select(x => (decimal?)x.Quantity)
+                        .FirstOrDefaultAsync(ct);
+
+                    if (!storeOrderQty.HasValue)
+                        throw new ArgumentException(
+                            $"IngredientId={req.IngredientId} does not exist in the linked store order. " +
+                            "Cannot add items not in the original order.");
+
+                    var resolvedRequestedQty = storeOrderQty.Value;
+
+                    if (req.Quantity > resolvedRequestedQty)
+                        throw new ArgumentException(
+                            $"Quantity ({req.Quantity}) cannot exceed RequestedQuantity ({resolvedRequestedQty}) for IngredientId={req.IngredientId}.");
+
+                    _db.DeliveryIngredientItems.Add(new DeliveryIngredientItem
+                    {
+                        DeliveryId = deliveryId,
+                        IngredientId = req.IngredientId,
+                        Quantity = req.Quantity,
+                        RequestedQuantity = resolvedRequestedQty,
+                        IsDropped = req.Quantity < resolvedRequestedQty,
+                        DropReason = req.Quantity < resolvedRequestedQty
+                            ? $"Manual adjustment. Shipped={req.Quantity}, Requested={resolvedRequestedQty}."
+                            : null
+                    });
+                }
+                else
+                {
+                    // Ad-hoc delivery — free to set any quantity
+                    _db.DeliveryIngredientItems.Add(new DeliveryIngredientItem
+                    {
+                        DeliveryId = deliveryId,
+                        IngredientId = req.IngredientId,
+                        Quantity = req.Quantity,
+                        RequestedQuantity = req.Quantity,
+                        IsDropped = false,
+                        DropReason = null
+                    });
+                }
             }
             else
             {
+                // --- UPDATE EXISTING LINE ---
+                if (isLinkedOrder && req.Quantity > line.RequestedQuantity)
+                    throw new ArgumentException(
+                        $"Quantity ({req.Quantity}) cannot exceed RequestedQuantity ({line.RequestedQuantity}) for IngredientId={req.IngredientId}.");
+
                 line.Quantity = req.Quantity;
-                line.RequestedQuantity = req.Quantity;
-                line.IsDropped = false;
-                line.DropReason = null;
+                // Do NOT overwrite RequestedQuantity for linked order
+                if (!isLinkedOrder)
+                    line.RequestedQuantity = req.Quantity;
+
+                line.IsDropped = line.Quantity < line.RequestedQuantity;
+                line.DropReason = line.IsDropped
+                    ? $"Manual adjustment. Shipped={line.Quantity}, Requested={line.RequestedQuantity}."
+                    : null;
             }
         }
 
