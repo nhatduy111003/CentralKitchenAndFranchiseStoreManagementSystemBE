@@ -130,8 +130,8 @@ public class ReportsService : IReportsService
             .Where(x => x.Batch != null)
             .Where(x => x.CreatedAt >= normalized.FromUtc && x.CreatedAt < normalized.ToUtcExclusive)
             .Where(x =>
-                (x.Type ?? "").ToUpper() == MovementType.Waste ||
-                (x.Type ?? "").ToUpper() == MovementType.Out);
+                (x.Type ?? "").Trim().ToUpper() == MovementType.Waste ||
+                (x.Type ?? "").Trim().ToUpper() == MovementType.Out);
 
         movementQuery = ApplyWastageScope(movementQuery, scope);
 
@@ -151,8 +151,8 @@ public class ReportsService : IReportsService
                 g.Key.Unit,
                 g.Key.Price,
                 g.Key.WasteReason,
-                WastedQuantity = g.Where(x => (x.Type ?? "").ToUpper() == MovementType.Waste).Sum(x => x.Quantity),
-                OutboundQuantity = g.Where(x => (x.Type ?? "").ToUpper() == MovementType.Out).Sum(x => x.Quantity)
+                WastedQuantity = g.Where(x => (x.Type ?? "").Trim().ToUpper() == MovementType.Waste).Sum(x => x.Quantity),
+                OutboundQuantity = g.Where(x => (x.Type ?? "").Trim().ToUpper() == MovementType.Out).Sum(x => x.Quantity)
             })
             .ToListAsync(ct);
 
@@ -419,6 +419,7 @@ public class ReportsService : IReportsService
     }
 
     /// <summary>Resolve franchise or central-kitchen scope for inventory report access rules.</summary>
+    /// <summary>Resolve franchise or central-kitchen scope for inventory report access rules.</summary>
     private async Task<ReportScope> ResolveInventoryScopeAsync(int? franchiseId, int? centralKitchenId, CancellationToken ct)
     {
         if (_current.IsInRole(RoleNames.StoreStaff))
@@ -426,11 +427,29 @@ public class ReportsService : IReportsService
             var assignedFranchiseId = await GetCurrentAssignedFranchiseIdAsync(ct);
             var targetFranchiseId = franchiseId ?? assignedFranchiseId;
 
-            if (targetFranchiseId != assignedFranchiseId)
+            if (targetFranchiseId != assignedFranchiseId || centralKitchenId.HasValue)
                 throw new ForbiddenAccessException("StoreStaff can only view their assigned franchise inventory report.");
 
             await _access.EnsureCanAccessAsync(targetFranchiseId, ct);
             return await BuildFranchiseScopeAsync(targetFranchiseId, ct);
+        }
+
+        if (_current.IsInRole(RoleNames.KitchenStaff) || _current.IsInRole(RoleNames.SupplyCoordinator))
+        {
+            if (franchiseId.HasValue)
+            {
+                await _access.EnsureCanAccessAsync(franchiseId.Value, ct);
+                return await BuildFranchiseScopeAsync(franchiseId.Value, ct);
+            }
+
+            var assignedCentralKitchenId = await GetCurrentAssignedCentralKitchenIdAsync(ct);
+            var targetCentralKitchenId = centralKitchenId ?? assignedCentralKitchenId;
+
+            if (targetCentralKitchenId != assignedCentralKitchenId)
+                throw new ForbiddenAccessException("KitchenStaff and SupplyCoordinator can only view inventory reports for their assigned central kitchen.");
+
+            await _access.EnsureCanAccessCentralKitchenAsync(targetCentralKitchenId, ct);
+            return await BuildCentralKitchenScopeAsync(targetCentralKitchenId, ct);
         }
 
         if (franchiseId.HasValue)
@@ -445,6 +464,7 @@ public class ReportsService : IReportsService
     }
 
     /// <summary>Resolve chain/store/kitchen scope for wastage report access rules.</summary>
+    /// <summary>Resolve chain/store/kitchen scope for wastage report access rules.</summary>
     private async Task<ReportScope> ResolveWastageScopeAsync(int? franchiseId, int? centralKitchenId, CancellationToken ct)
     {
         if (_current.IsInRole(RoleNames.StoreStaff))
@@ -457,6 +477,24 @@ public class ReportsService : IReportsService
 
             await _access.EnsureCanAccessAsync(targetFranchiseId, ct);
             return await BuildFranchiseScopeAsync(targetFranchiseId, ct);
+        }
+
+        if (_current.IsInRole(RoleNames.KitchenStaff) || _current.IsInRole(RoleNames.SupplyCoordinator))
+        {
+            if (franchiseId.HasValue)
+            {
+                await _access.EnsureCanAccessAsync(franchiseId.Value, ct);
+                return await BuildFranchiseScopeAsync(franchiseId.Value, ct);
+            }
+
+            var assignedCentralKitchenId = await GetCurrentAssignedCentralKitchenIdAsync(ct);
+            var targetCentralKitchenId = centralKitchenId ?? assignedCentralKitchenId;
+
+            if (targetCentralKitchenId != assignedCentralKitchenId)
+                throw new ForbiddenAccessException("KitchenStaff and SupplyCoordinator can only view wastage for their assigned central kitchen.");
+
+            await _access.EnsureCanAccessCentralKitchenAsync(targetCentralKitchenId, ct);
+            return await BuildCentralKitchenScopeAsync(targetCentralKitchenId, ct);
         }
 
         if (franchiseId.HasValue)
@@ -565,6 +603,26 @@ public class ReportsService : IReportsService
             CentralKitchenId = centralKitchen.CentralKitchenId,
             CentralKitchenName = centralKitchen.CentralKitchenName
         };
+    }
+
+    /// <summary>Read the current kitchen-side user's assigned central kitchen id.</summary>
+    private async Task<int> GetCurrentAssignedCentralKitchenIdAsync(CancellationToken ct)
+    {
+        var assignedCentralKitchenId = await _db.UserWorkAssignments
+            .AsNoTracking()
+            .Where(x =>
+                x.UserId == _current.UserId &&
+                x.AssignmentType == WorkAssignmentTypes.CentralKitchen &&
+                x.CentralKitchenId.HasValue)
+            .OrderByDescending(x => x.AssignedAt)
+            .ThenByDescending(x => x.UserWorkAssignmentId)
+            .Select(x => x.CentralKitchenId)
+            .FirstOrDefaultAsync(ct);
+
+        if (!assignedCentralKitchenId.HasValue)
+            throw new ForbiddenAccessException("Current user is not assigned to any central kitchen.");
+
+        return assignedCentralKitchenId.Value;
     }
 
     /// <summary>Load ingredient batch master rows for the requested report scope.</summary>
