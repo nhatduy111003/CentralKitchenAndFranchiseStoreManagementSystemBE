@@ -129,7 +129,9 @@ public class ReportsService : IReportsService
             .AsNoTracking()
             .Where(x => x.Batch != null)
             .Where(x => x.CreatedAt >= normalized.FromUtc && x.CreatedAt < normalized.ToUtcExclusive)
-            .Where(x => x.Type == MovementType.Waste || x.Type == MovementType.Out);
+            .Where(x =>
+                (x.Type ?? "").ToUpper() == MovementType.Waste ||
+                (x.Type ?? "").ToUpper() == MovementType.Out);
 
         movementQuery = ApplyWastageScope(movementQuery, scope);
 
@@ -149,8 +151,8 @@ public class ReportsService : IReportsService
                 g.Key.Unit,
                 g.Key.Price,
                 g.Key.WasteReason,
-                WastedQuantity = g.Where(x => x.Type == MovementType.Waste).Sum(x => x.Quantity),
-                OutboundQuantity = g.Where(x => x.Type == MovementType.Out).Sum(x => x.Quantity)
+                WastedQuantity = g.Where(x => (x.Type ?? "").ToUpper() == MovementType.Waste).Sum(x => x.Quantity),
+                OutboundQuantity = g.Where(x => (x.Type ?? "").ToUpper() == MovementType.Out).Sum(x => x.Quantity)
             })
             .ToListAsync(ct);
 
