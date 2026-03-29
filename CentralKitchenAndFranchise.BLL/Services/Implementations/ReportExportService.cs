@@ -1154,11 +1154,15 @@ public class ReportExportService : IReportExportService
             ? query.Where(x =>
                 x.Type == InventoryOwnerType.Franchise &&
                 x.FranchiseId == scopeId &&
-                x.CentralKitchenId == null)
+                x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null)
             : query.Where(x =>
                 x.Type == InventoryOwnerType.CentralKitchen &&
                 x.CentralKitchenId == scopeId &&
-                x.FranchiseId == null);
+                x.FranchiseId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null);
 
         var batches = await query
             .Select(x => new IngredientBatchSnapshotBase
@@ -1245,8 +1249,16 @@ public class ReportExportService : IReportExportService
         IQueryable<ProductBatch> query = _db.ProductBatches.AsNoTracking();
 
         query = isFranchiseScope
-            ? query.Where(x => x.FranchiseId == scopeId && x.CentralKitchenId == null)
-            : query.Where(x => x.CentralKitchenId == scopeId && x.FranchiseId == null);
+            ? query.Where(x =>
+                x.FranchiseId == scopeId &&
+                x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null)
+            : query.Where(x =>
+                x.CentralKitchenId == scopeId &&
+                x.FranchiseId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null);
 
         var batches = await query
             .Select(x => new ProductBatchSnapshotBase

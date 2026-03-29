@@ -255,41 +255,44 @@ public class ManagerDashboardService : IManagerDashboardService
         CancellationToken ct)
     {
         var lowStockRows = await _db.IngredientBatches
-            .AsNoTracking()
-            .Where(x =>
-                x.Type == InventoryOwnerType.Franchise &&
-                x.FranchiseId.HasValue &&
-                franchiseIds.Contains(x.FranchiseId.Value))
-            .Where(x => x.Ingredient.Status == IngredientStatus.Active)
-            .GroupBy(x => new
-            {
-                FranchiseId = x.FranchiseId!.Value,
-                x.IngredientId
-            })
-            .Select(g => new
-            {
-                g.Key.FranchiseId,
-                g.Key.IngredientId,
-                OnHand = g.Sum(x => x.Quantity)
-            })
-            .Join(
-                _db.Ingredients.AsNoTracking().Where(x => x.Status == IngredientStatus.Active),
-                x => x.IngredientId,
-                i => i.IngredientId,
-                (x, i) => new
-                {
-                    x.FranchiseId,
-                    x.IngredientId,
-                    x.OnHand,
-                    i.SafetyStock,
-                    i.Name,
-                    i.Unit
-                })
-            .Where(x => x.SafetyStock > 0 && x.OnHand < x.SafetyStock)
-            .OrderBy(x => x.OnHand / x.SafetyStock)
-            .ThenBy(x => x.Name)
-            .Take(limit)
-            .ToListAsync(ct);
+             .AsNoTracking()
+             .Where(x =>
+                 x.Type == InventoryOwnerType.Franchise &&
+                 x.FranchiseId.HasValue &&
+                 x.CentralKitchenId == null &&
+                 !x.IsInTransit &&
+                 x.DeliveryId == null &&
+                 franchiseIds.Contains(x.FranchiseId.Value))
+             .Where(x => x.Ingredient.Status == IngredientStatus.Active)
+             .GroupBy(x => new
+             {
+                 FranchiseId = x.FranchiseId!.Value,
+                 x.IngredientId
+             })
+             .Select(g => new
+             {
+                 g.Key.FranchiseId,
+                 g.Key.IngredientId,
+                 OnHand = g.Sum(x => x.Quantity)
+             })
+             .Join(
+                 _db.Ingredients.AsNoTracking().Where(x => x.Status == IngredientStatus.Active),
+                 x => x.IngredientId,
+                 i => i.IngredientId,
+                 (x, i) => new
+                 {
+                     x.FranchiseId,
+                     x.IngredientId,
+                     x.OnHand,
+                     i.SafetyStock,
+                     i.Name,
+                     i.Unit
+                 })
+             .Where(x => x.SafetyStock > 0 && x.OnHand < x.SafetyStock)
+             .OrderBy(x => x.OnHand / x.SafetyStock)
+             .ThenBy(x => x.Name)
+             .Take(limit)
+             .ToListAsync(ct);
 
         var franchiseNameMap = await _db.Franchises
             .AsNoTracking()
@@ -335,6 +338,9 @@ public class ManagerDashboardService : IManagerDashboardService
             .Where(x =>
                 x.Type == InventoryOwnerType.Franchise &&
                 x.FranchiseId.HasValue &&
+                x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null &&
                 franchiseIds.Contains(x.FranchiseId.Value) &&
                 x.Quantity > 0)
             .ToListAsync(ct);

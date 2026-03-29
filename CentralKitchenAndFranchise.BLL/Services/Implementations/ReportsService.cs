@@ -638,11 +638,15 @@ public class ReportsService : IReportsService
             "FRANCHISE" => query.Where(x =>
                 x.Type == InventoryOwnerType.Franchise &&
                 x.FranchiseId == scope.FranchiseId &&
-                x.CentralKitchenId == null),
+                x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null),
             _ => query.Where(x =>
                 x.Type == InventoryOwnerType.CentralKitchen &&
                 x.CentralKitchenId == scope.CentralKitchenId &&
-                x.FranchiseId == null)
+                x.FranchiseId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null)
         };
 
         return await query
@@ -656,7 +660,6 @@ public class ReportsService : IReportsService
             })
             .ToListAsync(ct);
     }
-
     /// <summary>Load product batch master rows for the requested report scope.</summary>
     private async Task<List<ProductBatchRow>> QueryProductBatchesForScope(ReportScope scope, CancellationToken ct)
     {
@@ -667,8 +670,16 @@ public class ReportsService : IReportsService
 
         query = scope.ScopeType switch
         {
-            "FRANCHISE" => query.Where(x => x.FranchiseId == scope.FranchiseId && x.CentralKitchenId == null),
-            _ => query.Where(x => x.CentralKitchenId == scope.CentralKitchenId && x.FranchiseId == null)
+            "FRANCHISE" => query.Where(x =>
+                x.FranchiseId == scope.FranchiseId &&
+                x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null),
+            _ => query.Where(x =>
+                x.CentralKitchenId == scope.CentralKitchenId &&
+                x.FranchiseId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null)
         };
 
         return await query
@@ -696,11 +707,15 @@ public class ReportsService : IReportsService
             "FRANCHISE" => query.Where(x =>
                 x.Batch!.Type == InventoryOwnerType.Franchise &&
                 x.Batch.FranchiseId == scope.FranchiseId &&
-                x.Batch.CentralKitchenId == null),
+                x.Batch.CentralKitchenId == null &&
+                !x.Batch.IsInTransit &&
+                x.Batch.DeliveryId == null),
             _ => query.Where(x =>
                 x.Batch!.Type == InventoryOwnerType.CentralKitchen &&
                 x.Batch.CentralKitchenId == scope.CentralKitchenId &&
-                x.Batch.FranchiseId == null)
+                x.Batch.FranchiseId == null &&
+                !x.Batch.IsInTransit &&
+                x.Batch.DeliveryId == null)
         };
 
         return await query
@@ -725,8 +740,16 @@ public class ReportsService : IReportsService
 
         query = scope.ScopeType switch
         {
-            "FRANCHISE" => query.Where(x => x.Batch!.FranchiseId == scope.FranchiseId && x.Batch.CentralKitchenId == null),
-            _ => query.Where(x => x.Batch!.CentralKitchenId == scope.CentralKitchenId && x.Batch.FranchiseId == null)
+            "FRANCHISE" => query.Where(x =>
+                x.Batch!.FranchiseId == scope.FranchiseId &&
+                x.Batch.CentralKitchenId == null &&
+                !x.Batch.IsInTransit &&
+                x.Batch.DeliveryId == null),
+            _ => query.Where(x =>
+                x.Batch!.CentralKitchenId == scope.CentralKitchenId &&
+                x.Batch.FranchiseId == null &&
+                !x.Batch.IsInTransit &&
+                x.Batch.DeliveryId == null)
         };
 
         return await query
@@ -1007,14 +1030,28 @@ public class ReportsService : IReportsService
             "FRANCHISE" => query.Where(x =>
                 x.Batch!.Type == InventoryOwnerType.Franchise &&
                 x.Batch.FranchiseId == scope.FranchiseId &&
-                x.Batch.CentralKitchenId == null),
+                x.Batch.CentralKitchenId == null &&
+                !x.Batch.IsInTransit &&
+                x.Batch.DeliveryId == null),
             "CENTRAL_KITCHEN" => query.Where(x =>
                 x.Batch!.Type == InventoryOwnerType.CentralKitchen &&
                 x.Batch.CentralKitchenId == scope.CentralKitchenId &&
-                x.Batch.FranchiseId == null),
+                x.Batch.FranchiseId == null &&
+                !x.Batch.IsInTransit &&
+                x.Batch.DeliveryId == null),
             _ => query.Where(x =>
-                (x.Batch!.Type == InventoryOwnerType.Franchise && x.Batch.FranchiseId.HasValue) ||
-                (x.Batch.Type == InventoryOwnerType.CentralKitchen && x.Batch.CentralKitchenId.HasValue))
+                (
+                    x.Batch!.Type == InventoryOwnerType.Franchise &&
+                    x.Batch.FranchiseId.HasValue &&
+                    !x.Batch.IsInTransit &&
+                    x.Batch.DeliveryId == null
+                ) ||
+                (
+                    x.Batch.Type == InventoryOwnerType.CentralKitchen &&
+                    x.Batch.CentralKitchenId.HasValue &&
+                    !x.Batch.IsInTransit &&
+                    x.Batch.DeliveryId == null
+                ))
         };
     }
 

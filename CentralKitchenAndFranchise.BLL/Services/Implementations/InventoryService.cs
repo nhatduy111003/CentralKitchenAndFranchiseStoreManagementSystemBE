@@ -400,7 +400,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 .FirstOrDefaultAsync(b =>
                     b.BatchId == request.BatchId &&
                     b.Type == InventoryOwnerType.Franchise &&
-                    b.FranchiseId == franchiseId,
+                    b.FranchiseId == franchiseId &&
+                    b.CentralKitchenId == null &&
+                    !b.IsInTransit &&
+                    b.DeliveryId == null,
                     ct);
 
             if (batch is null)
@@ -850,15 +853,17 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                         throw new ArgumentException("WASTE requires DeltaQuantity < 0.");
 
                     var batch = await _db.ProductBatches
-                        .Include(b => b.Product)
-                        .FirstOrDefaultAsync(b =>
+                            .Include(b => b.Product)
+                            .FirstOrDefaultAsync(b =>
                             b.BatchId == request.BatchId &&
                             b.FranchiseId == franchiseId &&
-                            b.CentralKitchenId == null,
+                            b.CentralKitchenId == null &&
+                            !b.IsInTransit &&
+                            b.DeliveryId == null,
                             ct);
 
                     if (batch is null)
-                        throw new KeyNotFoundException($"ProductBatch {request.BatchId} not found.");
+                                throw new KeyNotFoundException($"ProductBatch {request.BatchId} not found.");
 
                     var before = batch.Quantity;
                     var after = before + request.DeltaQuantity;
@@ -957,7 +962,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 .Where(x =>
                     x.Type == InventoryOwnerType.Franchise &&
                     x.FranchiseId == franchiseId &&
-                    x.CentralKitchenId == null);
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null);
 
             if (ingredientId.HasValue)
                 query = query.Where(x => x.IngredientId == ingredientId.Value);
@@ -991,7 +998,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     x.BatchId == batchId &&
                     x.Type == InventoryOwnerType.Franchise &&
                     x.FranchiseId == franchiseId &&
-                    x.CentralKitchenId == null,
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null,
                     ct);
 
             if (batch is null)
@@ -1016,7 +1025,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     x.BatchId == batchId &&
                     x.Type == InventoryOwnerType.Franchise &&
                     x.FranchiseId == franchiseId &&
-                    x.CentralKitchenId == null,
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null,
                     ct);
 
             if (batch is null)
@@ -1085,7 +1096,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     x.BatchId == batchId &&
                     x.Type == InventoryOwnerType.Franchise &&
                     x.FranchiseId == franchiseId &&
-                    x.CentralKitchenId == null,
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null,
                     ct);
 
             if (batch is null)
@@ -1144,7 +1157,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 .Include(x => x.Product)
                 .Where(x =>
                     x.FranchiseId == franchiseId &&
-                    x.CentralKitchenId == null);
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null);
 
             if (productId.HasValue)
                 query = query.Where(x => x.ProductId == productId.Value);
@@ -1177,7 +1192,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 .FirstOrDefaultAsync(x =>
                     x.BatchId == batchId &&
                     x.FranchiseId == franchiseId &&
-                    x.CentralKitchenId == null,
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null,
                     ct);
 
             if (batch is null)
@@ -1201,7 +1218,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 .FirstOrDefaultAsync(x =>
                     x.BatchId == batchId &&
                     x.FranchiseId == franchiseId &&
-                    x.CentralKitchenId == null,
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null,
                     ct);
 
             if (batch is null)
@@ -1269,7 +1288,9 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 .FirstOrDefaultAsync(x =>
                     x.BatchId == batchId &&
                     x.FranchiseId == franchiseId &&
-                    x.CentralKitchenId == null,
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null,
                     ct);
 
             if (batch is null)
@@ -1324,7 +1345,13 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             var ingredientBatches = await _db.IngredientBatches
                 .AsNoTracking()
                 .Include(x => x.Ingredient)
-                .Where(x => x.FranchiseId == franchiseId && x.Quantity > 0)
+                .Where(x =>
+                    x.Type == InventoryOwnerType.Franchise &&
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null &&
+                    x.Quantity > 0)
                 .ToListAsync(ct);
 
             ingredientBatches = ingredientBatches
@@ -1337,7 +1364,12 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             var productBatches = await _db.ProductBatches
                 .AsNoTracking()
                 .Include(x => x.Product)
-                .Where(x => x.FranchiseId == franchiseId && x.Quantity > 0)
+                .Where(x =>
+                    x.FranchiseId == franchiseId &&
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null &&
+                    x.Quantity > 0)
                 .ToListAsync(ct);
 
             productBatches = productBatches
@@ -2226,6 +2258,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 x.Type == InventoryOwnerType.Franchise &&
                 x.FranchiseId == franchiseId &&
                 x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null &&
                 x.IngredientId == ingredientId &&
                 x.BatchCode == normalizedBatchCode &&
                 (!excludeBatchId.HasValue || x.BatchId != excludeBatchId.Value),
@@ -2272,6 +2306,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             return _db.ProductBatches.AnyAsync(x =>
                 x.FranchiseId == franchiseId &&
                 x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null &&
                 x.ProductId == productId &&
                 x.BatchCode == normalizedBatchCode &&
                 (!excludeBatchId.HasValue || x.BatchId != excludeBatchId.Value),

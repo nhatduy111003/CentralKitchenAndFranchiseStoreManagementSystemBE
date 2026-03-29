@@ -180,13 +180,21 @@ public class StoreDashboardService : IStoreDashboardService
             .Where(x =>
                 x.Type == InventoryOwnerType.Franchise &&
                 x.FranchiseId == franchiseId &&
+                x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null &&
                 x.Quantity > 0)
             .ToListAsync(ct);
 
         var productBatches = await _db.ProductBatches
             .AsNoTracking()
             .Include(x => x.Product)
-            .Where(x => x.FranchiseId == franchiseId && x.Quantity > 0)
+            .Where(x =>
+                x.FranchiseId == franchiseId &&
+                x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null &&
+                x.Quantity > 0)
             .ToListAsync(ct);
 
         response.InventorySummary.IngredientItemCount = ingredientBatches
@@ -234,7 +242,10 @@ public class StoreDashboardService : IStoreDashboardService
             .AsNoTracking()
             .Where(x =>
                 x.Type == InventoryOwnerType.Franchise &&
-                x.FranchiseId == franchiseId)
+                x.FranchiseId == franchiseId &&
+                x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null)
             .Where(x => x.Ingredient.Status == IngredientStatus.Active)
             .GroupBy(x => new
             {
@@ -289,6 +300,9 @@ public class StoreDashboardService : IStoreDashboardService
             .Where(x =>
                 x.Type == InventoryOwnerType.Franchise &&
                 x.FranchiseId == franchiseId &&
+                x.CentralKitchenId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null &&
                 x.Quantity > 0)
             .ToListAsync(ct);
 
