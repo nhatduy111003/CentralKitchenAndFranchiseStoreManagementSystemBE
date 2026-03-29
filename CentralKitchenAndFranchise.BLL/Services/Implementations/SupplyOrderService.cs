@@ -15,15 +15,18 @@ public class SupplyOrderService : ISupplyOrderService
     private readonly AppDbContext _db;
     private readonly ICurrentUserService _current;
     private readonly IFranchiseAccessService _access;
+    private readonly IInventoryTransferService _transferService;
 
     public SupplyOrderService(
         AppDbContext db,
         ICurrentUserService current,
-        IFranchiseAccessService access)
+        IFranchiseAccessService access,
+        IInventoryTransferService transferService)
     {
         _db = db;
         _current = current;
         _access = access;
+        _transferService = transferService;
     }
 
     public async Task<List<SupplyOrderQueueItemResponse>> GetQueueAsync(CancellationToken ct = default)
@@ -177,9 +180,9 @@ public class SupplyOrderService : ISupplyOrderService
         }).ToList();
     }
     public async Task<OrderWorkflowActionResponse> PrepareDeliveryAsync(
-    int orderId,
-    PrepareDeliveryRequest request,
-    CancellationToken ct = default)
+        int orderId,
+        PrepareDeliveryRequest request,
+        CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
 
@@ -191,78 +194,94 @@ public class SupplyOrderService : ISupplyOrderService
         if (!order.Items.Any() && !order.IngredientItems.Any())
             throw new InvalidOperationException("Cannot prepare delivery for an empty order.");
 
-        // Step 1: Create/sync delivery artifacts from forward snapshot
         await EnsureDeliveryArtifactsAsync(order, ct);
-
-        // Step 2: Adjust delivery lines to current actual stock (partial shipping)
         await AdjustDeliveryLinesByCurrentStockAsync(order, ct);
 
-        // Step 3: Zero-total guard — reject if nothing can be shipped
-        var deliveryPlan = await _db.DeliveryPlans
-            .FirstOrDefaultAsync(x => x.StoreOrderId == order.StoreOrderId, ct);
-        var delivery = await _db.Deliveries
-            .Include(x => x.ProductItems)
-            .Include(x => x.IngredientItems)
-            .FirstOrDefaultAsync(x => x.DeliveryPlanId == deliveryPlan!.DeliveryPlanId, ct);
+        var previewDelivery = await LoadDeliveryForOrderAsync(order.StoreOrderId, asTracking: false, ct);
+        if (previewDelivery is null)
+            throw new InvalidOperationException("Delivery was not found for this store order.");
 
-        var totalActualQty =
-            delivery!.ProductItems.Sum(x => x.Quantity) +
-            delivery!.IngredientItems.Sum(x => x.Quantity);
-
-        if (totalActualQty <= 0m)
+        var previewTotalQty = previewDelivery.ProductItems.Sum(x => x.Quantity) + previewDelivery.IngredientItems.Sum(x => x.Quantity);
+        if (previewTotalQty <= 0m)
         {
             throw new InvalidOperationException(
-                "Cannot prepare delivery because there is no usable stock left to ship for this order. " +
-                "All delivery lines have been adjusted to 0.");
+                "Cannot prepare delivery because there is no usable stock left to ship for this order. All delivery lines have been adjusted to 0.");
         }
+
+        var delivery = await LoadDeliveryForOrderAsync(order.StoreOrderId, asTracking: true, ct);
+        if (delivery is null)
+            throw new InvalidOperationException("Delivery was not found for this store order.");
+
+        if (delivery.IsStockCommitted)
+            throw new InvalidOperationException("Delivery stock has already been committed for this order.");
 
         var now = DateTime.UtcNow;
         var currentUserId = _current.UserId;
         var oldStatus = order.Status;
-
-        order.Status = StoreOrderStatus.Preparing;
-        order.PreparedAt = now;
-        order.PreparedByUserId = currentUserId;
-        order.PreparingNote = string.IsNullOrWhiteSpace(request?.PreparingNote)
+        var preparingNote = string.IsNullOrWhiteSpace(request?.PreparingNote)
             ? null
             : request.PreparingNote.Trim();
 
-        _db.Set<StoreOrderHistory>().Add(new StoreOrderHistory
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        try
         {
-            StoreOrderId = order.StoreOrderId,
-            ActionType = StoreOrderHistoryActions.OrderPreparing,
-            ActionLabel = "Supply b\u1eaft \u0111\u1ea7u chu\u1ea9n b\u1ecb giao h\u00e0ng",
-            OldStatus = oldStatus,
-            NewStatus = order.Status,
-            Note = order.PreparingNote,
-            PerformedByUserId = currentUserId,
-            PerformedAt = now
-        });
+            await _transferService.CommitDeliveryStockAsync(
+                delivery,
+                order.FranchiseId,
+                now,
+                ct);
 
-        _db.AuditLogs.Add(new AuditLog
+            delivery.IsStockCommitted = true;
+
+            order.Status = StoreOrderStatus.Preparing;
+            order.PreparedAt = now;
+            order.PreparedByUserId = currentUserId;
+            order.PreparingNote = preparingNote;
+
+            _db.Set<StoreOrderHistory>().Add(new StoreOrderHistory
+            {
+                StoreOrderId = order.StoreOrderId,
+                ActionType = StoreOrderHistoryActions.OrderPreparing,
+                ActionLabel = "Supply bắt đầu chuẩn bị giao hàng",
+                OldStatus = oldStatus,
+                NewStatus = order.Status,
+                Note = order.PreparingNote,
+                PerformedByUserId = currentUserId,
+                PerformedAt = now
+            });
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                UserId = currentUserId,
+                FranchiseId = order.FranchiseId,
+                CentralKitchenId = order.Franchise.CentralKitchenId,
+                Action = "STORE_ORDER_PREPARED",
+                EntityName = "StoreOrder",
+                EntityId = order.StoreOrderId,
+                OldDataJson = JsonSerializer.Serialize(new
+                {
+                    Status = oldStatus,
+                    DeliveryIsStockCommitted = false
+                }),
+                NewDataJson = JsonSerializer.Serialize(new
+                {
+                    order.Status,
+                    order.PreparedAt,
+                    order.PreparedByUserId,
+                    order.PreparingNote,
+                    DeliveryIsStockCommitted = delivery.IsStockCommitted
+                }),
+                Reason = order.PreparingNote,
+                CreatedAt = now
+            });
+
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
         {
-            UserId = currentUserId,
-            FranchiseId = order.FranchiseId,
-            CentralKitchenId = order.Franchise.CentralKitchenId,
-            Action = "STORE_ORDER_PREPARED",
-            EntityName = "StoreOrder",
-            EntityId = order.StoreOrderId,
-            OldDataJson = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                Status = oldStatus
-            }),
-            NewDataJson = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                order.Status,
-                order.PreparedAt,
-                order.PreparedByUserId,
-                order.PreparingNote
-            }),
-            Reason = order.PreparingNote,
-            CreatedAt = now
-        });
-
-        await _db.SaveChangesAsync(ct);
+            throw new InvalidOperationException("Concurrent prepare detected. Please retry.");
+        }
 
         return new OrderWorkflowActionResponse
         {
@@ -285,6 +304,10 @@ public class SupplyOrderService : ISupplyOrderService
         var order = await LoadManagedOrderAsync(orderId, ct);
 
         var nextStatus = NormalizeDeliveryStatus(request.Status);
+
+        if (string.Equals(nextStatus, StoreOrderStatus.Preparing, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Use PrepareDeliveryAsync to move an order into PREPARING because that step commits stock atomically.");
+
         ValidateDeliveryTransition(order.Status, nextStatus);
 
         var now = DateTime.UtcNow;
@@ -406,13 +429,37 @@ public class SupplyOrderService : ISupplyOrderService
         public string? DropReason { get; set; }
     }
 
-
-
     /// <summary>
     /// Adjusts delivery lines to match CURRENT central kitchen stock.
     /// Normalizes duplicate lines, then sets Quantity = Min(forwarded, available).
     /// For linked store-order deliveries, resolves RequestedQuantity from original store order.
     /// </summary>
+
+    private async Task<Delivery?> LoadDeliveryForOrderAsync(
+    int storeOrderId,
+    bool asTracking,
+    CancellationToken ct)
+    {
+        var deliveryPlanId = await _db.DeliveryPlans
+            .AsNoTracking()
+            .Where(x => x.StoreOrderId == storeOrderId)
+            .Select(x => (int?)x.DeliveryPlanId)
+            .FirstOrDefaultAsync(ct);
+
+        if (!deliveryPlanId.HasValue)
+            return null;
+
+        var query = _db.Deliveries
+            .Include(x => x.ProductItems)
+            .Include(x => x.IngredientItems)
+            .Where(x => x.DeliveryPlanId == deliveryPlanId.Value);
+
+        if (!asTracking)
+            query = query.AsNoTracking();
+
+        return await query.FirstOrDefaultAsync(ct);
+    }
+
     private async Task AdjustDeliveryLinesByCurrentStockAsync(StoreOrder order, CancellationToken ct)
     {
         var plan = await _db.DeliveryPlans
@@ -564,9 +611,6 @@ public class SupplyOrderService : ISupplyOrderService
         await _db.SaveChangesAsync(ct);
     }
 
-    /// Phase 1:
-    /// - 1 StoreOrder -> 1 DeliveryPlan -> 1 Delivery
-    /// - sync delivery lines from forward snapshot
     private async Task EnsureDeliveryArtifactsAsync(StoreOrder order, CancellationToken ct)
     {
         var existingPlan = await _db.DeliveryPlans
@@ -710,7 +754,6 @@ public class SupplyOrderService : ISupplyOrderService
     {
         var valid = (currentStatus, nextStatus) switch
         {
-            (var s, var n) when s == StoreOrderStatus.ForwardedToSupply && n == StoreOrderStatus.Preparing => true,
             (var s, var n) when s == StoreOrderStatus.Preparing && n == StoreOrderStatus.ReadyToDeliver => true,
             (var s, var n) when s == StoreOrderStatus.ReadyToDeliver && n == StoreOrderStatus.InTransit => true,
             (var s, var n) when s == StoreOrderStatus.InTransit && n == StoreOrderStatus.Delivered => true,

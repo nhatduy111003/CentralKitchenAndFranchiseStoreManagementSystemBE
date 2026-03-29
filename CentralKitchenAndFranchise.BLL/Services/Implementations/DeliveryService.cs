@@ -263,6 +263,9 @@ public class DeliveryService : IDeliveryService
 
         await EnsureDeliveryScopeAsync(delivery, ct);
 
+        if (delivery.IsStockCommitted)
+            throw new InvalidOperationException("Delivery items cannot be edited after stock has been committed at prepare.");
+
         if (delivery.Status != DeliveryStatus.Created)
             throw new InvalidOperationException("Can only edit items when delivery is CREATED.");
 
@@ -373,6 +376,9 @@ public class DeliveryService : IDeliveryService
             throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
 
         await EnsureDeliveryScopeAsync(delivery, ct);
+
+        if (delivery.IsStockCommitted)
+            throw new InvalidOperationException("Delivery items cannot be edited after stock has been committed at prepare.");
 
         if (delivery.Status != DeliveryStatus.Created)
             throw new InvalidOperationException("Can only edit items when delivery is CREATED.");

@@ -339,6 +339,18 @@ public class StoreOrderService : IStoreOrderService
         if (order.Status == StoreOrderStatus.Locked)
             throw new InvalidOperationException("Order is locked. Cancel is not allowed.");
 
+        var hasCommittedDelivery = await _db.DeliveryPlans
+            .Where(x => x.StoreOrderId == order.StoreOrderId)
+            .Join(
+                _db.Deliveries,
+                plan => plan.DeliveryPlanId,
+                delivery => delivery.DeliveryPlanId,
+                (_, delivery) => delivery)
+            .AnyAsync(x => x.IsStockCommitted, ct);
+
+        if (hasCommittedDelivery)
+            throw new InvalidOperationException("Order cannot be cancelled after delivery stock has been committed.");
+
         if (await IsSubmittedEditWindowExpiredAsync(order, ct))
             throw new InvalidOperationException("Order edit window has expired. Cancel is not allowed.");
 
