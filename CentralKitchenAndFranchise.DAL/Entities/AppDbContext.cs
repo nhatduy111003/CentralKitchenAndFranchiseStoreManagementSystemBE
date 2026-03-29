@@ -423,17 +423,23 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     tb.HasCheckConstraint(
                         "CK_ingredient_batches_type_owner",
                         @"
-            (
-                ""Type"" = 'FRANCHISE'
-                AND ""FranchiseId"" IS NOT NULL
-                AND ""CentralKitchenId"" IS NULL
-            )
-            OR
-            (
-                ""Type"" = 'CENTRAL_KITCHEN'
-                AND ""FranchiseId"" IS NULL
-                AND ""CentralKitchenId"" IS NOT NULL
-            )");
+                        (
+                            ""Type"" = 'FRANCHISE'
+                            AND ""FranchiseId"" IS NOT NULL
+                            AND ""CentralKitchenId"" IS NULL
+                        )
+                        OR
+                        (
+                            ""Type"" = 'CENTRAL_KITCHEN'
+                            AND ""FranchiseId"" IS NULL
+                            AND ""CentralKitchenId"" IS NOT NULL
+                        )");
+                    tb.HasCheckConstraint(
+                        "CK_ingredient_batches_transit_has_delivery",
+                        @"""IsInTransit"" = false OR ""DeliveryId"" IS NOT NULL");
+                    tb.HasCheckConstraint(
+                        "CK_ingredient_batches_onhand_no_delivery",
+                        @"""IsInTransit"" = true OR ""DeliveryId"" IS NULL");
                 });
 
                 e.HasKey(x => x.BatchId);
@@ -441,6 +447,9 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.Property(x => x.Type)
                     .IsRequired()
                     .HasMaxLength(50);
+
+                e.Property(x => x.IsInTransit)
+                    .HasDefaultValue(false);
 
                 e.HasOne(x => x.Franchise)
                     .WithMany(x => x.IngredientBatches)
@@ -452,17 +461,20 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .HasForeignKey(x => x.CentralKitchenId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                // Giữ unique batch code trong cùng franchise + ingredient.
+                e.HasOne<Delivery>()
+                    .WithMany()
+                    .HasForeignKey(x => x.DeliveryId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
                 e.HasIndex(x => new { x.IngredientId, x.FranchiseId, x.BatchCode })
                     .IsUnique()
                     .HasDatabaseName("UX_ingredient_batches_ingredient_franchise_batchcode")
-                    .HasFilter(@"""FranchiseId"" IS NOT NULL AND ""CentralKitchenId"" IS NULL");
+                    .HasFilter(@"""FranchiseId"" IS NOT NULL AND ""CentralKitchenId"" IS NULL AND ""DeliveryId"" IS NULL");
 
-                // Giữ unique batch code trong cùng central kitchen + ingredient.
                 e.HasIndex(x => new { x.IngredientId, x.CentralKitchenId, x.BatchCode })
                     .IsUnique()
                     .HasDatabaseName("UX_ingredient_batches_ingredient_ck_batchcode")
-                    .HasFilter(@"""CentralKitchenId"" IS NOT NULL AND ""FranchiseId"" IS NULL");
+                    .HasFilter(@"""CentralKitchenId"" IS NOT NULL AND ""FranchiseId"" IS NULL AND ""DeliveryId"" IS NULL");
             });
 
             modelBuilder.Entity<InventoryMovement>(e => { e.ToTable("inventory_movements"); e.HasKey(x => x.MovementId); });
@@ -474,15 +486,21 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     tb.HasCheckConstraint(
                         "CK_product_batches_owner",
                         @"
-            (
-                ""FranchiseId"" IS NOT NULL
-                AND ""CentralKitchenId"" IS NULL
-            )
-            OR
-            (
-                ""FranchiseId"" IS NULL
-                AND ""CentralKitchenId"" IS NOT NULL
-            )");
+                        (
+                            ""FranchiseId"" IS NOT NULL
+                            AND ""CentralKitchenId"" IS NULL
+                        )
+                        OR
+                        (
+                            ""FranchiseId"" IS NULL
+                            AND ""CentralKitchenId"" IS NOT NULL
+                        )");
+                    tb.HasCheckConstraint(
+                        "CK_product_batches_transit_has_delivery",
+                        @"""IsInTransit"" = false OR ""DeliveryId"" IS NOT NULL");
+                    tb.HasCheckConstraint(
+                        "CK_product_batches_onhand_no_delivery",
+                        @"""IsInTransit"" = true OR ""DeliveryId"" IS NULL");
                 });
 
                 e.HasKey(x => x.BatchId);
@@ -494,37 +512,23 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.Property(x => x.Quantity)
                     .HasColumnType("numeric(18,2)");
 
-                e.HasOne(x => x.Product)
-                    .WithMany(x => x.ProductBatches)
-                    .HasForeignKey(x => x.ProductId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                e.Property(x => x.IsInTransit)
+                    .HasDefaultValue(false);
 
-                e.HasOne(x => x.Franchise)
+                e.HasOne<Delivery>()
                     .WithMany()
-                    .HasForeignKey(x => x.FranchiseId)
+                    .HasForeignKey(x => x.DeliveryId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                e.HasOne(x => x.CentralKitchen)
-                    .WithMany(x => x.ProductBatches)
-                    .HasForeignKey(x => x.CentralKitchenId)
-                    .OnDelete(DeleteBehavior.Restrict);
-
-                e.HasOne(x => x.ProductionRun)
-                    .WithMany(x => x.ProductBatches)
-                    .HasForeignKey(x => x.ProductionRunId)
-                    .OnDelete(DeleteBehavior.SetNull);
-
-                // Franchise-owned uniqueness
                 e.HasIndex(x => new { x.ProductId, x.FranchiseId, x.BatchCode })
                     .IsUnique()
                     .HasDatabaseName("UX_product_batches_product_franchise_batchcode")
-                    .HasFilter(@"""FranchiseId"" IS NOT NULL AND ""CentralKitchenId"" IS NULL");
+                    .HasFilter(@"""FranchiseId"" IS NOT NULL AND ""CentralKitchenId"" IS NULL AND ""DeliveryId"" IS NULL");
 
-                // CentralKitchen-owned uniqueness
                 e.HasIndex(x => new { x.ProductId, x.CentralKitchenId, x.BatchCode })
                     .IsUnique()
                     .HasDatabaseName("UX_product_batches_product_ck_batchcode")
-                    .HasFilter(@"""CentralKitchenId"" IS NOT NULL AND ""FranchiseId"" IS NULL");
+                    .HasFilter(@"""CentralKitchenId"" IS NOT NULL AND ""FranchiseId"" IS NULL AND ""DeliveryId"" IS NULL");
             });
 
 
@@ -562,6 +566,14 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                 e.ToTable("deliveries");
                 e.HasKey(x => x.DeliveryId);
 
+                e.Property(x => x.IsStockCommitted)
+                    .HasDefaultValue(false);
+
+                e.Property(x => x.RowVersion)
+                    .IsRowVersion()
+                    .HasColumnName("xmin")
+                    .HasColumnType("xid");
+
                 e.HasOne(x => x.DeliveryPlan)
                     .WithMany(x => x.Deliveries)
                     .HasForeignKey(x => x.DeliveryPlanId)
@@ -571,7 +583,6 @@ namespace CentralKitchenAndFranchise.DAL.Entities
                     .WithMany()
                     .HasForeignKey(x => x.FromCentralKitchenId)
                     .OnDelete(DeleteBehavior.Restrict);
-
             });
 
             modelBuilder.Entity<DeliveryProductItem>(e =>

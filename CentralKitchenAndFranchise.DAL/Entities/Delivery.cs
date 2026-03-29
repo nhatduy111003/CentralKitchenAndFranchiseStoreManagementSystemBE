@@ -1,21 +1,19 @@
-﻿namespace CentralKitchenAndFranchise.DAL.Entities;
+﻿using CentralKitchenAndFranchise.DAL.Entities;
 
 public class Delivery
 {
     public int DeliveryId { get; set; }
-
     public int DeliveryPlanId { get; set; }
-
-    // source central kitchen
     public int FromCentralKitchenId { get; set; }
 
     public string Status { get; set; } = "CREATED";
+    public bool IsStockCommitted { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime? ConfirmedAt { get; set; }
-
-    // sửa từ non-null -> nullable
     public DateTime? DeliveredAt { get; set; }
+
+    public uint RowVersion { get; set; }
 
     public DeliveryPlan DeliveryPlan { get; set; } = default!;
     public CentralKitchen FromCentralKitchen { get; set; } = default!;

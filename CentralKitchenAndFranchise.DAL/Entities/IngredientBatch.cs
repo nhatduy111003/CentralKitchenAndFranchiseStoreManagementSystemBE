@@ -1,4 +1,4 @@
-namespace CentralKitchenAndFranchise.DAL.Entities;
+using CentralKitchenAndFranchise.DAL.Entities;
 
 public class IngredientBatch
 {
@@ -14,6 +14,10 @@ public class IngredientBatch
 
     public string BatchCode { get; set; } = default!;
     public decimal Quantity { get; set; }
+
+    public bool IsInTransit { get; set; }
+    public int? DeliveryId { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public Ingredient Ingredient { get; set; } = default!;

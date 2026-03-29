@@ -16,6 +16,9 @@ public class ProductBatch
     public string BatchCode { get; set; } = default!;
     public decimal Quantity { get; set; }
 
+    public bool IsInTransit { get; set; }
+    public int? DeliveryId { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public Product Product { get; set; } = default!;
