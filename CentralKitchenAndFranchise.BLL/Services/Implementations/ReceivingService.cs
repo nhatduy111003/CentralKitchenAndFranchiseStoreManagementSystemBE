@@ -257,10 +257,10 @@ public class ReceivingService : IReceivingService
     }
 
     public async Task<ReceivingConfirmResponse> ConfirmAsync(
-    int franchiseId,
-    int deliveryId,
-    ConfirmReceivingRequest request,
-    CancellationToken ct = default)
+        int franchiseId,
+        int deliveryId,
+        ConfirmReceivingRequest request,
+        CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
         await _access.EnsureCanAccessAsync(franchiseId, ct);
@@ -288,14 +288,15 @@ public class ReceivingService : IReceivingService
         if (delivery.ReceivingReports.Any())
             throw new InvalidOperationException("This receiving has already been confirmed.");
 
+        if (!delivery.IsStockCommitted)
+            throw new InvalidOperationException("Receiving cannot be confirmed because delivery stock has not been committed at prepare.");
+
         var now = DateTime.UtcNow;
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-        // Transfer tồn kho thật sự chỉ xảy ra ở đây
-        await _transferService.TransferDeliveryAsync(
+        await _transferService.FinalizeDeliveryReceivingAsync(
             delivery.DeliveryId,
-            delivery.FromCentralKitchenId,
             franchiseId,
             now,
             ct);
@@ -447,6 +448,8 @@ public class ReceivingService : IReceivingService
                 .Where(x =>
                     x.CentralKitchenId == centralKitchenId &&
                     x.FranchiseId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null &&
                     productIds.Contains(x.ProductId) &&
                     x.Quantity > 0)
                 .ToListAsync(ct))
@@ -488,6 +491,8 @@ public class ReceivingService : IReceivingService
                 x.Type == InventoryOwnerType.CentralKitchen &&
                 x.CentralKitchenId == centralKitchenId &&
                 x.FranchiseId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null &&
                 ingredientIds.Contains(x.IngredientId) &&
                 x.Quantity > 0)
             .ToListAsync(ct);
@@ -530,6 +535,8 @@ public class ReceivingService : IReceivingService
                 x.Type == MovementType.In &&
                 x.Batch.FranchiseId == franchiseId &&
                 x.Batch.CentralKitchenId == null &&
+                !x.Batch.IsInTransit &&
+                x.Batch.DeliveryId == null &&
                 productIds.Contains(x.Batch.ProductId))
             .ToListAsync(ct);
 
@@ -578,6 +585,8 @@ public class ReceivingService : IReceivingService
                 x.Batch.Type == InventoryOwnerType.Franchise &&
                 x.Batch.FranchiseId == franchiseId &&
                 x.Batch.CentralKitchenId == null &&
+                !x.Batch.IsInTransit &&
+                x.Batch.DeliveryId == null &&
                 ingredientIds.Contains(x.Batch.IngredientId))
             .ToListAsync(ct);
 

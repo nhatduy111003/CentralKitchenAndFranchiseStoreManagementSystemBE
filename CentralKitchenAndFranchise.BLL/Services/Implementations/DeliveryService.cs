@@ -491,6 +491,9 @@ public class DeliveryService : IDeliveryService
         if (delivery.Status != DeliveryStatus.Created && delivery.Status != DeliveryStatus.Shipped)
             throw new InvalidOperationException("Only CREATED/SHIPPED deliveries can be marked as DELIVERED.");
 
+        if (!delivery.IsStockCommitted)
+            throw new InvalidOperationException("Delivery cannot be marked as DELIVERED before stock is committed at prepare.");
+
         var now = DateTime.UtcNow;
 
         delivery.Status = DeliveryStatus.Delivered;
@@ -562,6 +565,8 @@ public class DeliveryService : IDeliveryService
                 .Where(x =>
                     x.CentralKitchenId == centralKitchenId &&
                     x.FranchiseId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null &&
                     productIds.Contains(x.ProductId) &&
                     x.Quantity > 0)
                 .ToListAsync(ct))
@@ -603,6 +608,8 @@ public class DeliveryService : IDeliveryService
                 x.Type == InventoryOwnerType.CentralKitchen &&
                 x.CentralKitchenId == centralKitchenId &&
                 x.FranchiseId == null &&
+                !x.IsInTransit &&
+                x.DeliveryId == null &&
                 ingredientIds.Contains(x.IngredientId) &&
                 x.Quantity > 0)
             .ToListAsync(ct);
@@ -645,6 +652,8 @@ public class DeliveryService : IDeliveryService
                 x.Type == MovementType.In &&
                 x.Batch.FranchiseId == franchiseId &&
                 x.Batch.CentralKitchenId == null &&
+                x.Batch.IsInTransit &&
+                x.Batch.DeliveryId == deliveryId &&
                 productIds.Contains(x.Batch.ProductId))
             .ToListAsync(ct);
 
@@ -693,6 +702,8 @@ public class DeliveryService : IDeliveryService
                 x.Batch.Type == InventoryOwnerType.Franchise &&
                 x.Batch.FranchiseId == franchiseId &&
                 x.Batch.CentralKitchenId == null &&
+                x.Batch.IsInTransit &&
+                x.Batch.DeliveryId == deliveryId &&
                 ingredientIds.Contains(x.Batch.IngredientId))
             .ToListAsync(ct);
 

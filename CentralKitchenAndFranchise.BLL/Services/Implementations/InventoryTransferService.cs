@@ -154,6 +154,209 @@ public class InventoryTransferService : IInventoryTransferService
         }
     }
 
+    public async Task FinalizeDeliveryReceivingAsync(
+    int deliveryId,
+    int toFranchiseId,
+    DateTime now,
+    CancellationToken ct = default)
+    {
+        var transitProductBatches = await _db.ProductBatches
+            .Where(x =>
+                x.FranchiseId == toFranchiseId &&
+                x.CentralKitchenId == null &&
+                x.IsInTransit &&
+                x.DeliveryId == deliveryId &&
+                x.Quantity > 0)
+            .ToListAsync(ct);
+
+        var transitIngredientBatches = await _db.IngredientBatches
+            .Where(x =>
+                x.Type == InventoryOwnerType.Franchise &&
+                x.FranchiseId == toFranchiseId &&
+                x.CentralKitchenId == null &&
+                x.IsInTransit &&
+                x.DeliveryId == deliveryId &&
+                x.Quantity > 0)
+            .ToListAsync(ct);
+
+        var totalTransitQty = transitProductBatches.Sum(x => x.Quantity) + transitIngredientBatches.Sum(x => x.Quantity);
+        if (totalTransitQty <= 0m)
+        {
+            throw new InvalidOperationException(
+                "No in-transit stock exists for this delivery. Receiving cannot be finalized.");
+        }
+
+        var productIds = transitProductBatches.Select(x => x.ProductId).Distinct().ToList();
+        var ingredientIds = transitIngredientBatches.Select(x => x.IngredientId).Distinct().ToList();
+
+        var onHandProductMap = productIds.Count == 0
+            ? new Dictionary<(int ProductId, string BatchCode), ProductBatch>()
+            : (await _db.ProductBatches
+                .Where(x =>
+                    x.FranchiseId == toFranchiseId &&
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null &&
+                    productIds.Contains(x.ProductId))
+                .ToListAsync(ct))
+                .ToDictionary(x => (x.ProductId, x.BatchCode), x => x);
+
+        var onHandIngredientMap = ingredientIds.Count == 0
+            ? new Dictionary<(int IngredientId, string BatchCode), IngredientBatch>()
+            : (await _db.IngredientBatches
+                .Where(x =>
+                    x.Type == InventoryOwnerType.Franchise &&
+                    x.FranchiseId == toFranchiseId &&
+                    x.CentralKitchenId == null &&
+                    !x.IsInTransit &&
+                    x.DeliveryId == null &&
+                    ingredientIds.Contains(x.IngredientId))
+                .ToListAsync(ct))
+                .ToDictionary(x => (x.IngredientId, x.BatchCode), x => x);
+
+        foreach (var transit in transitProductBatches
+                     .OrderBy(x => x.ProductId)
+                     .ThenBy(x => x.CreatedAt)
+                     .ThenBy(x => x.BatchId))
+        {
+            FinalizeProductTransitBatch(transit, onHandProductMap, deliveryId, toFranchiseId, now);
+        }
+
+        foreach (var transit in transitIngredientBatches
+                     .OrderBy(x => x.IngredientId)
+                     .ThenBy(x => x.CreatedAt)
+                     .ThenBy(x => x.BatchId))
+        {
+            FinalizeIngredientTransitBatch(transit, onHandIngredientMap, deliveryId, toFranchiseId, now);
+        }
+    }
+
+    private void FinalizeProductTransitBatch(
+        ProductBatch transitBatch,
+        Dictionary<(int ProductId, string BatchCode), ProductBatch> onHandBatchMap,
+        int deliveryId,
+        int franchiseId,
+        DateTime now)
+    {
+        if (transitBatch.Quantity <= 0m)
+            return;
+
+        var qty = transitBatch.Quantity;
+
+        _db.ProductMovements.Add(new ProductMovement
+        {
+            BatchId = transitBatch.BatchId,
+            Type = MovementType.Out,
+            Quantity = qty,
+            CreatedByUserId = _current.UserId,
+            Reason = "Store receiving confirm (OUT transit)",
+            DeliveryId = deliveryId,
+            CreatedAt = now
+        });
+
+        var key = (transitBatch.ProductId, transitBatch.BatchCode);
+        if (!onHandBatchMap.TryGetValue(key, out var onHandBatch))
+        {
+            onHandBatch = new ProductBatch
+            {
+                FranchiseId = franchiseId,
+                CentralKitchenId = null,
+                ProductId = transitBatch.ProductId,
+                BatchCode = transitBatch.BatchCode,
+                Quantity = 0m,
+                CreatedAt = transitBatch.CreatedAt,
+                IsInTransit = false,
+                DeliveryId = null
+            };
+
+            onHandBatchMap[key] = onHandBatch;
+            _db.ProductBatches.Add(onHandBatch);
+        }
+        else if (onHandBatch.CreatedAt != transitBatch.CreatedAt)
+        {
+            throw new InvalidOperationException(
+                $"Product batch age conflict for BatchCode={transitBatch.BatchCode} at destination franchise {franchiseId}.");
+        }
+
+        transitBatch.Quantity = 0m;
+        onHandBatch.Quantity += qty;
+
+        _db.ProductMovements.Add(new ProductMovement
+        {
+            Batch = onHandBatch,
+            Type = MovementType.In,
+            Quantity = qty,
+            CreatedByUserId = _current.UserId,
+            Reason = "Store receiving confirm (IN on-hand)",
+            DeliveryId = deliveryId,
+            CreatedAt = now
+        });
+    }
+
+    private void FinalizeIngredientTransitBatch(
+        IngredientBatch transitBatch,
+        Dictionary<(int IngredientId, string BatchCode), IngredientBatch> onHandBatchMap,
+        int deliveryId,
+        int franchiseId,
+        DateTime now)
+    {
+        if (transitBatch.Quantity <= 0m)
+            return;
+
+        var qty = transitBatch.Quantity;
+
+        _db.InventoryMovements.Add(new InventoryMovement
+        {
+            BatchId = transitBatch.BatchId,
+            Type = InventoryMovementType.Out,
+            Quantity = qty,
+            CreatedByUserId = _current.UserId,
+            Reason = "Store receiving confirm (OUT transit)",
+            DeliveryId = deliveryId,
+            CreatedAt = now
+        });
+
+        var key = (transitBatch.IngredientId, transitBatch.BatchCode);
+        if (!onHandBatchMap.TryGetValue(key, out var onHandBatch))
+        {
+            onHandBatch = new IngredientBatch
+            {
+                Type = InventoryOwnerType.Franchise,
+                FranchiseId = franchiseId,
+                CentralKitchenId = null,
+                IngredientId = transitBatch.IngredientId,
+                BatchCode = transitBatch.BatchCode,
+                Quantity = 0m,
+                CreatedAt = transitBatch.CreatedAt,
+                IsInTransit = false,
+                DeliveryId = null
+            };
+
+            onHandBatchMap[key] = onHandBatch;
+            _db.IngredientBatches.Add(onHandBatch);
+        }
+        else if (onHandBatch.CreatedAt != transitBatch.CreatedAt)
+        {
+            throw new InvalidOperationException(
+                $"Ingredient batch age conflict for BatchCode={transitBatch.BatchCode} at destination franchise {franchiseId}.");
+        }
+
+        transitBatch.Quantity = 0m;
+        onHandBatch.Quantity += qty;
+
+        _db.InventoryMovements.Add(new InventoryMovement
+        {
+            Batch = onHandBatch,
+            Type = InventoryMovementType.In,
+            Quantity = qty,
+            CreatedByUserId = _current.UserId,
+            Reason = "Store receiving confirm (IN on-hand)",
+            DeliveryId = deliveryId,
+            CreatedAt = now
+        });
+    }
+
+    // Helpers
     private decimal CommitProductLine(
         DeliveryProductItem line,
         List<ProductBatch> sourceBatches,
@@ -341,230 +544,4 @@ public class InventoryTransferService : IInventoryTransferService
             : null;
     }
 
-    public async Task TransferDeliveryAsync(
-        int deliveryId,
-        int fromCentralKitchenId,
-        int toFranchiseId,
-        DateTime now,
-        CancellationToken ct = default)
-    {
-        var delivery = await _db.Deliveries
-            .Include(x => x.ProductItems)
-                .ThenInclude(x => x.Product)
-            .Include(x => x.IngredientItems)
-                .ThenInclude(x => x.Ingredient)
-            .FirstOrDefaultAsync(x => x.DeliveryId == deliveryId, ct);
-
-        if (delivery is null)
-            throw new KeyNotFoundException("Delivery not found.");
-
-        foreach (var item in delivery.ProductItems)
-        {
-            await TransferProductAsync(item, fromCentralKitchenId, toFranchiseId, deliveryId, now, ct);
-        }
-
-        foreach (var item in delivery.IngredientItems)
-        {
-            await TransferIngredientAsync(item, fromCentralKitchenId, toFranchiseId, deliveryId, now, ct);
-        }
-    }
-
-    private async Task TransferProductAsync(
-    DeliveryProductItem item,
-    int centralKitchenId,
-    int franchiseId,
-    int deliveryId,
-    DateTime now,
-    CancellationToken ct)
-    {
-        if (item.Quantity <= 0)
-            return;
-
-        var remaining = item.Quantity;
-        var today = DateOnly.FromDateTime(now);
-
-        var sourceBatches = await _db.ProductBatches
-            .Include(x => x.Product)
-            .Where(x =>
-                x.CentralKitchenId == centralKitchenId &&
-                x.FranchiseId == null &&
-                x.ProductId == item.ProductId &&
-                x.Quantity > 0)
-            .ToListAsync(ct);
-
-        sourceBatches = sourceBatches
-            .Where(x => x.IsUsableNonExpired(today))
-            .OrderBy(x => x.CalculateExpiredAt() == null)
-            .ThenBy(x => x.CalculateExpiredAt())
-            .ThenBy(x => x.CreatedAt)
-            .ThenBy(x => x.BatchId)
-            .ToList();
-
-        var total = sourceBatches.Sum(x => x.Quantity);
-        if (total < remaining)
-            throw new InvalidOperationException(
-                $"Insufficient usable central kitchen product stock for productId={item.ProductId}");
-
-        foreach (var src in sourceBatches)
-        {
-            if (remaining <= 0) break;
-
-            var take = Math.Min(src.Quantity, remaining);
-            if (take <= 0) continue;
-
-            src.Quantity -= take;
-            remaining -= take;
-
-            _db.ProductMovements.Add(new ProductMovement
-            {
-                BatchId = src.BatchId,
-                Type = MovementType.Out,
-                Quantity = take,
-                CreatedByUserId = _current.UserId,
-                Reason = "Store receiving confirm (OUT)",
-                DeliveryId = deliveryId,
-                CreatedAt = now
-            });
-
-            var dest = await _db.ProductBatches.FirstOrDefaultAsync(x =>
-                x.FranchiseId == franchiseId &&
-                x.CentralKitchenId == null &&
-                x.ProductId == src.ProductId &&
-                x.BatchCode == src.BatchCode, ct);
-
-            if (dest is null)
-            {
-                dest = new ProductBatch
-                {
-                    FranchiseId = franchiseId,
-                    CentralKitchenId = null,
-                    ProductId = src.ProductId,
-                    BatchCode = src.BatchCode,
-                    Quantity = 0,
-                    CreatedAt = src.CreatedAt
-                };
-
-                _db.ProductBatches.Add(dest);
-            }
-            else if (dest.CreatedAt != src.CreatedAt)
-            {
-                throw new InvalidOperationException(
-                    $"Product batch age conflict for BatchCode={src.BatchCode} at destination franchise {franchiseId}.");
-            }
-
-            dest.Quantity += take;
-
-            _db.ProductMovements.Add(new ProductMovement
-            {
-                Batch = dest,
-                Type = MovementType.In,
-                Quantity = take,
-                CreatedByUserId = _current.UserId,
-                Reason = "Store receiving confirm (IN)",
-                DeliveryId = deliveryId,
-                CreatedAt = now
-            });
-        }
-    }
-
-    private async Task TransferIngredientAsync(
-    DeliveryIngredientItem item,
-    int centralKitchenId,
-    int franchiseId,
-    int deliveryId,
-    DateTime now,
-    CancellationToken ct)
-    {
-        if (item.Quantity <= 0)
-            return;
-
-        var remaining = item.Quantity;
-        var today = DateOnly.FromDateTime(now);
-
-        var sourceBatches = await _db.IngredientBatches
-            .Include(x => x.Ingredient)
-            .Where(x =>
-                x.Type == InventoryOwnerType.CentralKitchen &&
-                x.CentralKitchenId == centralKitchenId &&
-                x.FranchiseId == null &&
-                x.IngredientId == item.IngredientId &&
-                x.Quantity > 0)
-            .ToListAsync(ct);
-
-        sourceBatches = sourceBatches
-            .Where(x => x.IsUsableNonExpired(today))
-            .OrderBy(x => x.CalculateExpiredAt() == null)
-            .ThenBy(x => x.CalculateExpiredAt())
-            .ThenBy(x => x.CreatedAt)
-            .ThenBy(x => x.BatchId)
-            .ToList();
-
-        var total = sourceBatches.Sum(x => x.Quantity);
-        if (total < remaining)
-            throw new InvalidOperationException(
-                $"Insufficient usable central kitchen ingredient stock for ingredientId={item.IngredientId}");
-
-        foreach (var src in sourceBatches)
-        {
-            if (remaining <= 0) break;
-
-            var take = Math.Min(src.Quantity, remaining);
-            if (take <= 0) continue;
-
-            src.Quantity -= take;
-            remaining -= take;
-
-            _db.InventoryMovements.Add(new InventoryMovement
-            {
-                BatchId = src.BatchId,
-                Type = MovementType.Out,
-                Quantity = take,
-                CreatedByUserId = _current.UserId,
-                Reason = "Store receiving confirm (OUT)",
-                DeliveryId = deliveryId,
-                CreatedAt = now
-            });
-
-            var dest = await _db.IngredientBatches.FirstOrDefaultAsync(x =>
-                x.Type == InventoryOwnerType.Franchise &&
-                x.FranchiseId == franchiseId &&
-                x.CentralKitchenId == null &&
-                x.IngredientId == src.IngredientId &&
-                x.BatchCode == src.BatchCode, ct);
-
-            if (dest is null)
-            {
-                dest = new IngredientBatch
-                {
-                    Type = InventoryOwnerType.Franchise,
-                    FranchiseId = franchiseId,
-                    CentralKitchenId = null,
-                    IngredientId = src.IngredientId,
-                    BatchCode = src.BatchCode,
-                    Quantity = 0,
-                    CreatedAt = src.CreatedAt
-                };
-
-                _db.IngredientBatches.Add(dest);
-            }
-            else if (dest.CreatedAt != src.CreatedAt)
-            {
-                throw new InvalidOperationException(
-                    $"Ingredient batch age conflict for BatchCode={src.BatchCode} at destination franchise {franchiseId}.");
-            }
-
-            dest.Quantity += take;
-
-            _db.InventoryMovements.Add(new InventoryMovement
-            {
-                Batch = dest,
-                Type = MovementType.In,
-                Quantity = take,
-                CreatedByUserId = _current.UserId,
-                Reason = "Store receiving confirm (IN)",
-                DeliveryId = deliveryId,
-                CreatedAt = now
-            });
-        }
-    }
 }

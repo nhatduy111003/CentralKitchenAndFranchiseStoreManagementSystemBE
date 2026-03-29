@@ -12,9 +12,8 @@ public interface IInventoryTransferService
         DateTime now,
         CancellationToken ct = default);
 
-    Task TransferDeliveryAsync(
+    Task FinalizeDeliveryReceivingAsync(
         int deliveryId,
-        int fromCentralKitchenId,
         int toFranchiseId,
         DateTime now,
         CancellationToken ct = default);
