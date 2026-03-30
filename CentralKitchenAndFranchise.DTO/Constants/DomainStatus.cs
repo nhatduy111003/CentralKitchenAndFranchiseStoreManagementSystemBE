@@ -80,3 +80,11 @@ public static class AuditAction
     public const string ProductionPlanCreate = "PRODUCTION_PLAN_CREATE";
     public const string ProductionPlanStatusUpdate = "PRODUCTION_PLAN_STATUS_UPDATE";
 }
+
+public static class DeliveryMovementReasons
+{
+    public const string PrepareOutToTransit = "Delivery prepare commit (OUT to transit)";
+    public const string PrepareInTransit = "Delivery prepare commit (IN transit)";
+    public const string ReceivingOutTransit = "Store receiving confirm (OUT transit)";
+    public const string ReceivingInOnHand = "Store receiving confirm (IN on-hand)";
+}

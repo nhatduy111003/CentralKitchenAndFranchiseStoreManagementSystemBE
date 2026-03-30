@@ -232,11 +232,11 @@ public class InventoryTransferService : IInventoryTransferService
     }
 
     private void FinalizeProductTransitBatch(
-        ProductBatch transitBatch,
-        Dictionary<(int ProductId, string BatchCode), ProductBatch> onHandBatchMap,
-        int deliveryId,
-        int franchiseId,
-        DateTime now)
+    ProductBatch transitBatch,
+    Dictionary<(int ProductId, string BatchCode), ProductBatch> onHandBatchMap,
+    int deliveryId,
+    int franchiseId,
+    DateTime now)
     {
         if (transitBatch.Quantity <= 0m)
             return;
@@ -249,7 +249,7 @@ public class InventoryTransferService : IInventoryTransferService
             Type = MovementType.Out,
             Quantity = qty,
             CreatedByUserId = _current.UserId,
-            Reason = "Store receiving confirm (OUT transit)",
+            Reason = DeliveryMovementReasons.ReceivingOutTransit,
             DeliveryId = deliveryId,
             CreatedAt = now
         });
@@ -257,48 +257,55 @@ public class InventoryTransferService : IInventoryTransferService
         var key = (transitBatch.ProductId, transitBatch.BatchCode);
         if (!onHandBatchMap.TryGetValue(key, out var onHandBatch))
         {
-            onHandBatch = new ProductBatch
-            {
-                FranchiseId = franchiseId,
-                CentralKitchenId = null,
-                ProductId = transitBatch.ProductId,
-                BatchCode = transitBatch.BatchCode,
-                Quantity = 0m,
-                CreatedAt = transitBatch.CreatedAt,
-                IsInTransit = false,
-                DeliveryId = null
-            };
+            // No matching on-hand batch exists -> flip the transit row into normal on-hand stock.
+            transitBatch.IsInTransit = false;
+            transitBatch.DeliveryId = null;
 
-            onHandBatchMap[key] = onHandBatch;
-            _db.ProductBatches.Add(onHandBatch);
+            _db.ProductMovements.Add(new ProductMovement
+            {
+                BatchId = transitBatch.BatchId,
+                Type = MovementType.In,
+                Quantity = qty,
+                CreatedByUserId = _current.UserId,
+                Reason = DeliveryMovementReasons.ReceivingInOnHand,
+                DeliveryId = deliveryId,
+                CreatedAt = now
+            });
+
+            onHandBatchMap[key] = transitBatch;
+            return;
         }
-        else if (onHandBatch.CreatedAt != transitBatch.CreatedAt)
+
+        if (onHandBatch.CreatedAt != transitBatch.CreatedAt)
         {
             throw new InvalidOperationException(
                 $"Product batch age conflict for BatchCode={transitBatch.BatchCode} at destination franchise {franchiseId}.");
         }
 
+        // Matching on-hand batch exists -> merge quantity into it.
+        // We intentionally keep the transit row at quantity 0 instead of deleting it because
+        // movement history is stored by BatchId and deleting the row would break traceability.
         transitBatch.Quantity = 0m;
         onHandBatch.Quantity += qty;
 
         _db.ProductMovements.Add(new ProductMovement
         {
-            Batch = onHandBatch,
+            BatchId = onHandBatch.BatchId,
             Type = MovementType.In,
             Quantity = qty,
             CreatedByUserId = _current.UserId,
-            Reason = "Store receiving confirm (IN on-hand)",
+            Reason = DeliveryMovementReasons.ReceivingInOnHand,
             DeliveryId = deliveryId,
             CreatedAt = now
         });
     }
 
     private void FinalizeIngredientTransitBatch(
-        IngredientBatch transitBatch,
-        Dictionary<(int IngredientId, string BatchCode), IngredientBatch> onHandBatchMap,
-        int deliveryId,
-        int franchiseId,
-        DateTime now)
+    IngredientBatch transitBatch,
+    Dictionary<(int IngredientId, string BatchCode), IngredientBatch> onHandBatchMap,
+    int deliveryId,
+    int franchiseId,
+    DateTime now)
     {
         if (transitBatch.Quantity <= 0m)
             return;
@@ -311,7 +318,7 @@ public class InventoryTransferService : IInventoryTransferService
             Type = InventoryMovementType.Out,
             Quantity = qty,
             CreatedByUserId = _current.UserId,
-            Reason = "Store receiving confirm (OUT transit)",
+            Reason = DeliveryMovementReasons.ReceivingOutTransit,
             DeliveryId = deliveryId,
             CreatedAt = now
         });
@@ -319,38 +326,44 @@ public class InventoryTransferService : IInventoryTransferService
         var key = (transitBatch.IngredientId, transitBatch.BatchCode);
         if (!onHandBatchMap.TryGetValue(key, out var onHandBatch))
         {
-            onHandBatch = new IngredientBatch
-            {
-                Type = InventoryOwnerType.Franchise,
-                FranchiseId = franchiseId,
-                CentralKitchenId = null,
-                IngredientId = transitBatch.IngredientId,
-                BatchCode = transitBatch.BatchCode,
-                Quantity = 0m,
-                CreatedAt = transitBatch.CreatedAt,
-                IsInTransit = false,
-                DeliveryId = null
-            };
+            // No matching on-hand batch exists -> flip the transit row into normal on-hand stock.
+            transitBatch.IsInTransit = false;
+            transitBatch.DeliveryId = null;
 
-            onHandBatchMap[key] = onHandBatch;
-            _db.IngredientBatches.Add(onHandBatch);
+            _db.InventoryMovements.Add(new InventoryMovement
+            {
+                BatchId = transitBatch.BatchId,
+                Type = InventoryMovementType.In,
+                Quantity = qty,
+                CreatedByUserId = _current.UserId,
+                Reason = DeliveryMovementReasons.ReceivingInOnHand,
+                DeliveryId = deliveryId,
+                CreatedAt = now
+            });
+
+            onHandBatchMap[key] = transitBatch;
+            return;
         }
-        else if (onHandBatch.CreatedAt != transitBatch.CreatedAt)
+
+        if (onHandBatch.CreatedAt != transitBatch.CreatedAt)
         {
             throw new InvalidOperationException(
                 $"Ingredient batch age conflict for BatchCode={transitBatch.BatchCode} at destination franchise {franchiseId}.");
         }
 
+        // Matching on-hand batch exists -> merge quantity into it.
+        // We intentionally keep the transit row at quantity 0 instead of deleting it because
+        // movement history is stored by BatchId and deleting the row would break traceability.
         transitBatch.Quantity = 0m;
         onHandBatch.Quantity += qty;
 
         _db.InventoryMovements.Add(new InventoryMovement
         {
-            Batch = onHandBatch,
+            BatchId = onHandBatch.BatchId,
             Type = InventoryMovementType.In,
             Quantity = qty,
             CreatedByUserId = _current.UserId,
-            Reason = "Store receiving confirm (IN on-hand)",
+            Reason = DeliveryMovementReasons.ReceivingInOnHand,
             DeliveryId = deliveryId,
             CreatedAt = now
         });

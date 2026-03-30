@@ -533,10 +533,9 @@ public class ReceivingService : IReceivingService
             .Where(x =>
                 x.DeliveryId == deliveryId &&
                 x.Type == MovementType.In &&
+                x.Reason == DeliveryMovementReasons.ReceivingInOnHand &&
                 x.Batch.FranchiseId == franchiseId &&
                 x.Batch.CentralKitchenId == null &&
-                !x.Batch.IsInTransit &&
-                x.Batch.DeliveryId == null &&
                 productIds.Contains(x.Batch.ProductId))
             .ToListAsync(ct);
 
@@ -582,11 +581,10 @@ public class ReceivingService : IReceivingService
             .Where(x =>
                 x.DeliveryId == deliveryId &&
                 x.Type == InventoryMovementType.In &&
+                x.Reason == DeliveryMovementReasons.ReceivingInOnHand &&
                 x.Batch.Type == InventoryOwnerType.Franchise &&
                 x.Batch.FranchiseId == franchiseId &&
                 x.Batch.CentralKitchenId == null &&
-                !x.Batch.IsInTransit &&
-                x.Batch.DeliveryId == null &&
                 ingredientIds.Contains(x.Batch.IngredientId))
             .ToListAsync(ct);
 
