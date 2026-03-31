@@ -710,6 +710,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             };
         }
 
+        // Ghép thêm reference vào reason để audit/movement dễ đối chiếu hơn khi debug tay.
         private static string BuildReason(string reason, string? reference)
         {
             reason = reason.Trim();
@@ -717,6 +718,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             return $"{reason} (ref: {reference.Trim()})";
         }
 
+        // Ghi 1 ledger write request đơn lẻ nhưng vẫn giữ transaction của caller (SaveChanges=false).
         private async Task AppendSingleLedgerAsync(
             InventoryLedgerWriteItem item,
             DateTime occurredAtUtc,
@@ -731,6 +733,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             }, ct);
         }
 
+        // Build ledger item chuẩn cho các stock mutation event (inbound/adjust/waste/prepare/receive...).
         private static InventoryLedgerWriteItem BuildLedgerItem(
             string itemType,
             int itemId,
@@ -772,6 +775,139 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             };
         }
 
+        // Build non-stock ledger item cho lifecycle meta event như Rename/Archive current-state batch.
+        private static InventoryLedgerWriteItem BuildBatchMetaLedgerItem(
+            string itemType,
+            int itemId,
+            int batchId,
+            string batchCodeSnapshot,
+            DateTime batchCreatedAtUtc,
+            DateOnly? expiredAtSnapshot,
+            string scopeType,
+            int scopeId,
+            string stockBucket,
+            string eventType,
+            string? reason,
+            int actorUserId,
+            string metadataJson)
+        {
+            return new InventoryLedgerWriteItem
+            {
+                ItemType = itemType,
+                ItemId = itemId,
+                BatchId = batchId,
+                BatchCodeSnapshot = batchCodeSnapshot,
+                BatchCreatedAtUtc = DateTime.SpecifyKind(batchCreatedAtUtc, DateTimeKind.Utc),
+                ExpiredAtSnapshot = expiredAtSnapshot,
+                ScopeType = scopeType,
+                ScopeId = scopeId,
+                StockBucket = stockBucket,
+                DeltaQuantity = 0m,
+                EventType = eventType,
+                Reason = reason,
+                ActorUserId = actorUserId,
+                ReferenceType = InventoryLedgerReferenceTypes.Batch,
+                ReferenceId = batchId,
+                IsNonStockEvent = true,
+                MetadataJson = metadataJson
+            };
+        }
+
+        // Append rename event để history vẫn trace được dù current-state row chỉ đổi code.
+        private async Task AppendBatchRenameLedgerAsync(
+            string itemType,
+            int itemId,
+            int batchId,
+            string newBatchCode,
+            string oldBatchCode,
+            DateTime batchCreatedAtUtc,
+            DateOnly? expiredAtSnapshot,
+            string scopeType,
+            int scopeId,
+            bool isInTransit,
+            string? reason,
+            DateTime occurredAtUtc,
+            CancellationToken ct = default)
+        {
+            await AppendSingleLedgerAsync(
+                BuildBatchMetaLedgerItem(
+                    itemType: itemType,
+                    itemId: itemId,
+                    batchId: batchId,
+                    batchCodeSnapshot: newBatchCode,
+                    batchCreatedAtUtc: batchCreatedAtUtc,
+                    expiredAtSnapshot: expiredAtSnapshot,
+                    scopeType: scopeType,
+                    scopeId: scopeId,
+                    stockBucket: ResolveStockBucket(isInTransit),
+                    eventType: InventoryLedgerEventTypes.Rename,
+                    reason: reason,
+                    actorUserId: _current.UserId,
+                    metadataJson: BuildBatchRenameMetadataJson(oldBatchCode, newBatchCode)),
+                occurredAtUtc,
+                ct);
+        }
+
+        // Append archive meta event trước khi hard delete current-state row để lifecycle không bị cụt đuôi.
+        private async Task AppendBatchArchiveLedgerAsync(
+            string itemType,
+            int itemId,
+            int batchId,
+            string batchCodeSnapshot,
+            DateTime batchCreatedAtUtc,
+            DateOnly? expiredAtSnapshot,
+            string scopeType,
+            int scopeId,
+            bool isInTransit,
+            string? reason,
+            string operation,
+            decimal currentQuantity,
+            DateTime occurredAtUtc,
+            CancellationToken ct = default)
+        {
+            await AppendSingleLedgerAsync(
+                BuildBatchMetaLedgerItem(
+                    itemType: itemType,
+                    itemId: itemId,
+                    batchId: batchId,
+                    batchCodeSnapshot: batchCodeSnapshot,
+                    batchCreatedAtUtc: batchCreatedAtUtc,
+                    expiredAtSnapshot: expiredAtSnapshot,
+                    scopeType: scopeType,
+                    scopeId: scopeId,
+                    stockBucket: ResolveStockBucket(isInTransit),
+                    eventType: InventoryLedgerEventTypes.Archive,
+                    reason: reason,
+                    actorUserId: _current.UserId,
+                    metadataJson: BuildBatchArchiveMetadataJson(operation, currentQuantity)),
+                occurredAtUtc,
+                ct);
+        }
+
+        // Chuẩn hoá bucket cho batch hiện tại khi ghi meta event không làm thay đổi stock.
+        private static string ResolveStockBucket(bool isInTransit)
+            => isInTransit
+                ? InventoryLedgerStockBuckets.Transit
+                : InventoryLedgerStockBuckets.OnHand;
+
+        // Metadata rename giúp FE/QA đọc timeline mà không cần suy ngược audit log.
+        private static string BuildBatchRenameMetadataJson(string oldBatchCode, string newBatchCode)
+            => JsonSerializer.Serialize(new
+            {
+                Operation = "RENAME_BATCH_CODE",
+                OldBatchCode = oldBatchCode,
+                NewBatchCode = newBatchCode
+            });
+
+        // Metadata archive cho biết đây là xóa current-state row chứ không phải stock mutation thật.
+        private static string BuildBatchArchiveMetadataJson(string operation, decimal currentQuantity)
+            => JsonSerializer.Serialize(new
+            {
+                Operation = operation,
+                CurrentQuantity = currentQuantity
+            });
+
+        // Map mutation type hiện tại sang canonical ledger event type.
         private static string ResolveLedgerEventType(string mutationType)
         {
             return string.Equals(mutationType, MovementType.Waste, StringComparison.OrdinalIgnoreCase)
@@ -1218,6 +1354,11 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             return MapFranchiseIngredientBatch(batch);
         }
 
+        // ================================
+        // FRANCHISE - INGREDIENT BATCH CRUD
+        // - Rename/Delete current-state batch
+        // - Phase 5: append non-stock ledger meta events for lifecycle trace
+        // ================================
         public async Task<FranchiseIngredientBatchResponse> UpdateFranchiseIngredientBatchCodeAsync(
             int franchiseId,
             int batchId,
@@ -1262,17 +1403,30 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (duplicate)
                 throw new InvalidOperationException("BatchCode already exists for this ingredient in this franchise.");
 
+            var now = DateTime.UtcNow;
+            var reason = string.IsNullOrWhiteSpace(request.Reason)
+                ? "Manual franchise ingredient batch code update"
+                : request.Reason.Trim();
             var oldCode = batch.BatchCode;
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
             batch.BatchCode = normalizedBatchCode;
 
-            try
-            {
-                await _db.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateException ex) when (IsIngredientBatchUniqueViolation(ex))
-            {
-                throw new InvalidOperationException("BatchCode already exists for this ingredient in this franchise.");
-            }
+            await AppendBatchRenameLedgerAsync(
+                itemType: InventoryHistoryItemTypes.Ingredient,
+                itemId: batch.IngredientId,
+                batchId: batch.BatchId,
+                newBatchCode: batch.BatchCode,
+                oldBatchCode: oldCode,
+                batchCreatedAtUtc: batch.CreatedAt,
+                expiredAtSnapshot: batch.CalculateExpiredAt(),
+                scopeType: InventoryLedgerScopeTypes.Franchise,
+                scopeId: franchiseId,
+                isInTransit: batch.IsInTransit,
+                reason: reason,
+                occurredAtUtc: now,
+                ct: ct);
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -1283,19 +1437,28 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 EntityId = batch.BatchId,
                 OldDataJson = JsonSerializer.Serialize(new { BatchCode = oldCode }),
                 NewDataJson = JsonSerializer.Serialize(new { BatchCode = batch.BatchCode }),
-                Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Manual franchise ingredient batch code update" : request.Reason.Trim(),
-                CreatedAt = DateTime.UtcNow
+                Reason = reason,
+                CreatedAt = now
             });
 
-            await _db.SaveChangesAsync(ct);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (IsIngredientBatchUniqueViolation(ex))
+            {
+                throw new InvalidOperationException("BatchCode already exists for this ingredient in this franchise.");
+            }
+
+            await tx.CommitAsync(ct);
 
             return MapFranchiseIngredientBatch(batch);
         }
 
         public async Task DeleteFranchiseIngredientBatchAsync(
-            int franchiseId,
-            int batchId,
-            CancellationToken ct = default)
+    int franchiseId,
+    int batchId,
+    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
@@ -1323,7 +1486,26 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (movements.Any(x => x.DeliveryId != null || x.Type == InventoryMovementType.Out))
                 throw new InvalidOperationException("Cannot delete a batch that has been used in transfer/delivery.");
 
+            var now = DateTime.UtcNow;
+            const string reason = "Manual franchise ingredient batch delete";
+
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            await AppendBatchArchiveLedgerAsync(
+                itemType: InventoryHistoryItemTypes.Ingredient,
+                itemId: batch.IngredientId,
+                batchId: batch.BatchId,
+                batchCodeSnapshot: batch.BatchCode,
+                batchCreatedAtUtc: batch.CreatedAt,
+                expiredAtSnapshot: batch.CalculateExpiredAt(),
+                scopeType: InventoryLedgerScopeTypes.Franchise,
+                scopeId: franchiseId,
+                isInTransit: batch.IsInTransit,
+                reason: reason,
+                operation: "DELETE_CURRENT_STATE",
+                currentQuantity: batch.Quantity,
+                occurredAtUtc: now,
+                ct: ct);
 
             _db.InventoryMovements.RemoveRange(movements);
             _db.IngredientBatches.Remove(batch);
@@ -1345,19 +1527,25 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     ExpiredAt = batch.CalculateExpiredAt()
                 }),
                 NewDataJson = null,
-                Reason = "Manual franchise ingredient batch delete",
-                CreatedAt = DateTime.UtcNow
+                Reason = reason,
+                CreatedAt = now
             });
 
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
 
+
+        // ================================
+        // FRANCHISE - PRODUCT BATCH CRUD
+        // - Rename/Delete current-state batch
+        // - Phase 5: append non-stock ledger meta events for lifecycle trace
+        // ================================
         public async Task<List<FranchiseProductBatchResponse>> GetFranchiseProductBatchesAsync(
-            int franchiseId,
-            int? productId = null,
-            bool includeZero = false,
-            CancellationToken ct = default)
+                    int franchiseId,
+                    int? productId = null,
+                    bool includeZero = false,
+                    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
@@ -1413,10 +1601,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         }
 
         public async Task<FranchiseProductBatchResponse> UpdateFranchiseProductBatchCodeAsync(
-            int franchiseId,
-            int batchId,
-            UpdateBatchCodeRequest request,
-            CancellationToken ct = default)
+    int franchiseId,
+    int batchId,
+    UpdateBatchCodeRequest request,
+    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
@@ -1455,17 +1643,30 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (duplicate)
                 throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
 
+            var now = DateTime.UtcNow;
+            var reason = string.IsNullOrWhiteSpace(request.Reason)
+                ? "Manual franchise product batch code update"
+                : request.Reason.Trim();
             var oldCode = batch.BatchCode;
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
             batch.BatchCode = normalizedBatchCode;
 
-            try
-            {
-                await _db.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateException ex) when (IsProductBatchUniqueViolation(ex))
-            {
-                throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
-            }
+            await AppendBatchRenameLedgerAsync(
+                itemType: InventoryHistoryItemTypes.Product,
+                itemId: batch.ProductId,
+                batchId: batch.BatchId,
+                newBatchCode: batch.BatchCode,
+                oldBatchCode: oldCode,
+                batchCreatedAtUtc: batch.CreatedAt,
+                expiredAtSnapshot: batch.CalculateExpiredAt(),
+                scopeType: InventoryLedgerScopeTypes.Franchise,
+                scopeId: franchiseId,
+                isInTransit: batch.IsInTransit,
+                reason: reason,
+                occurredAtUtc: now,
+                ct: ct);
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -1476,19 +1677,28 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 EntityId = batch.BatchId,
                 OldDataJson = JsonSerializer.Serialize(new { BatchCode = oldCode }),
                 NewDataJson = JsonSerializer.Serialize(new { BatchCode = batch.BatchCode }),
-                Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Manual franchise product batch code update" : request.Reason.Trim(),
-                CreatedAt = DateTime.UtcNow
+                Reason = reason,
+                CreatedAt = now
             });
 
-            await _db.SaveChangesAsync(ct);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (IsProductBatchUniqueViolation(ex))
+            {
+                throw new InvalidOperationException("BatchCode already exists for this product in this franchise.");
+            }
+
+            await tx.CommitAsync(ct);
 
             return MapFranchiseProductBatch(batch);
         }
 
         public async Task DeleteFranchiseProductBatchAsync(
-            int franchiseId,
-            int batchId,
-            CancellationToken ct = default)
+    int franchiseId,
+    int batchId,
+    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
@@ -1515,7 +1725,26 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (movements.Any(x => x.DeliveryId != null || x.Type == MovementType.Out))
                 throw new InvalidOperationException("Cannot delete a batch that has been used in transfer/delivery.");
 
+            var now = DateTime.UtcNow;
+            const string reason = "Manual franchise product batch delete";
+
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            await AppendBatchArchiveLedgerAsync(
+                itemType: InventoryHistoryItemTypes.Product,
+                itemId: batch.ProductId,
+                batchId: batch.BatchId,
+                batchCodeSnapshot: batch.BatchCode,
+                batchCreatedAtUtc: batch.CreatedAt,
+                expiredAtSnapshot: batch.CalculateExpiredAt(),
+                scopeType: InventoryLedgerScopeTypes.Franchise,
+                scopeId: franchiseId,
+                isInTransit: batch.IsInTransit,
+                reason: reason,
+                operation: "DELETE_CURRENT_STATE",
+                currentQuantity: batch.Quantity,
+                occurredAtUtc: now,
+                ct: ct);
 
             _db.ProductMovements.RemoveRange(movements);
             _db.ProductBatches.Remove(batch);
@@ -1537,17 +1766,21 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     ExpiredAt = batch.CalculateExpiredAt()
                 }),
                 NewDataJson = null,
-                Reason = "Manual franchise product batch delete",
-                CreatedAt = DateTime.UtcNow
+                Reason = reason,
+                CreatedAt = now
             });
 
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
         // CRUD ingredient batches CentralKitchen
+
+        // ================================
+        // FRANCHISE - INVENTORY SUMMARY
+        // ================================
         public async Task<FranchiseInventorySummaryResponse> GetFranchiseInventorySummaryAsync(
-             int franchiseId,
-             CancellationToken ct = default)
+                     int franchiseId,
+                     CancellationToken ct = default)
         {
             await _access.EnsureCanAccessAsync(franchiseId, ct);
 
@@ -1729,10 +1962,16 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         }
 
 
+
+        // ================================
+        // CENTRAL KITCHEN - INGREDIENT BATCH CRUD
+        // - Rename/Delete current-state batch
+        // - Phase 5: append non-stock ledger meta events for lifecycle trace
+        // ================================
         public async Task<CentralKitchenIngredientBatchResponse> InboundCentralKitchenIngredientAsync(
-            int centralKitchenId,
-            CreateIngredientBatchDto request,
-            CancellationToken ct = default)
+                    int centralKitchenId,
+                    CreateIngredientBatchDto request,
+                    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
@@ -1920,10 +2159,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         }
 
         public async Task<CentralKitchenIngredientBatchResponse> UpdateCentralKitchenIngredientBatchCodeAsync(
-            int centralKitchenId,
-            int batchId,
-            UpdateBatchCodeRequest request,
-            CancellationToken ct = default)
+    int centralKitchenId,
+    int batchId,
+    UpdateBatchCodeRequest request,
+    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
@@ -1956,17 +2195,30 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (duplicate)
                 throw new InvalidOperationException("BatchCode already exists for this ingredient in this central kitchen.");
 
+            var now = DateTime.UtcNow;
+            var reason = string.IsNullOrWhiteSpace(request.Reason)
+                ? "Manual central kitchen ingredient batch code update"
+                : request.Reason.Trim();
             var oldCode = batch.BatchCode;
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
             batch.BatchCode = normalizedBatchCode;
 
-            try
-            {
-                await _db.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateException ex) when (IsIngredientBatchUniqueViolation(ex))
-            {
-                throw new InvalidOperationException("BatchCode already exists for this ingredient in this central kitchen.");
-            }
+            await AppendBatchRenameLedgerAsync(
+                itemType: InventoryHistoryItemTypes.Ingredient,
+                itemId: batch.IngredientId,
+                batchId: batch.BatchId,
+                newBatchCode: batch.BatchCode,
+                oldBatchCode: oldCode,
+                batchCreatedAtUtc: batch.CreatedAt,
+                expiredAtSnapshot: batch.CalculateExpiredAt(),
+                scopeType: InventoryLedgerScopeTypes.CentralKitchen,
+                scopeId: centralKitchenId,
+                isInTransit: batch.IsInTransit,
+                reason: reason,
+                occurredAtUtc: now,
+                ct: ct);
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -1977,19 +2229,28 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 EntityId = batch.BatchId,
                 OldDataJson = JsonSerializer.Serialize(new { BatchCode = oldCode }),
                 NewDataJson = JsonSerializer.Serialize(new { BatchCode = batch.BatchCode }),
-                Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Manual batch code update" : request.Reason.Trim(),
-                CreatedAt = DateTime.UtcNow
+                Reason = reason,
+                CreatedAt = now
             });
 
-            await _db.SaveChangesAsync(ct);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (IsIngredientBatchUniqueViolation(ex))
+            {
+                throw new InvalidOperationException("BatchCode already exists for this ingredient in this central kitchen.");
+            }
+
+            await tx.CommitAsync(ct);
 
             return MapCentralKitchenIngredientBatch(batch);
         }
 
         public async Task DeleteCentralKitchenIngredientBatchAsync(
-            int centralKitchenId,
-            int batchId,
-            CancellationToken ct = default)
+    int centralKitchenId,
+    int batchId,
+    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
@@ -2014,7 +2275,26 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (movements.Any(x => x.DeliveryId != null || x.Type == InventoryMovementType.Out))
                 throw new InvalidOperationException("Cannot delete a batch that has been used in transfer/delivery.");
 
+            var now = DateTime.UtcNow;
+            const string reason = "Manual central kitchen ingredient batch delete";
+
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            await AppendBatchArchiveLedgerAsync(
+                itemType: InventoryHistoryItemTypes.Ingredient,
+                itemId: batch.IngredientId,
+                batchId: batch.BatchId,
+                batchCodeSnapshot: batch.BatchCode,
+                batchCreatedAtUtc: batch.CreatedAt,
+                expiredAtSnapshot: batch.CalculateExpiredAt(),
+                scopeType: InventoryLedgerScopeTypes.CentralKitchen,
+                scopeId: centralKitchenId,
+                isInTransit: batch.IsInTransit,
+                reason: reason,
+                operation: "DELETE_CURRENT_STATE",
+                currentQuantity: batch.Quantity,
+                occurredAtUtc: now,
+                ct: ct);
 
             _db.InventoryMovements.RemoveRange(movements);
             _db.IngredientBatches.Remove(batch);
@@ -2036,8 +2316,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     ExpiredAt = batch.CalculateExpiredAt()
                 }),
                 NewDataJson = null,
-                Reason = "Manual central kitchen ingredient batch delete",
-                CreatedAt = DateTime.UtcNow
+                Reason = reason,
+                CreatedAt = now
             });
 
             await _db.SaveChangesAsync(ct);
@@ -2045,10 +2325,16 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         }
 
         // CRUD product batches
+
+        // ================================
+        // CENTRAL KITCHEN - PRODUCT BATCH CRUD
+        // - Rename/Delete current-state batch
+        // - Phase 5: append non-stock ledger meta events for lifecycle trace
+        // ================================
         public async Task<CentralKitchenProductBatchResponse> InboundCentralKitchenProductAsync(
-            int centralKitchenId,
-            CreateCentralKitchenProductBatchDto request,
-            CancellationToken ct = default)
+                    int centralKitchenId,
+                    CreateCentralKitchenProductBatchDto request,
+                    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
@@ -2378,10 +2664,10 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         }
 
         public async Task<CentralKitchenProductBatchResponse> UpdateCentralKitchenProductBatchCodeAsync(
-            int centralKitchenId,
-            int batchId,
-            UpdateBatchCodeRequest request,
-            CancellationToken ct = default)
+    int centralKitchenId,
+    int batchId,
+    UpdateBatchCodeRequest request,
+    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
@@ -2414,17 +2700,30 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (duplicate)
                 throw new InvalidOperationException("BatchCode already exists for this product in this central kitchen.");
 
+            var now = DateTime.UtcNow;
+            var reason = string.IsNullOrWhiteSpace(request.Reason)
+                ? "Manual central kitchen product batch code update"
+                : request.Reason.Trim();
             var oldCode = batch.BatchCode;
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
             batch.BatchCode = normalizedBatchCode;
 
-            try
-            {
-                await _db.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateException ex) when (IsProductBatchUniqueViolation(ex))
-            {
-                throw new InvalidOperationException("BatchCode already exists for this product in this central kitchen.");
-            }
+            await AppendBatchRenameLedgerAsync(
+                itemType: InventoryHistoryItemTypes.Product,
+                itemId: batch.ProductId,
+                batchId: batch.BatchId,
+                newBatchCode: batch.BatchCode,
+                oldBatchCode: oldCode,
+                batchCreatedAtUtc: batch.CreatedAt,
+                expiredAtSnapshot: batch.CalculateExpiredAt(),
+                scopeType: InventoryLedgerScopeTypes.CentralKitchen,
+                scopeId: centralKitchenId,
+                isInTransit: batch.IsInTransit,
+                reason: reason,
+                occurredAtUtc: now,
+                ct: ct);
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -2435,19 +2734,28 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 EntityId = batch.BatchId,
                 OldDataJson = JsonSerializer.Serialize(new { BatchCode = oldCode }),
                 NewDataJson = JsonSerializer.Serialize(new { BatchCode = batch.BatchCode }),
-                Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Manual batch code update" : request.Reason.Trim(),
-                CreatedAt = DateTime.UtcNow
+                Reason = reason,
+                CreatedAt = now
             });
 
-            await _db.SaveChangesAsync(ct);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (IsProductBatchUniqueViolation(ex))
+            {
+                throw new InvalidOperationException("BatchCode already exists for this product in this central kitchen.");
+            }
+
+            await tx.CommitAsync(ct);
 
             return MapCentralKitchenProductBatch(batch);
         }
 
         public async Task DeleteCentralKitchenProductBatchAsync(
-            int centralKitchenId,
-            int batchId,
-            CancellationToken ct = default)
+    int centralKitchenId,
+    int batchId,
+    CancellationToken ct = default)
         {
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
@@ -2472,7 +2780,26 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             if (movements.Any(x => x.DeliveryId != null || x.Type == MovementType.Out))
                 throw new InvalidOperationException("Cannot delete a batch that has been used in transfer/delivery.");
 
+            var now = DateTime.UtcNow;
+            const string reason = "Manual central kitchen product batch delete";
+
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            await AppendBatchArchiveLedgerAsync(
+                itemType: InventoryHistoryItemTypes.Product,
+                itemId: batch.ProductId,
+                batchId: batch.BatchId,
+                batchCodeSnapshot: batch.BatchCode,
+                batchCreatedAtUtc: batch.CreatedAt,
+                expiredAtSnapshot: batch.CalculateExpiredAt(),
+                scopeType: InventoryLedgerScopeTypes.CentralKitchen,
+                scopeId: centralKitchenId,
+                isInTransit: batch.IsInTransit,
+                reason: reason,
+                operation: "DELETE_CURRENT_STATE",
+                currentQuantity: batch.Quantity,
+                occurredAtUtc: now,
+                ct: ct);
 
             _db.ProductMovements.RemoveRange(movements);
             _db.ProductBatches.Remove(batch);
@@ -2494,13 +2821,17 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     ExpiredAt = batch.CalculateExpiredAt()
                 }),
                 NewDataJson = null,
-                Reason = "Manual central kitchen product batch delete",
-                CreatedAt = DateTime.UtcNow
+                Reason = reason,
+                CreatedAt = now
             });
 
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
+
+        // ================================
+        // SHARED HELPERS
+        // ================================
 
         //Helpers
 

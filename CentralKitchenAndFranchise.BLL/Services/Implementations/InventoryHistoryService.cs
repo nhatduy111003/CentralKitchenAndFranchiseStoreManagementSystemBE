@@ -8,6 +8,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
 
+/// <summary>
+/// Read-side service for inventory history.
+/// Source of truth is InventoryLedgerEntries; current batch tables are only used to enrich the latest live state.
+/// </summary>
 public class InventoryHistoryService : IInventoryHistoryService
 {
     private static readonly HashSet<string> AllowedItemTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -31,6 +35,9 @@ public class InventoryHistoryService : IInventoryHistoryService
         [InventoryLedgerEventTypes.Reverse] = InventoryLedgerEventTypes.Reverse
     };
 
+    private static readonly string SupportedEventTypesMessage = string.Join(", ",
+        EventTypeMap.Values.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x));
+
     private readonly AppDbContext _db;
     private readonly IFranchiseAccessService _access;
 
@@ -40,6 +47,10 @@ public class InventoryHistoryService : IInventoryHistoryService
         _access = access;
     }
 
+    // ================================
+    // PUBLIC API - FRANCHISE
+    // ================================
+
     public async Task<PagedResult<InventoryHistoryMovementResponse>> GetFranchiseMovementsAsync(
         int franchiseId,
         InventoryHistoryMovementsQuery query,
@@ -47,15 +58,6 @@ public class InventoryHistoryService : IInventoryHistoryService
     {
         await _access.EnsureCanAccessAsync(franchiseId, ct);
         return await GetMovementsAsync(InventoryLedgerScopeTypes.Franchise, franchiseId, query, ct);
-    }
-
-    public async Task<PagedResult<InventoryHistoryMovementResponse>> GetCentralKitchenMovementsAsync(
-        int centralKitchenId,
-        InventoryHistoryMovementsQuery query,
-        CancellationToken ct = default)
-    {
-        await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
-        return await GetMovementsAsync(InventoryLedgerScopeTypes.CentralKitchen, centralKitchenId, query, ct);
     }
 
     public async Task<InventoryBatchLifecycleResponse> GetFranchiseBatchLifecycleAsync(
@@ -68,6 +70,19 @@ public class InventoryHistoryService : IInventoryHistoryService
         return await GetBatchLifecycleAsync(InventoryLedgerScopeTypes.Franchise, franchiseId, batchId, query, ct);
     }
 
+    // ================================
+    // PUBLIC API - CENTRAL KITCHEN
+    // ================================
+
+    public async Task<PagedResult<InventoryHistoryMovementResponse>> GetCentralKitchenMovementsAsync(
+        int centralKitchenId,
+        InventoryHistoryMovementsQuery query,
+        CancellationToken ct = default)
+    {
+        await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
+        return await GetMovementsAsync(InventoryLedgerScopeTypes.CentralKitchen, centralKitchenId, query, ct);
+    }
+
     public async Task<InventoryBatchLifecycleResponse> GetCentralKitchenBatchLifecycleAsync(
         int centralKitchenId,
         int batchId,
@@ -78,6 +93,11 @@ public class InventoryHistoryService : IInventoryHistoryService
         return await GetBatchLifecycleAsync(InventoryLedgerScopeTypes.CentralKitchen, centralKitchenId, batchId, query, ct);
     }
 
+    // ================================
+    // CORE READ-SIDE QUERIES
+    // ================================
+
+    // Query paged movement history directly from ledger and enrich only the rows we are returning.
     private async Task<PagedResult<InventoryHistoryMovementResponse>> GetMovementsAsync(
         string scopeType,
         int scopeId,
@@ -131,6 +151,7 @@ public class InventoryHistoryService : IInventoryHistoryService
             total);
     }
 
+    // Query one batch timeline from ledger, disambiguate item identity, then enrich with current-state batch row if it still exists.
     private async Task<InventoryBatchLifecycleResponse> GetBatchLifecycleAsync(
         string scopeType,
         int scopeId,
@@ -143,22 +164,25 @@ public class InventoryHistoryService : IInventoryHistoryService
 
         var normalizedItemType = NormalizeOptionalItemType(query?.ItemType);
 
-        var rows = await _db.InventoryLedgerEntries
+        IQueryable<InventoryLedgerEntry> batchQuery = _db.InventoryLedgerEntries
             .AsNoTracking()
             .Where(x =>
                 x.ScopeType == scopeType &&
                 x.ScopeId == scopeId &&
-                x.BatchId == batchId)
-            .ToListAsync(ct);
-
-        if (rows.Count == 0)
-            throw new KeyNotFoundException($"No inventory history was found for batch {batchId} in scope {scopeType}:{scopeId}.");
+                x.BatchId == batchId);
 
         if (normalizedItemType is not null)
-            rows = rows.Where(x => x.ItemType == normalizedItemType).ToList();
+            batchQuery = batchQuery.Where(x => x.ItemType == normalizedItemType);
+
+        var rows = await batchQuery.ToListAsync(ct);
 
         if (rows.Count == 0)
+        {
+            if (normalizedItemType is null)
+                throw new KeyNotFoundException($"No inventory history was found for batch {batchId} in scope {scopeType}:{scopeId}.");
+
             throw new KeyNotFoundException($"Batch {batchId} exists in scope history but not for itemType {normalizedItemType}.");
+        }
 
         var identities = rows
             .Select(x => new BatchIdentity(x.ItemType, x.ItemId))
@@ -174,20 +198,22 @@ public class InventoryHistoryService : IInventoryHistoryService
             }
 
             throw new InvalidOperationException(
-                $"Batch {batchId} resolved to multiple item identities even after filtering by itemType {normalizedItemType}. Data should be reviewed.");
+                $"BatchId {batchId} still maps to multiple ledger identities for itemType {normalizedItemType} in scope {scopeType}:{scopeId}.");
         }
 
         var identity = identities[0];
-        rows = rows
-            .Where(x => x.ItemType == identity.ItemType && x.ItemId == identity.ItemId)
-            .ToList();
 
-        rows.Sort(BatchLifecycleLedgerComparer.Instance);
+        rows = rows
+            .OrderBy(x => x.OccurredAtUtc)
+            .ThenBy(x => x.CorrelationId)
+            .ThenBy(x => x.SequenceNo)
+            .ThenBy(x => x.InventoryLedgerEntryId)
+            .ToList();
 
         var enrichment = await BuildEnrichmentAsync(rows, ct);
         var currentState = await LoadCurrentBatchStateAsync(scopeType, scopeId, batchId, identity.ItemType, ct);
 
-        var latestRow = rows.Last();
+        var latestRow = rows[^1];
         var firstRowWithBatchSnapshot = rows.FirstOrDefault(x => x.BatchCreatedAtUtc.HasValue || !string.IsNullOrWhiteSpace(x.BatchCodeSnapshot));
         var itemMeta = ResolveItemMeta(identity.ItemType, identity.ItemId, enrichment);
 
@@ -221,6 +247,11 @@ public class InventoryHistoryService : IInventoryHistoryService
         };
     }
 
+    // ================================
+    // ENRICHMENT + CURRENT STATE LOOKUPS
+    // ================================
+
+    // Load only the related names/statuses needed by the current result set.
     private async Task<EnrichmentBundle> BuildEnrichmentAsync(
         IReadOnlyCollection<InventoryLedgerEntry> rows,
         CancellationToken ct)
@@ -307,12 +338,7 @@ public class InventoryHistoryService : IInventoryHistoryService
             : await _db.Ingredients
                 .AsNoTracking()
                 .Where(x => ingredientIds.Contains(x.IngredientId))
-                .Select(x => new
-                {
-                    x.IngredientId,
-                    x.Name,
-                    x.Unit
-                })
+                .Select(x => new { x.IngredientId, x.Name, x.Unit })
                 .ToDictionaryAsync(x => x.IngredientId, x => new ItemEnrichment(x.Name, x.Unit), ct);
 
         var productMap = productIds.Count == 0
@@ -320,12 +346,7 @@ public class InventoryHistoryService : IInventoryHistoryService
             : await _db.Products
                 .AsNoTracking()
                 .Where(x => productIds.Contains(x.ProductId))
-                .Select(x => new
-                {
-                    x.ProductId,
-                    x.Name,
-                    x.Unit
-                })
+                .Select(x => new { x.ProductId, x.Name, x.Unit })
                 .ToDictionaryAsync(x => x.ProductId, x => new ItemEnrichment(x.Name, x.Unit), ct);
 
         var franchiseMap = franchiseIds.Count == 0
@@ -352,6 +373,7 @@ public class InventoryHistoryService : IInventoryHistoryService
             CentralKitchens: centralKitchenMap);
     }
 
+    // Read current batch row from live tables so FE can distinguish "timeline exists" vs "batch row still exists".
     private async Task<CurrentBatchState?> LoadCurrentBatchStateAsync(
         string scopeType,
         int scopeId,
@@ -395,6 +417,11 @@ public class InventoryHistoryService : IInventoryHistoryService
             .FirstOrDefaultAsync(ct);
     }
 
+    // ================================
+    // RESPONSE MAPPING
+    // ================================
+
+    // Convert one ledger row + enrichment bundle into FE-facing response DTO.
     private static InventoryHistoryMovementResponse MapMovement(
         InventoryLedgerEntry row,
         EnrichmentBundle enrichment)
@@ -459,13 +486,19 @@ public class InventoryHistoryService : IInventoryHistoryService
         };
     }
 
+    // ================================
+    // VALIDATION / NORMALIZATION HELPERS
+    // ================================
+
+    // Normalize query defaults and reject incompatible filters early.
     private static NormalizedMovementsQuery NormalizeMovementsQuery(InventoryHistoryMovementsQuery? query)
     {
         query ??= new InventoryHistoryMovementsQuery();
 
         var page = query.Page <= 0 ? 1 : query.Page;
         var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
-        if (pageSize > 200) pageSize = 200;
+        if (pageSize > 200)
+            pageSize = 200;
 
         var sortDir = string.IsNullOrWhiteSpace(query.SortDir)
             ? "desc"
@@ -507,6 +540,7 @@ public class InventoryHistoryService : IInventoryHistoryService
             PageSize: pageSize);
     }
 
+    // Normalize and validate optional item type.
     private static string? NormalizeOptionalItemType(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -519,6 +553,7 @@ public class InventoryHistoryService : IInventoryHistoryService
         return trimmed;
     }
 
+    // Normalize event type into canonical constant and return a helpful error if FE sends an unsupported one.
     private static string? NormalizeOptionalEventType(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -526,16 +561,30 @@ public class InventoryHistoryService : IInventoryHistoryService
 
         var trimmed = value.Trim();
         if (!EventTypeMap.TryGetValue(trimmed, out var canonical))
-            throw new ArgumentException("Unsupported eventType for inventory history filter.");
+            throw new ArgumentException($"Unsupported eventType for inventory history filter. Supported values: {SupportedEventTypesMessage}.");
 
         return canonical;
     }
 
+    // Normalize arbitrary DateTime inputs to UTC while handling Local/Unspecified safely.
     private static DateTime? NormalizeOptionalUtc(DateTime? value)
-        => value.HasValue
-            ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
-            : null;
+    {
+        if (!value.HasValue)
+            return null;
 
+        return value.Value.Kind switch
+        {
+            DateTimeKind.Utc => value.Value,
+            DateTimeKind.Local => value.Value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+        };
+    }
+
+    // ================================
+    // SMALL RESOLVERS
+    // ================================
+
+    // Resolve item display data from the preloaded enrichment bundle.
     private static ItemEnrichment ResolveItemMeta(
         string itemType,
         int itemId,
@@ -550,6 +599,7 @@ public class InventoryHistoryService : IInventoryHistoryService
         return new ItemEnrichment(null, null);
     }
 
+    // Resolve scope display name from the preloaded enrichment bundle.
     private static string? ResolveScopeName(string scopeType, int scopeId, EnrichmentBundle enrichment)
     {
         if (scopeType == InventoryLedgerScopeTypes.Franchise)
@@ -561,36 +611,15 @@ public class InventoryHistoryService : IInventoryHistoryService
         return null;
     }
 
-    private static string BuildDeliveryCode(int deliveryId)
-        => $"DLV-{deliveryId:D6}";
+    // Keep generated delivery code format consistent across history APIs.
+    private static string BuildDeliveryCode(int deliveryId) => $"DLV-{deliveryId:D6}";
 
-    private static string BuildOrderCode(int storeOrderId)
-        => $"SO-{storeOrderId:D6}";
+    // Keep generated store order code format consistent across history APIs.
+    private static string BuildOrderCode(int storeOrderId) => $"SO-{storeOrderId:D6}";
 
-    private sealed class BatchLifecycleLedgerComparer : IComparer<InventoryLedgerEntry>
-    {
-        public static BatchLifecycleLedgerComparer Instance { get; } = new();
-
-        public int Compare(InventoryLedgerEntry? x, InventoryLedgerEntry? y)
-        {
-            if (ReferenceEquals(x, y)) return 0;
-            if (x is null) return -1;
-            if (y is null) return 1;
-
-            var occurredAtComparison = x.OccurredAtUtc.CompareTo(y.OccurredAtUtc);
-            if (occurredAtComparison != 0)
-                return occurredAtComparison;
-
-            if (x.CorrelationId == y.CorrelationId)
-            {
-                var sequenceComparison = x.SequenceNo.CompareTo(y.SequenceNo);
-                if (sequenceComparison != 0)
-                    return sequenceComparison;
-            }
-
-            return x.InventoryLedgerEntryId.CompareTo(y.InventoryLedgerEntryId);
-        }
-    }
+    // ================================
+    // INTERNAL TYPES
+    // ================================
 
     private sealed record NormalizedMovementsQuery(
         string? ItemType,
@@ -638,4 +667,3 @@ public class InventoryHistoryService : IInventoryHistoryService
         IReadOnlyDictionary<int, string> Franchises,
         IReadOnlyDictionary<int, string> CentralKitchens);
 }
-
