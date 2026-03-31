@@ -46,6 +46,32 @@ public class DeliveriesController : ControllerBase
         return Ok(ApiResponse.Ok("Saved"));
     }
 
+    // Update one delivery product line quantity before prepare commit.
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
+    [HttpPatch("api/deliveries/{deliveryId:int}/product-items/{productId:int}")]
+    public async Task<ActionResult<ApiResponse>> UpdateProductItemQuantity(
+        [FromRoute] int deliveryId,
+        [FromRoute] int productId,
+        [FromBody] UpdateDeliveryItemQuantityRequest request,
+        CancellationToken ct)
+    {
+        await _service.UpdateProductItemQuantityAsync(deliveryId, productId, request.Quantity, ct);
+        return Ok(ApiResponse.Ok("Saved"));
+    }
+
+    // Update one delivery ingredient line quantity before prepare commit.
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
+    [HttpPatch("api/deliveries/{deliveryId:int}/ingredient-items/{ingredientId:int}")]
+    public async Task<ActionResult<ApiResponse>> UpdateIngredientItemQuantity(
+        [FromRoute] int deliveryId,
+        [FromRoute] int ingredientId,
+        [FromBody] UpdateDeliveryItemQuantityRequest request,
+        CancellationToken ct)
+    {
+        await _service.UpdateIngredientItemQuantityAsync(deliveryId, ingredientId, request.Quantity, ct);
+        return Ok(ApiResponse.Ok("Saved"));
+    }
+
     [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.SupplyCoordinator}")]
     [HttpPost("api/deliveries/{deliveryId:int}/confirm")]
     public async Task<ActionResult<ApiResponse>> Confirm([FromRoute] int deliveryId, CancellationToken ct)

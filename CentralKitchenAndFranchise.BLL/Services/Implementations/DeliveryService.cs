@@ -247,6 +247,39 @@ public class DeliveryService : IDeliveryService
         };
     }
 
+    // Update one delivery product line quantity before prepare commits stock.
+    public async Task UpdateProductItemQuantityAsync(int deliveryId, int productId, decimal quantity, CancellationToken ct = default)
+    {
+        RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
+
+        if (productId <= 0)
+            throw new ArgumentException("ProductId is required.");
+
+        var delivery = await LoadDeliveryForItemEditAsync(deliveryId, ct);
+
+        await EnsureProductsExistAsync(new List<int> { productId }, ct);
+        await ApplyProductLineQuantityAsync(delivery, productId, quantity, allowCreate: false, ct);
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    // Update one delivery ingredient line quantity before prepare commits stock.
+    public async Task UpdateIngredientItemQuantityAsync(int deliveryId, int ingredientId, decimal quantity, CancellationToken ct = default)
+    {
+        RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
+
+        if (ingredientId <= 0)
+            throw new ArgumentException("IngredientId is required.");
+
+        var delivery = await LoadDeliveryForItemEditAsync(deliveryId, ct);
+
+        await EnsureIngredientsExistAsync(new List<int> { ingredientId }, ct);
+        await ApplyIngredientLineQuantityAsync(delivery, ingredientId, quantity, allowCreate: false, ct);
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    // Upsert delivery product lines while the delivery is still editable.
     public async Task UpsertProductItemsAsync(int deliveryId, List<UpsertDeliveryProductItemRequest> items, CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
@@ -254,113 +287,28 @@ public class DeliveryService : IDeliveryService
         if (items is null || items.Count == 0)
             throw new ArgumentException("Items is required.");
 
-        var delivery = await _db.Deliveries
-            .Include(d => d.DeliveryPlan)
-            .FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
+        var duplicateProductIds = items
+            .GroupBy(x => x.ProductId)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .OrderBy(x => x)
+            .ToList();
 
-        if (delivery is null)
-            throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
+        if (duplicateProductIds.Count > 0)
+            throw new ArgumentException($"Duplicate ProductId is not allowed: {string.Join(',', duplicateProductIds)}");
 
-        await EnsureDeliveryScopeAsync(delivery, ct);
-
-        if (delivery.IsStockCommitted)
-            throw new InvalidOperationException("Delivery items cannot be edited after stock has been committed at prepare.");
-
-        if (delivery.Status != DeliveryStatus.Created)
-            throw new InvalidOperationException("Can only edit items when delivery is CREATED.");
-
+        var delivery = await LoadDeliveryForItemEditAsync(deliveryId, ct);
         var productIds = items.Select(x => x.ProductId).Distinct().ToList();
 
-        var existingProducts = await _db.Products
-            .Where(p => productIds.Contains(p.ProductId))
-            .Select(p => p.ProductId)
-            .ToListAsync(ct);
-
-        var missing = productIds.Except(existingProducts).ToList();
-        if (missing.Count > 0)
-            throw new KeyNotFoundException($"Product not found: {string.Join(',', missing)}");
-
-        var isLinkedOrder = delivery.DeliveryPlan.StoreOrderId.HasValue;
+        await EnsureProductsExistAsync(productIds, ct);
 
         foreach (var req in items)
-        {
-            if (req.Quantity < 0)
-                throw new ArgumentException($"Quantity must be >= 0 for ProductId={req.ProductId}.");
-
-            var line = await _db.DeliveryProductItems
-                .FirstOrDefaultAsync(x => x.DeliveryId == deliveryId && x.ProductId == req.ProductId, ct);
-
-            if (line is null)
-            {
-                // --- CREATE NEW LINE ---
-                if (isLinkedOrder)
-                {
-                    var storeOrderQty = await _db.StoreOrderItems
-                        .AsNoTracking()
-                        .Where(x => x.StoreOrderId == delivery.DeliveryPlan.StoreOrderId!.Value
-                                  && x.ProductId == req.ProductId)
-                        .Select(x => (decimal?)x.Quantity)
-                        .FirstOrDefaultAsync(ct);
-
-                    if (!storeOrderQty.HasValue)
-                        throw new ArgumentException(
-                            $"ProductId={req.ProductId} does not exist in the linked store order. " +
-                            "Cannot add items not in the original order.");
-
-                    var resolvedRequestedQty = storeOrderQty.Value;
-
-                    if (req.Quantity > resolvedRequestedQty)
-                        throw new ArgumentException(
-                            $"Quantity ({req.Quantity}) cannot exceed RequestedQuantity ({resolvedRequestedQty}) for ProductId={req.ProductId}.");
-
-                    _db.DeliveryProductItems.Add(new DeliveryProductItem
-                    {
-                        DeliveryId = deliveryId,
-                        ProductId = req.ProductId,
-                        Quantity = req.Quantity,
-                        RequestedQuantity = resolvedRequestedQty,
-                        IsDropped = req.Quantity < resolvedRequestedQty,
-                        DropReason = req.Quantity < resolvedRequestedQty
-                            ? $"Manual adjustment. Shipped={req.Quantity}, Requested={resolvedRequestedQty}."
-                            : null
-                    });
-                }
-                else
-                {
-                    // Ad-hoc delivery — free to set any quantity
-                    _db.DeliveryProductItems.Add(new DeliveryProductItem
-                    {
-                        DeliveryId = deliveryId,
-                        ProductId = req.ProductId,
-                        Quantity = req.Quantity,
-                        RequestedQuantity = req.Quantity,
-                        IsDropped = false,
-                        DropReason = null
-                    });
-                }
-            }
-            else
-            {
-                // --- UPDATE EXISTING LINE ---
-                if (isLinkedOrder && req.Quantity > line.RequestedQuantity)
-                    throw new ArgumentException(
-                        $"Quantity ({req.Quantity}) cannot exceed RequestedQuantity ({line.RequestedQuantity}) for ProductId={req.ProductId}.");
-
-                line.Quantity = req.Quantity;
-                // Do NOT overwrite RequestedQuantity for linked order
-                if (!isLinkedOrder)
-                    line.RequestedQuantity = req.Quantity;
-
-                line.IsDropped = line.Quantity < line.RequestedQuantity;
-                line.DropReason = line.IsDropped
-                    ? $"Manual adjustment. Shipped={line.Quantity}, Requested={line.RequestedQuantity}."
-                    : null;
-            }
-        }
+            await ApplyProductLineQuantityAsync(delivery, req.ProductId, req.Quantity, allowCreate: true, ct);
 
         await _db.SaveChangesAsync(ct);
     }
 
+    // Upsert delivery ingredient lines while the delivery is still editable.
     public async Task UpsertIngredientItemsAsync(int deliveryId, List<UpsertDeliveryIngredientItemRequest> items, CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
@@ -368,113 +316,26 @@ public class DeliveryService : IDeliveryService
         if (items is null || items.Count == 0)
             throw new ArgumentException("Items is required.");
 
-        var delivery = await _db.Deliveries
-            .Include(d => d.DeliveryPlan)
-            .FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
+        var duplicateIngredientIds = items
+            .GroupBy(x => x.IngredientId)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .OrderBy(x => x)
+            .ToList();
 
-        if (delivery is null)
-            throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
+        if (duplicateIngredientIds.Count > 0)
+            throw new ArgumentException($"Duplicate IngredientId is not allowed: {string.Join(',', duplicateIngredientIds)}");
 
-        await EnsureDeliveryScopeAsync(delivery, ct);
-
-        if (delivery.IsStockCommitted)
-            throw new InvalidOperationException("Delivery items cannot be edited after stock has been committed at prepare.");
-
-        if (delivery.Status != DeliveryStatus.Created)
-            throw new InvalidOperationException("Can only edit items when delivery is CREATED.");
-
+        var delivery = await LoadDeliveryForItemEditAsync(deliveryId, ct);
         var ingredientIds = items.Select(x => x.IngredientId).Distinct().ToList();
 
-        var existingIngredients = await _db.Ingredients
-            .Where(i => ingredientIds.Contains(i.IngredientId))
-            .Select(i => i.IngredientId)
-            .ToListAsync(ct);
-
-        var missing = ingredientIds.Except(existingIngredients).ToList();
-        if (missing.Count > 0)
-            throw new KeyNotFoundException($"Ingredient not found: {string.Join(',', missing)}");
-
-        var isLinkedOrder = delivery.DeliveryPlan.StoreOrderId.HasValue;
+        await EnsureIngredientsExistAsync(ingredientIds, ct);
 
         foreach (var req in items)
-        {
-            if (req.Quantity < 0)
-                throw new ArgumentException($"Quantity must be >= 0 for IngredientId={req.IngredientId}.");
-
-            var line = await _db.DeliveryIngredientItems
-                .FirstOrDefaultAsync(x => x.DeliveryId == deliveryId && x.IngredientId == req.IngredientId, ct);
-
-            if (line is null)
-            {
-                // --- CREATE NEW LINE ---
-                if (isLinkedOrder)
-                {
-                    var storeOrderQty = await _db.StoreOrderIngredientItems
-                        .AsNoTracking()
-                        .Where(x => x.StoreOrderId == delivery.DeliveryPlan.StoreOrderId!.Value
-                                  && x.IngredientId == req.IngredientId)
-                        .Select(x => (decimal?)x.Quantity)
-                        .FirstOrDefaultAsync(ct);
-
-                    if (!storeOrderQty.HasValue)
-                        throw new ArgumentException(
-                            $"IngredientId={req.IngredientId} does not exist in the linked store order. " +
-                            "Cannot add items not in the original order.");
-
-                    var resolvedRequestedQty = storeOrderQty.Value;
-
-                    if (req.Quantity > resolvedRequestedQty)
-                        throw new ArgumentException(
-                            $"Quantity ({req.Quantity}) cannot exceed RequestedQuantity ({resolvedRequestedQty}) for IngredientId={req.IngredientId}.");
-
-                    _db.DeliveryIngredientItems.Add(new DeliveryIngredientItem
-                    {
-                        DeliveryId = deliveryId,
-                        IngredientId = req.IngredientId,
-                        Quantity = req.Quantity,
-                        RequestedQuantity = resolvedRequestedQty,
-                        IsDropped = req.Quantity < resolvedRequestedQty,
-                        DropReason = req.Quantity < resolvedRequestedQty
-                            ? $"Manual adjustment. Shipped={req.Quantity}, Requested={resolvedRequestedQty}."
-                            : null
-                    });
-                }
-                else
-                {
-                    // Ad-hoc delivery — free to set any quantity
-                    _db.DeliveryIngredientItems.Add(new DeliveryIngredientItem
-                    {
-                        DeliveryId = deliveryId,
-                        IngredientId = req.IngredientId,
-                        Quantity = req.Quantity,
-                        RequestedQuantity = req.Quantity,
-                        IsDropped = false,
-                        DropReason = null
-                    });
-                }
-            }
-            else
-            {
-                // --- UPDATE EXISTING LINE ---
-                if (isLinkedOrder && req.Quantity > line.RequestedQuantity)
-                    throw new ArgumentException(
-                        $"Quantity ({req.Quantity}) cannot exceed RequestedQuantity ({line.RequestedQuantity}) for IngredientId={req.IngredientId}.");
-
-                line.Quantity = req.Quantity;
-                // Do NOT overwrite RequestedQuantity for linked order
-                if (!isLinkedOrder)
-                    line.RequestedQuantity = req.Quantity;
-
-                line.IsDropped = line.Quantity < line.RequestedQuantity;
-                line.DropReason = line.IsDropped
-                    ? $"Manual adjustment. Shipped={line.Quantity}, Requested={line.RequestedQuantity}."
-                    : null;
-            }
-        }
+            await ApplyIngredientLineQuantityAsync(delivery, req.IngredientId, req.Quantity, allowCreate: true, ct);
 
         await _db.SaveChangesAsync(ct);
     }
-
     public async Task<DeliveryDetailsResponse> ConfirmAsync(int deliveryId, CancellationToken ct = default)
     {
         RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
@@ -502,6 +363,243 @@ public class DeliveryService : IDeliveryService
         await _db.SaveChangesAsync(ct);
 
         return await GetByIdAsync(deliveryId, ct);
+    }
+
+    //HELPERS
+    // Load delivery with its plan and verify the caller can edit this delivery.
+    private async Task<Delivery> LoadDeliveryForItemEditAsync(int deliveryId, CancellationToken ct)
+    {
+        var delivery = await _db.Deliveries
+            .Include(d => d.DeliveryPlan)
+            .FirstOrDefaultAsync(d => d.DeliveryId == deliveryId, ct);
+
+        if (delivery is null)
+            throw new KeyNotFoundException($"Delivery {deliveryId} not found.");
+
+        await EnsureDeliveryScopeAsync(delivery, ct);
+        EnsureDeliveryItemsEditable(delivery);
+
+        return delivery;
+    }
+
+    // Only allow manual item edits before prepare commits stock.
+    private static void EnsureDeliveryItemsEditable(Delivery delivery)
+    {
+        if (delivery.IsStockCommitted)
+            throw new InvalidOperationException("Delivery items cannot be edited after stock has been committed at prepare.");
+
+        if (delivery.Status != DeliveryStatus.Created)
+            throw new InvalidOperationException("Can only edit items when delivery is CREATED.");
+    }
+
+    // Validate that all requested products exist before editing delivery lines.
+    private async Task EnsureProductsExistAsync(List<int> productIds, CancellationToken ct)
+    {
+        if (productIds.Count == 0)
+            return;
+
+        var existingProducts = await _db.Products
+            .Where(p => productIds.Contains(p.ProductId))
+            .Select(p => p.ProductId)
+            .ToListAsync(ct);
+
+        var missing = productIds.Except(existingProducts).ToList();
+        if (missing.Count > 0)
+            throw new KeyNotFoundException($"Product not found: {string.Join(',', missing)}");
+    }
+
+    // Validate that all requested ingredients exist before editing delivery lines.
+    private async Task EnsureIngredientsExistAsync(List<int> ingredientIds, CancellationToken ct)
+    {
+        if (ingredientIds.Count == 0)
+            return;
+
+        var existingIngredients = await _db.Ingredients
+            .Where(i => ingredientIds.Contains(i.IngredientId))
+            .Select(i => i.IngredientId)
+            .ToListAsync(ct);
+
+        var missing = ingredientIds.Except(existingIngredients).ToList();
+        if (missing.Count > 0)
+            throw new KeyNotFoundException($"Ingredient not found: {string.Join(',', missing)}");
+    }
+
+    // Update one delivery product line with linked-order quantity guards.
+    private async Task ApplyProductLineQuantityAsync(Delivery delivery, int productId, decimal quantity, bool allowCreate, CancellationToken ct)
+    {
+        EnsureNonNegativeQuantity(quantity, $"ProductId={productId}");
+
+        var line = await _db.DeliveryProductItems
+            .FirstOrDefaultAsync(x => x.DeliveryId == delivery.DeliveryId && x.ProductId == productId, ct);
+
+        var isLinkedOrder = delivery.DeliveryPlan.StoreOrderId.HasValue;
+
+        if (line is null)
+        {
+            if (!allowCreate)
+                throw new KeyNotFoundException($"Delivery product line not found for ProductId={productId} in Delivery {delivery.DeliveryId}.");
+
+            if (isLinkedOrder)
+            {
+                var resolvedRequestedQty = await ResolveRequestedProductQuantityAsync(
+                    delivery.DeliveryPlan.StoreOrderId!.Value,
+                    productId,
+                    ct);
+
+                if (quantity > resolvedRequestedQty)
+                    throw new ArgumentException(
+                        $"Quantity ({quantity}) cannot exceed RequestedQuantity ({resolvedRequestedQty}) for ProductId={productId}.");
+
+                _db.DeliveryProductItems.Add(new DeliveryProductItem
+                {
+                    DeliveryId = delivery.DeliveryId,
+                    ProductId = productId,
+                    Quantity = quantity,
+                    RequestedQuantity = resolvedRequestedQty,
+                    IsDropped = quantity < resolvedRequestedQty,
+                    DropReason = BuildDropReason(quantity, resolvedRequestedQty)
+                });
+
+                return;
+            }
+
+            _db.DeliveryProductItems.Add(new DeliveryProductItem
+            {
+                DeliveryId = delivery.DeliveryId,
+                ProductId = productId,
+                Quantity = quantity,
+                RequestedQuantity = quantity,
+                IsDropped = false,
+                DropReason = null
+            });
+
+            return;
+        }
+
+        if (isLinkedOrder && quantity > line.RequestedQuantity)
+            throw new ArgumentException(
+                $"Quantity ({quantity}) cannot exceed RequestedQuantity ({line.RequestedQuantity}) for ProductId={productId}.");
+
+        line.Quantity = quantity;
+
+        if (!isLinkedOrder)
+            line.RequestedQuantity = quantity;
+
+        line.IsDropped = line.Quantity < line.RequestedQuantity;
+        line.DropReason = BuildDropReason(line.Quantity, line.RequestedQuantity);
+    }
+
+    // Update one delivery ingredient line with linked-order quantity guards.
+    private async Task ApplyIngredientLineQuantityAsync(Delivery delivery, int ingredientId, decimal quantity, bool allowCreate, CancellationToken ct)
+    {
+        EnsureNonNegativeQuantity(quantity, $"IngredientId={ingredientId}");
+
+        var line = await _db.DeliveryIngredientItems
+            .FirstOrDefaultAsync(x => x.DeliveryId == delivery.DeliveryId && x.IngredientId == ingredientId, ct);
+
+        var isLinkedOrder = delivery.DeliveryPlan.StoreOrderId.HasValue;
+
+        if (line is null)
+        {
+            if (!allowCreate)
+                throw new KeyNotFoundException($"Delivery ingredient line not found for IngredientId={ingredientId} in Delivery {delivery.DeliveryId}.");
+
+            if (isLinkedOrder)
+            {
+                var resolvedRequestedQty = await ResolveRequestedIngredientQuantityAsync(
+                    delivery.DeliveryPlan.StoreOrderId!.Value,
+                    ingredientId,
+                    ct);
+
+                if (quantity > resolvedRequestedQty)
+                    throw new ArgumentException(
+                        $"Quantity ({quantity}) cannot exceed RequestedQuantity ({resolvedRequestedQty}) for IngredientId={ingredientId}.");
+
+                _db.DeliveryIngredientItems.Add(new DeliveryIngredientItem
+                {
+                    DeliveryId = delivery.DeliveryId,
+                    IngredientId = ingredientId,
+                    Quantity = quantity,
+                    RequestedQuantity = resolvedRequestedQty,
+                    IsDropped = quantity < resolvedRequestedQty,
+                    DropReason = BuildDropReason(quantity, resolvedRequestedQty)
+                });
+
+                return;
+            }
+
+            _db.DeliveryIngredientItems.Add(new DeliveryIngredientItem
+            {
+                DeliveryId = delivery.DeliveryId,
+                IngredientId = ingredientId,
+                Quantity = quantity,
+                RequestedQuantity = quantity,
+                IsDropped = false,
+                DropReason = null
+            });
+
+            return;
+        }
+
+        if (isLinkedOrder && quantity > line.RequestedQuantity)
+            throw new ArgumentException(
+                $"Quantity ({quantity}) cannot exceed RequestedQuantity ({line.RequestedQuantity}) for IngredientId={ingredientId}.");
+
+        line.Quantity = quantity;
+
+        if (!isLinkedOrder)
+            line.RequestedQuantity = quantity;
+
+        line.IsDropped = line.Quantity < line.RequestedQuantity;
+        line.DropReason = BuildDropReason(line.Quantity, line.RequestedQuantity);
+    }
+
+    // Resolve the locked requested quantity for one product in the linked store order.
+    private async Task<decimal> ResolveRequestedProductQuantityAsync(int storeOrderId, int productId, CancellationToken ct)
+    {
+        var storeOrderQty = await _db.StoreOrderItems
+            .AsNoTracking()
+            .Where(x => x.StoreOrderId == storeOrderId && x.ProductId == productId)
+            .Select(x => (decimal?)x.Quantity)
+            .FirstOrDefaultAsync(ct);
+
+        if (!storeOrderQty.HasValue)
+            throw new ArgumentException(
+                $"ProductId={productId} does not exist in the linked store order. Cannot add items not in the original order.");
+
+        return storeOrderQty.Value;
+    }
+
+    // Resolve the locked requested quantity for one ingredient in the linked store order.
+    private async Task<decimal> ResolveRequestedIngredientQuantityAsync(int storeOrderId, int ingredientId, CancellationToken ct)
+    {
+        var storeOrderQty = await _db.StoreOrderIngredientItems
+            .AsNoTracking()
+            .Where(x => x.StoreOrderId == storeOrderId && x.IngredientId == ingredientId)
+            .Select(x => (decimal?)x.Quantity)
+            .FirstOrDefaultAsync(ct);
+
+        if (!storeOrderQty.HasValue)
+            throw new ArgumentException(
+                $"IngredientId={ingredientId} does not exist in the linked store order. Cannot add items not in the original order.");
+
+        return storeOrderQty.Value;
+    }
+
+    // Build a consistent drop reason when shipped quantity is below requested.
+    private static string? BuildDropReason(decimal quantity, decimal requestedQuantity)
+    {
+        if (quantity >= requestedQuantity)
+            return null;
+
+        return $"Manual adjustment. Shipped={quantity}, Requested={requestedQuantity}.";
+    }
+
+    // Reject negative quantities before line edits are applied.
+    private static void EnsureNonNegativeQuantity(decimal quantity, string itemLabel)
+    {
+        if (quantity < 0)
+            throw new ArgumentException($"Quantity must be >= 0 for {itemLabel}.");
     }
 
     private async Task EnsureDeliveryScopeAsync(Delivery delivery, CancellationToken ct)
