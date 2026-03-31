@@ -1,5 +1,6 @@
 ﻿using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
+using CentralKitchenAndFranchise.BLL.Services.Models.InventoryHistory;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests;
@@ -18,12 +19,18 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
         private readonly AppDbContext _db;
         private readonly ICurrentUserService _current;
         private readonly IFranchiseAccessService _access;
+        private readonly IInventoryLedgerWriter _inventoryLedgerWriter;
 
-        public InventoryService(AppDbContext db, ICurrentUserService current, IFranchiseAccessService access)
+        public InventoryService(
+            AppDbContext db,
+            ICurrentUserService current,
+            IFranchiseAccessService access,
+            IInventoryLedgerWriter inventoryLedgerWriter)
         {
             _db = db;
             _current = current;
             _access = access;
+            _inventoryLedgerWriter = inventoryLedgerWriter;
         }
 
         // INGREDIENT INBOUND
@@ -101,6 +108,25 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             await _db.SaveChangesAsync(ct);
 
             var expiredAt = CalculateExpiredAt(batch.CreatedAt, ingredient.ShelfLifeDays);
+
+            await AppendSingleLedgerAsync(
+                BuildLedgerItem(
+                    itemType: InventoryHistoryItemTypes.Ingredient,
+                    itemId: batch.IngredientId,
+                    batchId: batch.BatchId,
+                    batchCodeSnapshot: batch.BatchCode,
+                    batchCreatedAtUtc: batch.CreatedAt,
+                    expiredAtSnapshot: expiredAt,
+                    scopeType: InventoryLedgerScopeTypes.Franchise,
+                    scopeId: franchiseId,
+                    stockBucket: InventoryLedgerStockBuckets.OnHand,
+                    deltaQuantity: request.Quantity,
+                    eventType: InventoryLedgerEventTypes.Inbound,
+                    reason: mv.Reason,
+                    actorUserId: _current.UserId,
+                    referenceType: InventoryLedgerReferenceTypes.Manual),
+                occurredAtUtc: now,
+                ct);
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -242,6 +268,8 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             var reason = string.IsNullOrWhiteSpace(request.Reason)
                 ? $"Issue ingredients for ProductionPlan {productionPlanId}"
                 : request.Reason.Trim();
+            var ledgerCorrelationId = Guid.NewGuid();
+            var ledgerItems = new List<InventoryLedgerWriteItem>();
 
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
@@ -312,6 +340,24 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                     _db.InventoryMovements.Add(mv);
                     await _db.SaveChangesAsync(ct); // cần MovementId cho response
 
+                    ledgerItems.Add(BuildLedgerItem(
+                        itemType: InventoryHistoryItemTypes.Ingredient,
+                        itemId: batch.IngredientId,
+                        batchId: batch.BatchId,
+                        batchCodeSnapshot: batch.BatchCode,
+                        batchCreatedAtUtc: batch.CreatedAt,
+                        expiredAtSnapshot: batch.CalculateExpiredAt(),
+                        scopeType: InventoryLedgerScopeTypes.CentralKitchen,
+                        scopeId: centralKitchenId,
+                        stockBucket: InventoryLedgerStockBuckets.OnHand,
+                        deltaQuantity: -take,
+                        eventType: InventoryLedgerEventTypes.IssueProd,
+                        reason: reason,
+                        actorUserId: _current.UserId,
+                        referenceType: InventoryLedgerReferenceTypes.ProductionPlan,
+                        referenceId: productionPlanId,
+                        sequenceNo: ledgerItems.Count + 1));
+
                     line.Batches.Add(new IssuedBatchLine
                     {
                         BatchId = batch.BatchId,
@@ -325,6 +371,17 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                 }
 
                 response.Lines.Add(line);
+            }
+
+            if (ledgerItems.Count > 0)
+            {
+                await _inventoryLedgerWriter.AppendAsync(new InventoryLedgerWriteRequest
+                {
+                    CorrelationId = ledgerCorrelationId,
+                    OccurredAtUtc = now,
+                    SaveChanges = false,
+                    Items = ledgerItems
+                }, ct);
             }
 
             await _db.SaveChangesAsync(ct);
@@ -435,6 +492,26 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             _db.InventoryMovements.Add(mv);
             await _db.SaveChangesAsync(ct);
+
+            await AppendSingleLedgerAsync(
+                BuildLedgerItem(
+                    itemType: InventoryHistoryItemTypes.Ingredient,
+                    itemId: batch.IngredientId,
+                    batchId: batch.BatchId,
+                    batchCodeSnapshot: batch.BatchCode,
+                    batchCreatedAtUtc: batch.CreatedAt,
+                    expiredAtSnapshot: expiredAt,
+                    scopeType: InventoryLedgerScopeTypes.Franchise,
+                    scopeId: franchiseId,
+                    stockBucket: InventoryLedgerStockBuckets.OnHand,
+                    deltaQuantity: request.DeltaQuantity,
+                    eventType: ResolveLedgerEventType(type),
+                    reason: mv.Reason,
+                    actorUserId: _current.UserId,
+                    referenceType: InventoryLedgerReferenceTypes.Manual,
+                    metadataJson: BuildReferenceMetadata(request.Reference)),
+                occurredAtUtc: now,
+                ct);
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -556,6 +633,26 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             _db.InventoryMovements.Add(mv);
 
+            await AppendSingleLedgerAsync(
+                BuildLedgerItem(
+                    itemType: InventoryHistoryItemTypes.Ingredient,
+                    itemId: batch.IngredientId,
+                    batchId: batch.BatchId,
+                    batchCodeSnapshot: batch.BatchCode,
+                    batchCreatedAtUtc: batch.CreatedAt,
+                    expiredAtSnapshot: expiredAt,
+                    scopeType: InventoryLedgerScopeTypes.CentralKitchen,
+                    scopeId: centralKitchenId,
+                    stockBucket: InventoryLedgerStockBuckets.OnHand,
+                    deltaQuantity: request.DeltaQuantity,
+                    eventType: ResolveLedgerEventType(type),
+                    reason: mv.Reason,
+                    actorUserId: _current.UserId,
+                    referenceType: InventoryLedgerReferenceTypes.Manual,
+                    metadataJson: BuildReferenceMetadata(request.Reference)),
+                occurredAtUtc: now,
+                ct);
+
             _db.AuditLogs.Add(new AuditLog
             {
                 UserId = _current.UserId,
@@ -618,6 +715,79 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             reason = reason.Trim();
             if (string.IsNullOrWhiteSpace(reference)) return reason;
             return $"{reason} (ref: {reference.Trim()})";
+        }
+
+        private async Task AppendSingleLedgerAsync(
+            InventoryLedgerWriteItem item,
+            DateTime occurredAtUtc,
+            CancellationToken ct = default)
+        {
+            await _inventoryLedgerWriter.AppendAsync(new InventoryLedgerWriteRequest
+            {
+                CorrelationId = Guid.NewGuid(),
+                OccurredAtUtc = occurredAtUtc,
+                SaveChanges = false,
+                Items = new List<InventoryLedgerWriteItem> { item }
+            }, ct);
+        }
+
+        private static InventoryLedgerWriteItem BuildLedgerItem(
+            string itemType,
+            int itemId,
+            int batchId,
+            string batchCodeSnapshot,
+            DateTime batchCreatedAtUtc,
+            DateOnly? expiredAtSnapshot,
+            string scopeType,
+            int scopeId,
+            string stockBucket,
+            decimal deltaQuantity,
+            string eventType,
+            string? reason,
+            int? actorUserId,
+            string? referenceType,
+            int? referenceId = null,
+            string? metadataJson = null,
+            int? sequenceNo = null)
+        {
+            return new InventoryLedgerWriteItem
+            {
+                SequenceNo = sequenceNo,
+                ItemType = itemType,
+                ItemId = itemId,
+                BatchId = batchId,
+                BatchCodeSnapshot = batchCodeSnapshot,
+                BatchCreatedAtUtc = DateTime.SpecifyKind(batchCreatedAtUtc, DateTimeKind.Utc),
+                ExpiredAtSnapshot = expiredAtSnapshot,
+                ScopeType = scopeType,
+                ScopeId = scopeId,
+                StockBucket = stockBucket,
+                DeltaQuantity = deltaQuantity,
+                EventType = eventType,
+                Reason = reason,
+                ActorUserId = actorUserId,
+                ReferenceType = referenceType,
+                ReferenceId = referenceId,
+                MetadataJson = metadataJson
+            };
+        }
+
+        private static string ResolveLedgerEventType(string mutationType)
+        {
+            return string.Equals(mutationType, MovementType.Waste, StringComparison.OrdinalIgnoreCase)
+                ? InventoryLedgerEventTypes.Waste
+                : InventoryLedgerEventTypes.Adjust;
+        }
+
+        private static string? BuildReferenceMetadata(string? reference)
+        {
+            if (string.IsNullOrWhiteSpace(reference))
+                return null;
+
+            return JsonSerializer.Serialize(new
+            {
+                Reference = reference.Trim()
+            });
         }
 
         private static DateTime ResolveManualBatchCreatedAt(DateTime? createdAtUtc, DateTime fallbackUtc)
@@ -783,6 +953,25 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             var expiredAt = CalculateExpiredAt(batch.CreatedAt, product.ShelfLifeDays);
 
+            await AppendSingleLedgerAsync(
+                BuildLedgerItem(
+                    itemType: InventoryHistoryItemTypes.Product,
+                    itemId: batch.ProductId,
+                    batchId: batch.BatchId,
+                    batchCodeSnapshot: batch.BatchCode,
+                    batchCreatedAtUtc: batch.CreatedAt,
+                    expiredAtSnapshot: expiredAt,
+                    scopeType: InventoryLedgerScopeTypes.Franchise,
+                    scopeId: franchiseId,
+                    stockBucket: InventoryLedgerStockBuckets.OnHand,
+                    deltaQuantity: request.Quantity,
+                    eventType: InventoryLedgerEventTypes.Inbound,
+                    reason: mv.Reason,
+                    actorUserId: _current.UserId,
+                    referenceType: InventoryLedgerReferenceTypes.Manual),
+                occurredAtUtc: now,
+                ct);
+
             _db.AuditLogs.Add(new AuditLog
             {
                 UserId = _current.UserId,
@@ -833,120 +1022,140 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             int franchiseId,
             AdjustProductInventoryDto request,
             CancellationToken ct = default)
+        {
+            await _access.EnsureCanAccessAsync(franchiseId, ct);
+
+            if (request.BatchId <= 0)
+                throw new ArgumentException("BatchId must be positive.");
+
+            if (string.IsNullOrWhiteSpace(request.Reason))
+                throw new ArgumentException("Reason is required.");
+
+            if (request.DeltaQuantity == 0)
+                throw new ArgumentException("DeltaQuantity must not be 0.");
+
+            var type = (request.Type ?? "").Trim().ToUpperInvariant();
+            if (type is not ("ADJUST" or "WASTE"))
+                throw new ArgumentException("Type must be ADJUST or WASTE.");
+
+            if (type == "WASTE" && request.DeltaQuantity >= 0)
+                throw new ArgumentException("WASTE requires DeltaQuantity < 0.");
+
+            var batch = await _db.ProductBatches
+                    .Include(b => b.Product)
+                    .FirstOrDefaultAsync(b =>
+                    b.BatchId == request.BatchId &&
+                    b.FranchiseId == franchiseId &&
+                    b.CentralKitchenId == null &&
+                    !b.IsInTransit &&
+                    b.DeliveryId == null,
+                    ct);
+
+            if (batch is null)
+                throw new KeyNotFoundException($"ProductBatch {request.BatchId} not found.");
+
+            var before = batch.Quantity;
+            var after = before + request.DeltaQuantity;
+
+            if (after < 0)
+                throw new InvalidOperationException("Adjustment would make inventory negative.");
+
+            var now = DateTime.UtcNow;
+            var expiredAt = batch.CalculateExpiredAt();
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            batch.Quantity = after;
+
+            var mv = new ProductMovement
+            {
+                BatchId = batch.BatchId,
+                Type = type,
+                Quantity = Math.Abs(request.DeltaQuantity),
+                CreatedByUserId = _current.UserId,
+                Reason = BuildReason(request.Reason, request.Reference),
+                DeliveryId = null,
+                CreatedAt = now
+            };
+
+            _db.ProductMovements.Add(mv);
+
+            await AppendSingleLedgerAsync(
+                BuildLedgerItem(
+                    itemType: InventoryHistoryItemTypes.Product,
+                    itemId: batch.ProductId,
+                    batchId: batch.BatchId,
+                    batchCodeSnapshot: batch.BatchCode,
+                    batchCreatedAtUtc: batch.CreatedAt,
+                    expiredAtSnapshot: expiredAt,
+                    scopeType: InventoryLedgerScopeTypes.Franchise,
+                    scopeId: franchiseId,
+                    stockBucket: InventoryLedgerStockBuckets.OnHand,
+                    deltaQuantity: request.DeltaQuantity,
+                    eventType: ResolveLedgerEventType(type),
+                    reason: mv.Reason,
+                    actorUserId: _current.UserId,
+                    referenceType: InventoryLedgerReferenceTypes.Manual,
+                    metadataJson: BuildReferenceMetadata(request.Reference)),
+                occurredAtUtc: now,
+                ct);
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                UserId = _current.UserId,
+                FranchiseId = franchiseId,
+                Action = type == "WASTE" ? "FRANCHISE_PRODUCT_WASTE" : "FRANCHISE_PRODUCT_ADJUST",
+                EntityName = "ProductBatch",
+                EntityId = batch.BatchId,
+                OldDataJson = JsonSerializer.Serialize(new
                 {
-                    await _access.EnsureCanAccessAsync(franchiseId, ct);
-
-                    if (request.BatchId <= 0)
-                        throw new ArgumentException("BatchId must be positive.");
-
-                    if (string.IsNullOrWhiteSpace(request.Reason))
-                        throw new ArgumentException("Reason is required.");
-
-                    if (request.DeltaQuantity == 0)
-                        throw new ArgumentException("DeltaQuantity must not be 0.");
-
-                    var type = (request.Type ?? "").Trim().ToUpperInvariant();
-                    if (type is not ("ADJUST" or "WASTE"))
-                        throw new ArgumentException("Type must be ADJUST or WASTE.");
-
-                    if (type == "WASTE" && request.DeltaQuantity >= 0)
-                        throw new ArgumentException("WASTE requires DeltaQuantity < 0.");
-
-                    var batch = await _db.ProductBatches
-                            .Include(b => b.Product)
-                            .FirstOrDefaultAsync(b =>
-                            b.BatchId == request.BatchId &&
-                            b.FranchiseId == franchiseId &&
-                            b.CentralKitchenId == null &&
-                            !b.IsInTransit &&
-                            b.DeliveryId == null,
-                            ct);
-
-                    if (batch is null)
-                                throw new KeyNotFoundException($"ProductBatch {request.BatchId} not found.");
-
-                    var before = batch.Quantity;
-                    var after = before + request.DeltaQuantity;
-
-                    if (after < 0)
-                        throw new InvalidOperationException("Adjustment would make inventory negative.");
-
-                    var now = DateTime.UtcNow;
-                    var expiredAt = batch.CalculateExpiredAt();
-
-                    await using var tx = await _db.Database.BeginTransactionAsync(ct);
-
-                    batch.Quantity = after;
-
-                    var mv = new ProductMovement
+                    batch.BatchId,
+                    batch.ProductId,
+                    batch.BatchCode,
+                    batch.CreatedAt,
+                    ExpiredAt = expiredAt,
+                    Quantity = before
+                }),
+                NewDataJson = JsonSerializer.Serialize(new
+                {
+                    batch.BatchId,
+                    batch.ProductId,
+                    batch.BatchCode,
+                    batch.CreatedAt,
+                    ExpiredAt = expiredAt,
+                    Quantity = after,
+                    Movement = new
                     {
-                        BatchId = batch.BatchId,
-                        Type = type,
-                        Quantity = Math.Abs(request.DeltaQuantity),
-                        CreatedByUserId = _current.UserId,
-                        Reason = BuildReason(request.Reason, request.Reference),
-                        DeliveryId = null,
-                        CreatedAt = now
-                    };
+                        mv.Type,
+                        Delta = request.DeltaQuantity,
+                        mv.CreatedAt,
+                        mv.Reason
+                    }
+                }),
+                Reason = mv.Reason,
+                CreatedAt = now
+            });
 
-                    _db.ProductMovements.Add(mv);
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
 
-                    _db.AuditLogs.Add(new AuditLog
-                    {
-                        UserId = _current.UserId,
-                        FranchiseId = franchiseId,
-                        Action = type == "WASTE" ? "FRANCHISE_PRODUCT_WASTE" : "FRANCHISE_PRODUCT_ADJUST",
-                        EntityName = "ProductBatch",
-                        EntityId = batch.BatchId,
-                        OldDataJson = JsonSerializer.Serialize(new
-                        {
-                            batch.BatchId,
-                            batch.ProductId,
-                            batch.BatchCode,
-                            batch.CreatedAt,
-                            ExpiredAt = expiredAt,
-                            Quantity = before
-                        }),
-                        NewDataJson = JsonSerializer.Serialize(new
-                        {
-                            batch.BatchId,
-                            batch.ProductId,
-                            batch.BatchCode,
-                            batch.CreatedAt,
-                            ExpiredAt = expiredAt,
-                            Quantity = after,
-                            Movement = new
-                            {
-                                mv.Type,
-                                Delta = request.DeltaQuantity,
-                                mv.CreatedAt,
-                                mv.Reason
-                            }
-                        }),
-                        Reason = mv.Reason,
-                        CreatedAt = now
-                    });
-
-                    await _db.SaveChangesAsync(ct);
-                    await tx.CommitAsync(ct);
-
-                    return new AdjustProductInventoryResponse
-                    {
-                        BatchId = batch.BatchId,
-                        MovementId = mv.MovementId,
-                        FranchiseId = franchiseId,
-                        CentralKitchenId = null,
-                        ProductId = batch.ProductId,
-                        BatchCode = batch.BatchCode,
-                        ExpiredAt = expiredAt,
-                        BeforeQuantity = before,
-                        DeltaQuantity = request.DeltaQuantity,
-                        AfterQuantity = after,
-                        Type = type,
-                        Reason = mv.Reason ?? "",
-                        CreatedAt = now
-                    };
-                }
+            return new AdjustProductInventoryResponse
+            {
+                BatchId = batch.BatchId,
+                MovementId = mv.MovementId,
+                FranchiseId = franchiseId,
+                CentralKitchenId = null,
+                ProductId = batch.ProductId,
+                BatchCode = batch.BatchCode,
+                ExpiredAt = expiredAt,
+                BeforeQuantity = before,
+                DeltaQuantity = request.DeltaQuantity,
+                AfterQuantity = after,
+                Type = type,
+                Reason = mv.Reason ?? "",
+                CreatedAt = now
+            };
+        }
 
         public async Task<List<FranchiseIngredientBatchResponse>> GetFranchiseIngredientBatchesAsync(
             int franchiseId,
@@ -1597,6 +1806,25 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             _db.InventoryMovements.Add(mv);
 
+            await AppendSingleLedgerAsync(
+                BuildLedgerItem(
+                    itemType: InventoryHistoryItemTypes.Ingredient,
+                    itemId: batch.IngredientId,
+                    batchId: batch.BatchId,
+                    batchCodeSnapshot: batch.BatchCode,
+                    batchCreatedAtUtc: batch.CreatedAt,
+                    expiredAtSnapshot: expiredAt,
+                    scopeType: InventoryLedgerScopeTypes.CentralKitchen,
+                    scopeId: centralKitchenId,
+                    stockBucket: InventoryLedgerStockBuckets.OnHand,
+                    deltaQuantity: request.Quantity,
+                    eventType: InventoryLedgerEventTypes.Inbound,
+                    reason: mv.Reason,
+                    actorUserId: _current.UserId,
+                    referenceType: InventoryLedgerReferenceTypes.Manual),
+                occurredAtUtc: now,
+                ct);
+
             _db.AuditLogs.Add(new AuditLog
             {
                 UserId = _current.UserId,
@@ -1641,7 +1869,7 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             int? ingredientId = null,
             bool includeZero = false,
             CancellationToken ct = default)
-            {
+        {
             await _access.EnsureCanAccessCentralKitchenAsync(centralKitchenId, ct);
 
             var query = _db.IngredientBatches
@@ -1899,6 +2127,25 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
 
             _db.ProductMovements.Add(mv);
 
+            await AppendSingleLedgerAsync(
+                BuildLedgerItem(
+                    itemType: InventoryHistoryItemTypes.Product,
+                    itemId: batch.ProductId,
+                    batchId: batch.BatchId,
+                    batchCodeSnapshot: batch.BatchCode,
+                    batchCreatedAtUtc: batch.CreatedAt,
+                    expiredAtSnapshot: expiredAt,
+                    scopeType: InventoryLedgerScopeTypes.CentralKitchen,
+                    scopeId: centralKitchenId,
+                    stockBucket: InventoryLedgerStockBuckets.OnHand,
+                    deltaQuantity: request.Quantity,
+                    eventType: InventoryLedgerEventTypes.Inbound,
+                    reason: mv.Reason,
+                    actorUserId: _current.UserId,
+                    referenceType: InventoryLedgerReferenceTypes.Manual),
+                occurredAtUtc: now,
+                ct);
+
             _db.AuditLogs.Add(new AuditLog
             {
                 UserId = _current.UserId,
@@ -1998,6 +2245,26 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
             };
 
             _db.ProductMovements.Add(mv);
+
+            await AppendSingleLedgerAsync(
+                BuildLedgerItem(
+                    itemType: InventoryHistoryItemTypes.Product,
+                    itemId: batch.ProductId,
+                    batchId: batch.BatchId,
+                    batchCodeSnapshot: batch.BatchCode,
+                    batchCreatedAtUtc: batch.CreatedAt,
+                    expiredAtSnapshot: expiredAt,
+                    scopeType: InventoryLedgerScopeTypes.CentralKitchen,
+                    scopeId: centralKitchenId,
+                    stockBucket: InventoryLedgerStockBuckets.OnHand,
+                    deltaQuantity: request.DeltaQuantity,
+                    eventType: ResolveLedgerEventType(type),
+                    reason: mv.Reason,
+                    actorUserId: _current.UserId,
+                    referenceType: InventoryLedgerReferenceTypes.Manual,
+                    metadataJson: BuildReferenceMetadata(request.Reference)),
+                occurredAtUtc: now,
+                ct);
 
             _db.AuditLogs.Add(new AuditLog
             {
@@ -2342,4 +2609,4 @@ namespace CentralKitchenAndFranchise.BLL.Services.Implementations
                    );
         }
     }
-    }
+}
