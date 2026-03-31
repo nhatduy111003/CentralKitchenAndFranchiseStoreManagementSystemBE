@@ -154,6 +154,7 @@ namespace CentralKitchenAndFranchise.DAL.Entities
 
         public DbSet<IngredientBatch> IngredientBatches => Set<IngredientBatch>();
         public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
+        public DbSet<InventoryLedgerEntry> InventoryLedgerEntries => Set<InventoryLedgerEntry>();
         public DbSet<ProductBatch> ProductBatches => Set<ProductBatch>();
         public DbSet<ProductMovement> ProductMovements => Set<ProductMovement>();
 
@@ -478,6 +479,99 @@ namespace CentralKitchenAndFranchise.DAL.Entities
             });
 
             modelBuilder.Entity<InventoryMovement>(e => { e.ToTable("inventory_movements"); e.HasKey(x => x.MovementId); });
+
+            modelBuilder.Entity<InventoryLedgerEntry>(e =>
+            {
+                e.ToTable("inventory_ledger_entries");
+                e.HasKey(x => x.InventoryLedgerEntryId);
+
+                e.Property(x => x.ItemType)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                e.Property(x => x.BatchCodeSnapshot)
+                    .HasMaxLength(100);
+
+                e.Property(x => x.ScopeType)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                e.Property(x => x.StockBucket)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                e.Property(x => x.DeltaQuantity)
+                    .HasColumnType("numeric(18,2)");
+
+                e.Property(x => x.EventType)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                e.Property(x => x.Reason)
+                    .HasMaxLength(1000);
+
+                e.Property(x => x.ReferenceType)
+                    .HasMaxLength(50);
+
+                e.Property(x => x.RequestedQuantitySnapshot)
+                    .HasColumnType("numeric(18,2)");
+
+                e.Property(x => x.ActualQuantitySnapshot)
+                    .HasColumnType("numeric(18,2)");
+
+                e.Property(x => x.DroppedQuantitySnapshot)
+                    .HasColumnType("numeric(18,2)");
+
+                e.Property(x => x.DropReasonSnapshot)
+                    .HasMaxLength(1000);
+
+                e.Property(x => x.CounterpartyScopeType)
+                    .HasMaxLength(50);
+
+                e.Property(x => x.IsNonStockEvent)
+                    .HasDefaultValue(false);
+
+                e.Property(x => x.MetadataJson)
+                    .HasColumnType("jsonb");
+
+                e.HasIndex(x => new { x.ScopeType, x.ScopeId, x.OccurredAtUtc, x.InventoryLedgerEntryId })
+                    .HasDatabaseName("IX_inventory_ledger_entries_scope_occurred_id");
+
+                e.HasIndex(x => new { x.ItemType, x.ItemId, x.OccurredAtUtc, x.InventoryLedgerEntryId })
+                    .HasDatabaseName("IX_inventory_ledger_entries_item_occurred_id");
+
+                e.HasIndex(x => new { x.BatchId, x.OccurredAtUtc, x.InventoryLedgerEntryId })
+                    .HasDatabaseName("IX_inventory_ledger_entries_batch_occurred_id")
+                    .HasFilter("\"BatchId\" IS NOT NULL");
+
+                e.HasIndex(x => new { x.DeliveryId, x.OccurredAtUtc, x.InventoryLedgerEntryId })
+                    .HasDatabaseName("IX_inventory_ledger_entries_delivery_occurred_id")
+                    .HasFilter("\"DeliveryId\" IS NOT NULL");
+
+                e.HasIndex(x => new { x.CorrelationId, x.SequenceNo })
+                    .IsUnique()
+                    .HasDatabaseName("UX_inventory_ledger_entries_correlation_sequence");
+
+                e.HasOne<User>()
+                    .WithMany()
+                    .HasForeignKey(x => x.ActorUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne<Delivery>()
+                    .WithMany()
+                    .HasForeignKey(x => x.DeliveryId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne<DeliveryPlan>()
+                    .WithMany()
+                    .HasForeignKey(x => x.DeliveryPlanId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne<StoreOrder>()
+                    .WithMany()
+                    .HasForeignKey(x => x.StoreOrderId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
 
             modelBuilder.Entity<ProductBatch>(e =>
             {
