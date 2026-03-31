@@ -198,6 +198,7 @@ builder.Services.AddScoped<IStoreDashboardService, StoreDashboardService>();
 
 builder.Services.AddScoped<IProductionPlanService, ProductionPlanService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<IInventoryHistoryService, InventoryHistoryService>();
 builder.Services.AddScoped<IInventoryLedgerWriter, InventoryLedgerWriter>();
 
 builder.Services.AddScoped<IBomService, BomService>();
