@@ -24,6 +24,16 @@ public class SupplyOrdersController : ControllerBase
         return Ok(result);
     }
 
+    // Return processed supply orders that already ended their lifecycle. DELIVERED/CONFIRMED/CANCELLED
+    [HttpGet("history")]
+    public async Task<IActionResult> GetHistory(
+        [FromQuery] SupplyOrderListQuery query,
+        CancellationToken ct)
+    {
+        var result = await _service.GetHistoryAsync(query, ct);
+        return Ok(result);
+    }
+
     [HttpPatch("{orderId:int}/prepare-delivery")]
     public async Task<IActionResult> PrepareDelivery(
         int orderId,

@@ -1,12 +1,13 @@
-using System.Text.Json;
 using CentralKitchenAndFranchise.BLL.Exceptions;
 using CentralKitchenAndFranchise.BLL.Extensions;
 using CentralKitchenAndFranchise.BLL.Services.Interfaces;
 using CentralKitchenAndFranchise.DAL.Entities;
 using CentralKitchenAndFranchise.DTO.Constants;
 using CentralKitchenAndFranchise.DTO.Requests.StoreOrders;
+using CentralKitchenAndFranchise.DTO.Responses.Common;
 using CentralKitchenAndFranchise.DTO.Responses.StoreOrders;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace CentralKitchenAndFranchise.BLL.Services.Implementations;
 
@@ -179,6 +180,175 @@ public class SupplyOrderService : ISupplyOrderService
             };
         }).ToList();
     }
+
+    // Return final-state supply orders that have left the active supply queue.
+    public async Task<PagedResult<SupplyProcessedOrderResponse>> GetHistoryAsync(
+        SupplyOrderListQuery query,
+        CancellationToken ct = default)
+    {
+        RequireOneOf(RoleNames.Admin, RoleNames.Manager, RoleNames.SupplyCoordinator);
+
+        query ??= new SupplyOrderListQuery();
+
+        if (query.FromDate.HasValue && query.ToDate.HasValue && query.FromDate.Value > query.ToDate.Value)
+            throw new ArgumentException("FromDate cannot be greater than ToDate.");
+
+        var page = query.Page <= 0 ? 1 : query.Page;
+        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+        if (pageSize > 200)
+            pageSize = 200;
+
+        var normalizedStatus = NormalizeProcessedHistoryStatus(query.Status);
+
+        int? scopedCentralKitchenId = null;
+        if (_current.IsInRole(RoleNames.SupplyCoordinator))
+        {
+            scopedCentralKitchenId = await _access.GetCurrentAssignedCentralKitchenIdAsync(ct);
+        }
+
+        var finalStatuses = new[]
+        {
+            StoreOrderStatus.Delivered,
+            StoreOrderStatus.ReceivedByStore,
+            StoreOrderStatus.Cancelled
+        };
+
+        var ordersQuery = _db.StoreOrders
+            .AsNoTracking()
+            .Include(x => x.Franchise)
+            .Include(x => x.Items)
+            .Include(x => x.IngredientItems)
+            .Where(x =>
+                x.ForwardedAt.HasValue &&          // only orders that truly entered supply flow
+                finalStatuses.Contains(x.Status));
+
+        if (scopedCentralKitchenId.HasValue)
+        {
+            ordersQuery = ordersQuery.Where(x => x.Franchise.CentralKitchenId == scopedCentralKitchenId.Value);
+        }
+
+        if (query.FranchiseId.HasValue)
+        {
+            ordersQuery = ordersQuery.Where(x => x.FranchiseId == query.FranchiseId.Value);
+        }
+
+        if (!string.Equals(normalizedStatus, "ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            ordersQuery = ordersQuery.Where(x => x.Status == normalizedStatus);
+        }
+
+        var search = query.Search?.Trim();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var orderIdSearch = TryParseOrderCodeSearch(search);
+            var pattern = $"%{search}%";
+
+            if (orderIdSearch.HasValue)
+            {
+                ordersQuery = ordersQuery.Where(x =>
+                    EF.Functions.ILike(x.Franchise.Name, pattern) ||
+                    x.StoreOrderId == orderIdSearch.Value);
+            }
+            else
+            {
+                ordersQuery = ordersQuery.Where(x =>
+                    EF.Functions.ILike(x.Franchise.Name, pattern));
+            }
+        }
+
+        var orders = await ordersQuery.ToListAsync(ct);
+        var orderIds = orders.Select(x => x.StoreOrderId).ToList();
+
+        var deliveryMap = await LoadLatestDeliveryMapForOrdersAsync(orderIds, ct);
+
+        var userIds = orders
+            .Where(x => x.ForwardedByUserId.HasValue)
+            .Select(x => x.ForwardedByUserId!.Value)
+            .Concat(orders.Where(x => x.PreparedByUserId.HasValue).Select(x => x.PreparedByUserId!.Value))
+            .Concat(orders.Where(x => x.DeliveryStatusUpdatedByUserId.HasValue).Select(x => x.DeliveryStatusUpdatedByUserId!.Value))
+            .Concat(deliveryMap.Values
+                .Select(ResolveLatestReceivingReport)
+                .Where(x => x?.ReceivedByUserId != null)
+                .Select(x => x!.ReceivedByUserId!.Value))
+            .Distinct()
+            .ToList();
+
+        var userMap = await LoadUsernameMapAsync(userIds, ct);
+
+        var items = orders
+            .Select(order =>
+            {
+                deliveryMap.TryGetValue(order.StoreOrderId, out var delivery);
+
+                var endedByUserId = ResolveEndedByUserId(order, delivery);
+
+                return new SupplyProcessedOrderResponse
+                {
+                    StoreOrderId = order.StoreOrderId,
+                    OrderCode = BuildOrderCode(order.StoreOrderId),
+                    Status = order.Status,
+
+                    RequestedDeliveryDate = order.OrderDate,
+                    CreatedAt = order.CreatedAt,
+
+                    StoreId = order.FranchiseId,
+                    StoreName = order.Franchise.Name,
+
+                    TotalItems = order.Items.Count + order.IngredientItems.Count,
+                    TotalQuantity = order.Items.Sum(x => x.Quantity) + order.IngredientItems.Sum(x => x.Quantity),
+
+                    ForwardedAt = order.ForwardedAt,
+                    ForwardedBy = order.ForwardedByUserId.HasValue && userMap.TryGetValue(order.ForwardedByUserId.Value, out var forwardedBy)
+                        ? forwardedBy
+                        : null,
+
+                    PreparedAt = order.PreparedAt,
+                    PreparedBy = order.PreparedByUserId.HasValue && userMap.TryGetValue(order.PreparedByUserId.Value, out var preparedBy)
+                        ? preparedBy
+                        : null,
+
+                    EndedAt = ResolveEndedAt(order, delivery),
+                    EndedBy = endedByUserId.HasValue && userMap.TryGetValue(endedByUserId.Value, out var endedBy)
+                        ? endedBy
+                        : null,
+                    EndedNote = ResolveEndedNote(order, delivery),
+
+                    ForwardNote = order.ForwardNote,
+                    ProcessingNote = order.ProcessingNote,
+                    PreparingNote = order.PreparingNote
+                };
+            })
+            .ToList();
+
+        if (query.FromDate.HasValue)
+        {
+            items = items
+                .Where(x => DateOnly.FromDateTime(x.EndedAt) >= query.FromDate.Value)
+                .ToList();
+        }
+
+        if (query.ToDate.HasValue)
+        {
+            items = items
+                .Where(x => DateOnly.FromDateTime(x.EndedAt) <= query.ToDate.Value)
+                .ToList();
+        }
+
+        items = ApplyProcessedHistorySort(items, query.SortBy, query.SortDir);
+
+        var totalItems = items.Count;
+        var pagedItems = items
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return PagedResult<SupplyProcessedOrderResponse>.Create(
+            pagedItems,
+            page,
+            pageSize,
+            totalItems);
+    }
+
     public async Task<OrderWorkflowActionResponse> PrepareDeliveryAsync(
         int orderId,
         PrepareDeliveryRequest request,
@@ -919,6 +1089,196 @@ public class SupplyOrderService : ISupplyOrderService
                         };
                     })
                     .ToDictionary(x => x.ItemId, x => x));
+    }
+
+    // Load the latest delivery aggregate for each processed store order.
+    private async Task<Dictionary<int, Delivery>> LoadLatestDeliveryMapForOrdersAsync(
+        List<int> orderIds,
+        CancellationToken ct)
+    {
+        if (orderIds.Count == 0)
+            return new Dictionary<int, Delivery>();
+
+        var deliveries = await _db.Deliveries
+            .AsNoTracking()
+            .Include(x => x.DeliveryPlan)
+            .Include(x => x.ReceivingReports)
+            .Where(x =>
+                x.DeliveryPlan.StoreOrderId.HasValue &&
+                orderIds.Contains(x.DeliveryPlan.StoreOrderId.Value))
+            .ToListAsync(ct);
+
+        return deliveries
+            .GroupBy(x => x.DeliveryPlan.StoreOrderId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .OrderByDescending(x => x.ConfirmedAt ?? x.DeliveredAt ?? x.CreatedAt)
+                    .ThenByDescending(x => x.DeliveryId)
+                    .First());
+    }
+
+    // Load usernames in one query to avoid N+1 lookups for list responses.
+    private async Task<Dictionary<int, string>> LoadUsernameMapAsync(List<int> userIds, CancellationToken ct)
+    {
+        if (userIds.Count == 0)
+            return new Dictionary<int, string>();
+
+        return await _db.Users
+            .AsNoTracking()
+            .Where(x => userIds.Contains(x.UserId))
+            .ToDictionaryAsync(x => x.UserId, x => x.Username, ct);
+    }
+
+    // Resolve the latest receiving report for a delivered order that was confirmed by store.
+    private static ReceivingReport? ResolveLatestReceivingReport(Delivery? delivery)
+    {
+        return delivery?.ReceivingReports
+            .OrderByDescending(x => x.ReceivedAt)
+            .ThenByDescending(x => x.ReceivingReportId)
+            .FirstOrDefault();
+    }
+
+    // Resolve the lifecycle end timestamp for final-state supply orders.
+    private static DateTime ResolveEndedAt(StoreOrder order, Delivery? delivery)
+    {
+        if (string.Equals(order.Status, StoreOrderStatus.ReceivedByStore, StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveLatestReceivingReport(delivery)?.ReceivedAt
+                ?? delivery?.ConfirmedAt
+                ?? delivery?.DeliveredAt
+                ?? order.DeliveryStatusUpdatedAt
+                ?? order.PreparedAt
+                ?? order.ForwardedAt
+                ?? order.CreatedAt;
+        }
+
+        if (string.Equals(order.Status, StoreOrderStatus.Delivered, StringComparison.OrdinalIgnoreCase))
+        {
+            return delivery?.DeliveredAt
+                ?? order.DeliveryStatusUpdatedAt
+                ?? order.PreparedAt
+                ?? order.ForwardedAt
+                ?? order.CreatedAt;
+        }
+
+        if (string.Equals(order.Status, StoreOrderStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
+        {
+            return order.CancelledAt
+                ?? order.UpdatedAt
+                ?? order.ForwardedAt
+                ?? order.CreatedAt;
+        }
+
+        return order.UpdatedAt ?? order.CreatedAt;
+    }
+
+    // Resolve the lifecycle end note from the final-state source of truth.
+    private static string? ResolveEndedNote(StoreOrder order, Delivery? delivery)
+    {
+        if (string.Equals(order.Status, StoreOrderStatus.ReceivedByStore, StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveLatestReceivingReport(delivery)?.Note
+                ?? order.DeliveryStatusNote;
+        }
+
+        if (string.Equals(order.Status, StoreOrderStatus.Delivered, StringComparison.OrdinalIgnoreCase))
+        {
+            return order.DeliveryStatusNote;
+        }
+
+        if (string.Equals(order.Status, StoreOrderStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
+        {
+            return order.CancelReason;
+        }
+
+        return null;
+    }
+
+    // Resolve the user who performed the final lifecycle action when that metadata exists.
+    private static int? ResolveEndedByUserId(StoreOrder order, Delivery? delivery)
+    {
+        if (string.Equals(order.Status, StoreOrderStatus.ReceivedByStore, StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveLatestReceivingReport(delivery)?.ReceivedByUserId;
+        }
+
+        if (string.Equals(order.Status, StoreOrderStatus.Delivered, StringComparison.OrdinalIgnoreCase))
+        {
+            return order.DeliveryStatusUpdatedByUserId;
+        }
+
+        // Cancelled orders currently do not store CancelledByUserId in schema.
+        return null;
+    }
+
+    // Normalize the allowed history status filter for processed supply orders.
+    private static string NormalizeProcessedHistoryStatus(string? rawStatus)
+    {
+        var value = (rawStatus ?? "ALL").Trim().ToUpperInvariant();
+
+        return value switch
+        {
+            "ALL" => "ALL",
+            var s when s == StoreOrderStatus.Delivered => StoreOrderStatus.Delivered,
+            var s when s == StoreOrderStatus.ReceivedByStore => StoreOrderStatus.ReceivedByStore,
+            var s when s == StoreOrderStatus.Cancelled => StoreOrderStatus.Cancelled,
+            _ => throw new ArgumentException("Invalid status value. Use ALL / DELIVERED / RECEIVED_BY_STORE / CANCELLED.")
+        };
+    }
+
+    // Parse SO-000123 or plain numeric search into a store order id when possible.
+    private static int? TryParseOrderCodeSearch(string search)
+    {
+        var value = (search ?? string.Empty).Trim();
+
+        if (value.StartsWith("SO-", StringComparison.OrdinalIgnoreCase))
+            value = value[3..];
+
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        if (value.All(char.IsDigit) && int.TryParse(value, out var orderId))
+            return orderId;
+
+        return null;
+    }
+
+    // Apply stable sorting for the processed supply history list.
+    private static List<SupplyProcessedOrderResponse> ApplyProcessedHistorySort(
+        List<SupplyProcessedOrderResponse> items,
+        string? sortBy,
+        string? sortDir)
+    {
+        var key = (sortBy ?? "endedAt").Trim().ToLowerInvariant();
+        var desc = !string.Equals(sortDir, "asc", StringComparison.OrdinalIgnoreCase);
+
+        return key switch
+        {
+            "storename" => desc
+                ? items.OrderByDescending(x => x.StoreName).ThenByDescending(x => x.StoreOrderId).ToList()
+                : items.OrderBy(x => x.StoreName).ThenBy(x => x.StoreOrderId).ToList(),
+
+            "status" => desc
+                ? items.OrderByDescending(x => x.Status).ThenByDescending(x => x.StoreOrderId).ToList()
+                : items.OrderBy(x => x.Status).ThenBy(x => x.StoreOrderId).ToList(),
+
+            "createdat" => desc
+                ? items.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.StoreOrderId).ToList()
+                : items.OrderBy(x => x.CreatedAt).ThenBy(x => x.StoreOrderId).ToList(),
+
+            "forwardedat" => desc
+                ? items.OrderByDescending(x => x.ForwardedAt).ThenByDescending(x => x.StoreOrderId).ToList()
+                : items.OrderBy(x => x.ForwardedAt).ThenBy(x => x.StoreOrderId).ToList(),
+
+            "requesteddeliverydate" => desc
+                ? items.OrderByDescending(x => x.RequestedDeliveryDate).ThenByDescending(x => x.StoreOrderId).ToList()
+                : items.OrderBy(x => x.RequestedDeliveryDate).ThenBy(x => x.StoreOrderId).ToList(),
+
+            _ => desc
+                ? items.OrderByDescending(x => x.EndedAt).ThenByDescending(x => x.StoreOrderId).ToList()
+                : items.OrderBy(x => x.EndedAt).ThenBy(x => x.StoreOrderId).ToList()
+        };
     }
 
     private async Task<string?> ResolveUsernameAsync(int? userId, CancellationToken ct)
