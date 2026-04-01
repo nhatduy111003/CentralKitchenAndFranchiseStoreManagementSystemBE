@@ -32,7 +32,7 @@ public class StoreOrdersController : ControllerBase
     }
 
     [HttpGet("{orderId:int}")]
-    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff}")]
+    [Authorize(Roles = $"{RoleNames.Admin},{RoleNames.Manager},{RoleNames.StoreStaff},{RoleNames.SupplyCoordinator}")]
     public async Task<ActionResult<ApiResponse<StoreOrderResponse>>> GetById(
         int franchiseId,
         int orderId,

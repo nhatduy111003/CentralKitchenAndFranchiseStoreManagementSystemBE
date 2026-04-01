@@ -459,7 +459,7 @@ public class StoreOrderService : IStoreOrderService
 
     public async Task<StoreOrderResponse> GetByIdAsync(int franchiseId, int orderId, CancellationToken ct = default)
     {
-        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff);
+        RequireRoles(RoleNames.Admin, RoleNames.Manager, RoleNames.StoreStaff,RoleNames.SupplyCoordinator);
         await _access.EnsureCanAccessAsync(franchiseId, ct);
 
         return await GetByIdInternalAsync(franchiseId, orderId, ct);
