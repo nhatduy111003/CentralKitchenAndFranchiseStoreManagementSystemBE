@@ -50,10 +50,13 @@ builder.Services.AddEndpointsApiExplorer();
 // CORS: allow FE on http://localhost:8080
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowLocalhost8080", policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
         policy
-            .WithOrigins("http://localhost:8080")
+            .WithOrigins(
+                "http://localhost:8080",
+                "https://central-kitchen-and-franchise-store.vercel.app"
+            )
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
@@ -254,7 +257,7 @@ app.UseMiddleware<ExceptionMiddleware>();
 app.UseHttpsRedirection();
 
 // Enable CORS
-app.UseCors("AllowLocalhost8080");
+app.UseCors("AllowFrontend");
 //authentication & authorization
 app.UseAuthentication();
 app.UseAuthorization();
